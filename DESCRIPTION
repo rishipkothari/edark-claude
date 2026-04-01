@@ -1,0 +1,47 @@
+Package: edark
+Title: Interactive Exploratory Data Analysis GUI for Clinical Research
+Version: 0.2.0
+Authors@R:
+    person("Rishi", "Kothari", role = c("aut", "cre"),
+           email = "rishi@example.com")
+Description: Provides an interactive Shiny GUI for exploratory data analysis
+    of tabular datasets, with a focus on clinical and medical research
+    workflows. A researcher passes a pre-loaded dataset to edark(dataset),
+    manipulates it through a structured preparation stage, explores variables
+    and their relationships through interactive visualizations, and optionally
+    generates a publication-quality report — all without writing analysis code.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+Depends:
+    R (>= 4.1.0)
+Imports:
+    shiny (>= 1.8.0),
+    bslib (>= 0.7.0),
+    shinyjs,
+    shinyWidgets,
+    waiter,
+    dplyr,
+    tidyr,
+    tibble,
+    lubridate,
+    stringr,
+    forcats,
+    ggplot2,
+    ggpubr,
+    patchwork,
+    plotly,
+    e1071,
+    gtsummary,
+    gt,
+    flextable,
+    reactable
+Suggests:
+    officer,
+    rvg,
+    rmarkdown,
+    knitr,
+    testthat (>= 3.0.0),
+    shinytest2
+Config/testthat/edition: 3

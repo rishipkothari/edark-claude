@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Rscript --version)",
+      "Bash(mkdir -p c:/Users/rishi/Documents/coding/R/edark-claude/R)",
+      "Bash(mkdir -p c:/Users/rishi/Documents/coding/R/edark-claude/tests/testthat)",
+      "Bash(mkdir -p c:/Users/rishi/Documents/coding/R/edark-claude/man)"
+    ]
+  }
+}
