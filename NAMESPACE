@@ -2,7 +2,7 @@
 # (This file will be auto-regenerated when you run devtools::document())
 
 export(edark)
-export(edark_report)
-export(build_plot_spec)
+export(build_univariate_plot_spec)
+export(build_bivariate_plot_spec)
 export(render_plot)
 export(build_variable_summary)
