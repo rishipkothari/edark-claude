@@ -44,19 +44,35 @@ edark <- function(dataset, max_factor_levels = 20) {
     bslib::nav_panel(
       value = "prepare",
       title = shiny::tagList(shiny::icon("sliders"), " 1 \u00b7 Prepare"),
-      bslib::layout_columns(
-        col_widths = c(6, 6),
-        # Left column: column manager + row filter
-        shiny::tagList(
-          column_manager_ui("column_manager"),
-          shiny::br(),
-          row_filter_ui("row_filter")
-        ),
-        # Right column: transforms + apply
-        shiny::tagList(
-          column_transform_ui("column_transform"),
-          shiny::br(),
+      bslib::layout_sidebar(
+        sidebar = bslib::sidebar(
+          title    = "Apply",
+          position = "right",
+          width    = 220,
           prepare_confirm_ui("prepare_confirm")
+        ),
+        bslib::navset_card_tab(
+          id = "prepare_tabs",
+          bslib::nav_panel(
+            value = "columns",
+            title = shiny::tagList(shiny::icon("table-columns"), " Columns"),
+            column_manager_ui("column_manager")
+          ),
+          bslib::nav_panel(
+            value = "transforms",
+            title = shiny::tagList(shiny::icon("wand-magic-sparkles"), " Transforms"),
+            transform_variables_ui("transform_variables")
+          ),
+          bslib::nav_panel(
+            value = "filters",
+            title = shiny::tagList(shiny::icon("filter"), " Row Filters"),
+            row_filter_ui("row_filter")
+          ),
+          bslib::nav_panel(
+            value = "preview",
+            title = shiny::tagList(shiny::icon("eye"), " Data Preview"),
+            data_preview_ui("data_preview")
+          )
         )
       )
     ),
@@ -101,6 +117,7 @@ edark <- function(dataset, max_factor_levels = 20) {
       dataset_original        = dataset_cast,
       dataset_working         = dataset_cast,
       column_types            = column_types,
+      original_column_types   = column_types,  # set once at launch, never overwritten
 
       # Prepare stage: staged (unapplied)
       included_columns        = names(dataset_cast),
@@ -130,10 +147,11 @@ edark <- function(dataset, max_factor_levels = 20) {
     )
 
     # Wire all modules — each is a sibling, none calls another's server.
-    column_manager_server("column_manager",   shared_state)
-    row_filter_server("row_filter",           shared_state)
-    column_transform_server("column_transform", shared_state)
-    prepare_confirm_server("prepare_confirm", shared_state)
+    column_manager_server("column_manager",         shared_state)
+    transform_variables_server("transform_variables", shared_state)
+    row_filter_server("row_filter",                 shared_state)
+    data_preview_server("data_preview",             shared_state)
+    prepare_confirm_server("prepare_confirm",       shared_state)
     explore_controls_server("explore_controls", shared_state)
     explore_output_server("explore_output",   shared_state)
   }

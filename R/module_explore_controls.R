@@ -64,7 +64,7 @@ explore_controls_ui <- function(id) {
         shiny::actionButton(
           ns("plot_btn"),
           label = "Plot Correlation",
-          icon  = shiny::icon("chart-scatter"),
+          icon  = shiny::icon("chart-line"),
           class = "btn-outline-primary w-100"
         )
       )

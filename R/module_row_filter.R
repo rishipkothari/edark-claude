@@ -1,9 +1,9 @@
 #' Row Filter Module
 #'
 #' Allows the user to add row-filter criteria against any included column.
-#' Numeric columns get a min/max range input; factor/character/logical columns
-#' get a checkbox group of levels to retain. Multiple filters compose with AND
-#' logic. All filters are staged — nothing is applied until "Apply & Proceed".
+#' Numeric columns get a min/max range slider; factor/character columns get a
+#' checkbox group of levels to retain. Multiple filters compose with AND logic.
+#' All filters are staged — nothing is applied until "Apply & Proceed".
 #'
 #' @param id Character. The module namespace ID.
 #' @param shared_state A Shiny `reactiveValues` object.
@@ -17,29 +17,27 @@ NULL
 row_filter_ui <- function(id) {
   ns <- shiny::NS(id)
 
-  bslib::card(
-    bslib::card_header(shiny::icon("filter"), " Row Filters"),
-    bslib::card_body(
-      shiny::fluidRow(
-        shiny::column(8,
-          shiny::uiOutput(ns("column_picker"))
-        ),
-        shiny::column(4,
-          shiny::br(),
-          shiny::actionButton(
-            ns("add_filter"), "Add filter",
-            icon  = shiny::icon("plus"),
-            class = "btn-sm btn-outline-primary w-100"
-          )
+  shiny::tagList(
+    # Add-filter controls
+    shiny::fluidRow(
+      class = "mb-3",
+      shiny::column(8, shiny::uiOutput(ns("column_picker"))),
+      shiny::column(4,
+        shiny::br(),
+        shiny::actionButton(
+          ns("add_filter"), "Add filter",
+          icon  = shiny::icon("plus"),
+          class = "btn-sm btn-outline-primary w-100"
         )
-      ),
-      shiny::hr(),
-      # Live row count feedback
-      shiny::uiOutput(ns("row_count_badge")),
-      shiny::br(),
-      # Active filter widgets render here
-      shiny::uiOutput(ns("active_filters"))
-    )
+      )
+    ),
+
+    # Live row-count badge
+    shiny::uiOutput(ns("row_count_badge")),
+    shiny::hr(),
+
+    # Active filter cards
+    shiny::uiOutput(ns("active_filters"))
   )
 }
 
@@ -50,38 +48,40 @@ row_filter_server <- function(id, shared_state) {
   shiny::moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    # ── Column picker: only included columns ─────────────────────────────────
+    # Track which columns already have input observers registered so we never
+    # double-register when the specs reactive fires multiple times.
+    registered_cols <- character(0)
+
+    # ── Column picker ─────────────────────────────────────────────────────────
     output$column_picker <- shiny::renderUI({
       included <- shared_state$included_columns
       shinyWidgets::pickerInput(
         ns("filter_column"),
-        label   = "Add filter for column:",
+        label   = "Column to filter:",
         choices = included,
-        options = shinyWidgets::pickerOptions(
-          liveSearch = TRUE, container = "body"
-        )
+        options = shinyWidgets::pickerOptions(liveSearch = TRUE, container = "body")
       )
     })
 
 
     # ── Row count badge ───────────────────────────────────────────────────────
-    # Recompute the row count whenever filter specs change
-    filtered_n <- shiny::reactive({
+    output$row_count_badge <- shiny::renderUI({
       specs   <- shared_state$row_filter_specs
       dataset <- shared_state$dataset_original
-      if (length(specs) == 0) return(nrow(dataset))
-      tryCatch(
-        nrow(.apply_row_filters_preview(dataset, specs)),
-        error = function(e) NA_integer_
-      )
-    })
+      n_orig  <- nrow(dataset)
 
-    output$row_count_badge <- shiny::renderUI({
-      n_orig <- nrow(shared_state$dataset_original)
-      n_filt <- filtered_n()
+      n_filt <- if (length(specs) == 0) {
+        n_orig
+      } else {
+        tryCatch(
+          nrow(.apply_row_filters_preview(dataset, specs)),
+          error = function(e) NA_integer_
+        )
+      }
+
       colour <- if (!is.na(n_filt) && n_filt < n_orig) "warning" else "success"
       shiny::tags$span(
-        class = paste0("badge bg-", colour, " fs-6"),
+        class = paste0("badge bg-", colour),
         if (is.na(n_filt)) "Error in filters" else
           paste0(format(n_filt, big.mark = ","), " / ",
                  format(n_orig, big.mark = ","), " rows retained")
@@ -89,101 +89,104 @@ row_filter_server <- function(id, shared_state) {
     })
 
 
-    # ── Add filter button ─────────────────────────────────────────────────────
+    # ── Add filter ────────────────────────────────────────────────────────────
     shiny::observeEvent(input$add_filter, {
-      col     <- input$filter_column
-      dataset <- shared_state$dataset_original
-      types   <- shared_state$column_types
-
+      col <- input$filter_column
       if (is.null(col) || col == "") return()
-      # Don't add a duplicate
       if (!is.null(shared_state$row_filter_specs[[col]])) return()
 
-      col_type <- types[[col]]
-      x        <- dataset[[col]]
+      x        <- shared_state$dataset_original[[col]]
+      col_type <- shared_state$column_types[[col]]
 
       if (col_type == "numeric") {
         spec <- list(
           type = "numeric",
           min  = min(x, na.rm = TRUE),
-          max  = max(x, na.rm = TRUE)
+          max  = max(x, na.rm = TRUE),
+          data_min = min(x, na.rm = TRUE),
+          data_max = max(x, na.rm = TRUE)
         )
       } else {
-        # factor, character, logical
-        levels_present <- as.character(sort(unique(x[!is.na(x)])))
+        lvls <- as.character(sort(unique(x[!is.na(x)])))
         spec <- list(
-          type           = "categorical",
-          levels_all     = levels_present,
-          levels_selected = levels_present   # default: keep all
+          type             = "categorical",
+          levels_all       = lvls,
+          levels_selected  = lvls
         )
       }
 
-      specs      <- shared_state$row_filter_specs
+      specs        <- shared_state$row_filter_specs
       specs[[col]] <- spec
       shared_state$row_filter_specs    <- specs
       shared_state$has_pending_changes <- TRUE
     })
 
 
-    # ── Render active filter widgets ──────────────────────────────────────────
+    # ── Render filter cards ───────────────────────────────────────────────────
     output$active_filters <- shiny::renderUI({
       specs <- shared_state$row_filter_specs
       if (length(specs) == 0) {
         return(shiny::tags$p(
           class = "text-muted small",
-          "No filters added. Use the picker above to add a filter."
+          "No filters added yet. Select a column above and click Add filter."
         ))
       }
 
-      filter_cards <- lapply(names(specs), function(col) {
+      lapply(names(specs), function(col) {
         spec <- specs[[col]]
         .render_filter_widget(ns, col, spec)
       })
-
-      shiny::tagList(filter_cards)
     })
 
 
-    # ── Observe filter widget inputs (numeric range) ──────────────────────────
+    # ── Register input observers for filter widgets ───────────────────────────
+    # Re-runs when row_filter_specs changes (new filter added), but only
+    # registers observers for columns not yet tracked.
     shiny::observe({
-      specs <- shiny::isolate(shared_state$row_filter_specs)
-      lapply(names(specs), function(col) {
-        spec <- specs[[col]]
-        if (spec$type == "numeric") {
-          range_id <- paste0("range_", col)
-          shiny::observeEvent(input[[range_id]], {
-            s <- shared_state$row_filter_specs
-            s[[col]]$min <- input[[range_id]][1]
-            s[[col]]$max <- input[[range_id]][2]
+      specs    <- shared_state$row_filter_specs
+      new_cols <- setdiff(names(specs), registered_cols)
+      if (length(new_cols) == 0) return()
+
+      for (col in new_cols) {
+        local({
+          .col     <- col
+          col_type <- specs[[.col]]$type
+
+          if (col_type == "numeric") {
+            shiny::observeEvent(input[[paste0("range_", .col)]], {
+              val <- input[[paste0("range_", .col)]]
+              s   <- shared_state$row_filter_specs
+              if (!is.null(s[[.col]]) && !is.null(val)) {
+                s[[.col]]$min                <- val[1]
+                s[[.col]]$max                <- val[2]
+                shared_state$row_filter_specs    <- s
+                shared_state$has_pending_changes <- TRUE
+              }
+            }, ignoreNULL = TRUE, ignoreInit = TRUE)
+
+          } else {
+            shiny::observeEvent(input[[paste0("levels_", .col)]], {
+              val <- input[[paste0("levels_", .col)]]
+              s   <- shared_state$row_filter_specs
+              if (!is.null(s[[.col]])) {
+                s[[.col]]$levels_selected        <- val
+                shared_state$row_filter_specs    <- s
+                shared_state$has_pending_changes <- TRUE
+              }
+            }, ignoreNULL = TRUE, ignoreInit = TRUE)
+          }
+
+          # Remove button
+          shiny::observeEvent(input[[paste0("remove_filter_", .col)]], {
+            s         <- shared_state$row_filter_specs
+            s[[.col]] <- NULL
             shared_state$row_filter_specs    <- s
             shared_state$has_pending_changes <- TRUE
-          }, ignoreNULL = TRUE, ignoreInit = TRUE)
+          }, ignoreInit = TRUE, once = TRUE)
+        })
 
-        } else {
-          levels_id <- paste0("levels_", col)
-          shiny::observeEvent(input[[levels_id]], {
-            s <- shared_state$row_filter_specs
-            s[[col]]$levels_selected <- input[[levels_id]]
-            shared_state$row_filter_specs    <- s
-            shared_state$has_pending_changes <- TRUE
-          }, ignoreNULL = TRUE, ignoreInit = TRUE)
-        }
-      })
-    })
-
-
-    # ── Remove filter buttons ─────────────────────────────────────────────────
-    shiny::observe({
-      specs <- shiny::isolate(shared_state$row_filter_specs)
-      lapply(names(specs), function(col) {
-        remove_id <- paste0("remove_filter_", col)
-        shiny::observeEvent(input[[remove_id]], {
-          s <- shared_state$row_filter_specs
-          s[[col]] <- NULL
-          shared_state$row_filter_specs    <- s
-          shared_state$has_pending_changes <- TRUE
-        }, ignoreInit = TRUE, once = TRUE)
-      })
+        registered_cols <<- c(registered_cols, col)
+      }
     })
   })
 }
@@ -191,25 +194,24 @@ row_filter_server <- function(id, shared_state) {
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
-# Build the UI widget for one filter entry.
 .render_filter_widget <- function(ns, col, spec) {
   remove_btn <- shiny::actionLink(
     ns(paste0("remove_filter_", col)),
-    label = shiny::icon("times"),
-    class = "text-danger float-end"
+    label = shiny::icon("xmark"),
+    class = "text-danger"
   )
 
-  if (spec$type == "numeric") {
-    widget <- shiny::sliderInput(
+  widget <- if (spec$type == "numeric") {
+    shiny::sliderInput(
       ns(paste0("range_", col)),
       label = NULL,
-      min   = spec$min,
-      max   = spec$max,
+      min   = spec$data_min,
+      max   = spec$data_max,
       value = c(spec$min, spec$max),
       width = "100%"
     )
   } else {
-    widget <- shinyWidgets::checkboxGroupButtons(
+    shinyWidgets::checkboxGroupButtons(
       ns(paste0("levels_", col)),
       label     = NULL,
       choices   = spec$levels_all,
@@ -220,25 +222,22 @@ row_filter_server <- function(id, shared_state) {
   }
 
   bslib::card(
-    class = "mb-2 border-start border-primary border-3",
-    bslib::card_body(
-      class = "py-2",
-      shiny::fluidRow(
-        shiny::column(10, shiny::tags$strong(col)),
-        shiny::column(2,  remove_btn)
-      ),
-      widget
-    )
+    class = "mb-2",
+    bslib::card_header(
+      class = "py-1 d-flex justify-content-between align-items-center",
+      shiny::tags$strong(col),
+      remove_btn
+    ),
+    bslib::card_body(class = "py-2", widget)
   )
 }
 
 
-# Apply row filter specs to a dataset (used for live row-count preview).
-# This is the same logic as apply_row_filters() in the pipeline, kept here
-# so this module has no dependency on prepare_confirm internals.
+# Apply row filter specs to a dataset (used for live preview in the badge).
 .apply_row_filters_preview <- function(dataset, specs) {
   result <- dataset
   for (col in names(specs)) {
+    if (!col %in% names(result)) next
     spec <- specs[[col]]
     if (spec$type == "numeric") {
       result <- result[
