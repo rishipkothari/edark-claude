@@ -68,20 +68,11 @@ render_plot <- function(spec, dataset, max_factor_levels = 20) {
 
   # histogram_density returns an edark_two_panel; apply aesthetics to each panel
   if (inherits(p, "edark_two_panel")) {
-    # Left (density): legend always top so stratum colours are readable
-    # Right (QQ):     legend suppressed — facet strips label each stratum;
-    #                 title built here: "Q-Q Plot  ·  col_a[ · stratified by x]"
-    spec_left  <- modifyList(spec, list(show_legend = TRUE, legend_position = "top"))
+    # Left (density): honours show_legend / legend_position from spec
+    # Right (QQ):     legend suppressed — facet strips label each stratum
     spec_right <- modifyList(spec, list(show_legend = FALSE))
-
-    qq_title <- paste0("Q-Q Plot  \u00b7  ", spec$column_a)
-    if (!is.null(spec$stratify_by)) {
-      qq_title <- paste0(qq_title, "  \u00b7  stratified by ", spec$stratify_by)
-    }
-
-    p$left  <- .apply_plot_aesthetics(p$left,  spec_left,  add_title = TRUE)
-    p$right <- .apply_plot_aesthetics(p$right, spec_right, add_title = FALSE) +
-      ggplot2::labs(title = qq_title)
+    p$left  <- .apply_plot_aesthetics(p$left,  spec)
+    p$right <- .apply_plot_aesthetics(p$right, spec_right)
   } else {
     p <- .apply_plot_aesthetics(p, spec)
   }
@@ -91,22 +82,15 @@ render_plot <- function(spec, dataset, max_factor_levels = 20) {
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
-# Applies shared aesthetics (title, legend, theme) to any finished ggplot.
-# add_title = FALSE suppresses the title (used for the right QQ panel in
-# two-panel histogram plots so only the left density panel carries the label).
-.apply_plot_aesthetics <- function(p, spec, add_title = TRUE) {
-  p <- p + ggplot2::theme_minimal(base_size = 13)
-
-  if (add_title) {
-    title_text <- spec$column_a
-    if (!is.null(spec$column_b)) {
-      title_text <- paste0(title_text, "  \u00d7  ", spec$column_b)
-    }
-    if (!is.null(spec$stratify_by)) {
-      title_text <- paste0(title_text, "  \u00b7  stratified by ", spec$stratify_by)
-    }
-    p <- p + ggplot2::labs(title = title_text)
-  }
+# Applies shared aesthetics (legend, theme) to any finished ggplot.
+# Plot title is NOT added here — it is rendered as a separate Shiny UI element
+# above the plot card in module_explore_output so it clears the facet strips.
+.apply_plot_aesthetics <- function(p, spec) {
+  p <- p +
+    ggplot2::theme_minimal(base_size = 13) +
+    ggplot2::theme(
+      strip.text = ggplot2::element_text(margin = ggplot2::margin(t = 6, b = 4))
+    )
 
   if (!spec$show_legend) {
     p <- p + ggplot2::theme(legend.position = "none")
@@ -171,7 +155,8 @@ render_plot <- function(spec, dataset, max_factor_levels = 20) {
     )) +
       ggplot2::geom_col() +
       ggplot2::scale_fill_brewer(palette = palette, guide = "none") +
-      ggplot2::facet_wrap(~ .data[[stratify]], scales = "fixed") +
+      ggplot2::facet_wrap(as.formula(paste("~", stratify)), scales = "fixed",
+                          labeller = ggplot2::label_both) +
       ggplot2::labs(x = col_a, y = "Count") +
       ggplot2::theme(axis.text.x = ggplot2::element_text(size = 11))
 
@@ -258,7 +243,8 @@ render_plot <- function(spec, dataset, max_factor_levels = 20) {
       ggplot2::stat_qq(size = 1.5, alpha = 0.6) +
       ggplot2::stat_qq_line(linewidth = 0.8) +
       ggplot2::scale_colour_brewer(palette = palette, name = stratify) +
-      ggplot2::facet_wrap(~ .data[[stratify]], ncol = qq_ncol, scales = "fixed") +
+      ggplot2::facet_wrap(as.formula(paste("~", stratify)), ncol = qq_ncol,
+                          scales = "fixed", labeller = ggplot2::label_both) +
       ggplot2::coord_cartesian(ylim = z_range + c(-z_pad, z_pad)) +
       ggplot2::labs(x = "Theoretical quantiles",
                     y = "Standardised sample quantiles") +
@@ -310,7 +296,8 @@ render_plot <- function(spec, dataset, max_factor_levels = 20) {
       ggplot2::geom_line(linewidth = 0.9) +
       ggplot2::geom_point(size = 2) +
       ggplot2::scale_colour_brewer(palette = palette, name = stratify) +
-      ggplot2::facet_wrap(~ .data[[stratify]])
+      ggplot2::facet_wrap(as.formula(paste("~", stratify)),
+                          labeller = ggplot2::label_both)
   } else {
     df_agg <- dplyr::count(df, .data$._time)
     p <- ggplot2::ggplot(df_agg, ggplot2::aes(x = .data$._time, y = .data$n)) +
@@ -318,7 +305,7 @@ render_plot <- function(spec, dataset, max_factor_levels = 20) {
       ggplot2::geom_point(colour = "#1f497d", size = 2)
   }
 
-  p + ggplot2::labs(x = resolution, y = "Count", title = paste("Events over time —", col_a))
+  p + ggplot2::labs(x = resolution, y = "Count")
 }
 
 
@@ -356,8 +343,9 @@ render_plot <- function(spec, dataset, max_factor_levels = 20) {
       ggplot2::geom_col(position = "dodge") +
       ggplot2::scale_fill_brewer(palette = palette, name = col_b) +
       ggplot2::labs(x = col_a, y = "Count") +
-      ggplot2::facet_wrap(~ .data[[stratify]], scales = "fixed",
-                          ncol = ceiling(sqrt(length(all_strata))))
+      ggplot2::facet_wrap(as.formula(paste("~", stratify)), scales = "fixed",
+                          ncol     = ceiling(sqrt(length(all_strata))),
+                          labeller = ggplot2::label_both)
   } else {
     df_counts <- dplyr::count(dataset, .data[[col_a]], .data[[col_b]])
 
@@ -423,7 +411,8 @@ render_plot <- function(spec, dataset, max_factor_levels = 20) {
   if (!is.null(stratify)) {
     n_strata  <- nlevels(factor(df[[stratify]]))
     ncol_wrap <- ceiling(sqrt(n_strata))
-    p <- p + ggplot2::facet_wrap(~ .data[[stratify]], scales = "fixed", ncol = ncol_wrap)
+    p <- p + ggplot2::facet_wrap(as.formula(paste("~", stratify)), scales = "fixed",
+                                  ncol = ncol_wrap, labeller = ggplot2::label_both)
   }
 
   p
@@ -475,14 +464,15 @@ render_plot <- function(spec, dataset, max_factor_levels = 20) {
     )) +
       ggplot2::geom_point(alpha = 0.6, size = 2) +
       ggplot2::geom_smooth(method = "loess", se = TRUE, linewidth = 0.8) +
-      ggplot2::scale_colour_brewer(palette = palette, name = stratify) +
+      ggplot2::scale_colour_brewer(palette = palette, name = stratify, guide = "none") +
       ggplot2::geom_text(
         data        = cor_df,
         ggplot2::aes(x = x_pos, y = y_pos, label = label),
         size        = 3, colour = "grey30",
         inherit.aes = FALSE
       ) +
-      ggplot2::facet_wrap(~ .data[[stratify]], scales = "fixed", ncol = ncol_wrap)
+      ggplot2::facet_wrap(as.formula(paste("~", stratify)), scales = "fixed",
+                          ncol = ncol_wrap, labeller = ggplot2::label_both)
   } else {
     label <- .cor_label(df[[col_a]], df[[col_b]])
     x_rng <- range(df[[col_a]], na.rm = TRUE)
@@ -527,7 +517,8 @@ render_plot <- function(spec, dataset, max_factor_levels = 20) {
       ggplot2::geom_line(linewidth = 0.9) +
       ggplot2::geom_point(size = 2) +
       ggplot2::scale_colour_brewer(palette = palette, name = stratify) +
-      ggplot2::facet_wrap(~ .data[[stratify]])
+      ggplot2::facet_wrap(as.formula(paste("~", stratify)),
+                          labeller = ggplot2::label_both)
   } else {
     df_agg <- dplyr::group_by(df, .data$._time) |>
       dplyr::summarise(._mean = mean(.data[[col_b]], na.rm = TRUE), .groups = "drop")
@@ -569,7 +560,8 @@ render_plot <- function(spec, dataset, max_factor_levels = 20) {
     ggplot2::labs(x = resolution, y = "Proportion")
 
   if (!is.null(stratify)) {
-    p <- p + ggplot2::facet_wrap(~ .data[[stratify]])
+    p <- p + ggplot2::facet_wrap(as.formula(paste("~", stratify)),
+                                  labeller = ggplot2::label_both)
   }
 
   p

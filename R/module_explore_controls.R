@@ -91,7 +91,7 @@ explore_controls_ui <- function(id) {
           ns("legend_position"),
           label    = "Legend position:",
           choices  = c("right", "left", "top", "bottom"),
-          selected = "right",
+          selected = "top",
           size     = "sm"
         )
       )

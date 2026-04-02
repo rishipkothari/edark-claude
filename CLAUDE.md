@@ -50,7 +50,7 @@ R/
 ├── module_data_preview.R       Prepare › Data Preview tab — original + working reactables
 │
 ├── module_explore_controls.R   Explore sidebar — variable pickers, Describe/Plot buttons
-├── module_explore_output.R     Explore main panel — plotly output + summary reactable
+├── module_explore_output.R     Explore main panel — plot output + summary reactable
 │
 ├── data.R                      Roxygen docs for built-in liver_tx dataset
 └── data/liver_tx.rda           120-row synthetic liver transplant dataset (default for edark())
@@ -105,11 +105,24 @@ Only factor columns (ordered and unordered, both classified as `"factor"` by `de
 
 All stratified bivariate plots use `facet_wrap(scales = "fixed", ncol = ceiling(sqrt(n_strata)))`. The one exception is `scatter_loess` which maps stratify to colour and still facets (coloured points + coloured loess curves per facet).
 
+### Plot title rendering
+Plot titles are **not** embedded in the ggplot/plotly object. They are rendered as a `uiOutput("plot_title")` element above the plot card in `module_explore_output.R`. This keeps them reliably clear of facet strips (ggplotly provides no reliable title-to-strip gap control). Format: `col_a [× col_b] [· stratified by stratify_col]`.
+
+### Facet labels
+All `facet_wrap()` calls use `labeller = ggplot2::label_both`, which formats strip labels as `"variable = value"`. **Critical:** the formula must be `as.formula(paste("~", stratify))`, not `~ .data[[stratify]]`. The tidy-eval `.data[[]]` syntax prevents `label_both` from extracting the column name, producing `<unknown>` labels.
+
+### Legend defaults and positioning
+Default legend position is `"top"`. ggplotly ignores `theme(legend.position)` — legend position is applied post-conversion via `plotly::layout(legend = .plotly_legend_config(position))` in `module_explore_output.R`. `.plotly_legend_config()` maps `"top"/"bottom"/"left"/"right"` to the appropriate plotly orientation/anchor settings.
+
+Plots where legend is always suppressed regardless of user toggle:
+- `violin_jitter` — axes + facet strips are sufficient
+- `scatter_loess` stratified — facet strips label each stratum
+
 ### violin_jitter specifics
 - `col_a` is always the factor (X); `col_b` is always the numeric (Y).
 - NA factor levels are made explicit via `addNA()` and relabelled `"NA"` so they appear on the X-axis rather than being silently dropped.
 - A median marker (`stat_summary`, shape 21, white fill, black border) is drawn on top of each violin.
-- Legend is always suppressed — X-axis labels and facet strips make it redundant. Because ggplotly ignores `guide = "none"` on ggplot2 scales (see sharp edges), suppression is done with `plotly::style(showlegend = FALSE)` in `module_explore_output.R`.
+- Legend always suppressed — X-axis labels and facet strips make it redundant.
 
 ### scatter_loess specifics
 - Non-stratified: single loess smoother with SE band, hardcoded blue palette.
@@ -134,7 +147,7 @@ Returns an `edark_two_panel` object (not a ggplot/patchwork) with `$left` and `$
 
 Both Q-Q panels standardise the sample first (`scale()`) so theoretical and sample quantile axes are both in z-score units. `coord_cartesian(ylim = ...)` is set from actual data range to prevent plotly from over-expanding the y-axis when `subplot()` reconciles axis domains.
 
-Titles: left panel gets `"col_a  ·  stratified by stratify"` (from `.apply_plot_aesthetics`); right panel gets `"Q-Q Plot  ·  col_a  ·  stratified by stratify"` (built in the dispatch block in `render_plot()`).
+The main title is rendered via `uiOutput("plot_title")` in `module_explore_output.R` (not embedded in the ggplot). `.apply_plot_aesthetics()` does **not** add a title.
 
 ### Factor bar ordering
 Bar charts preserve the natural factor level order. Do **not** reorder by frequency (`fct_infreq`).
@@ -244,8 +257,14 @@ y_pos <- y_rng[2] - 0.04 * diff(y_rng)  # near top
 annotate("text", x = x_pos, y = y_pos, label = label)
 ```
 
-### ⚠ Open bug: density legend not rendering in two-panel numeric + factor stratify
-The left density panel's legend (stratum colours) is still not appearing despite the `plotly::layout(legend = ...)` fix above. The `plotly::style(showlegend = FALSE)` call on `p_right` and horizontal legend on the combined subplot are in place — something in how `ggplotly()` handles the merged `scale_colour_brewer` + `scale_fill_brewer` guides may be suppressing the legend entries. Needs further investigation.
+### ⚠ Density legend in two-panel numeric + factor stratify — STILL UNRESOLVED
+The left density panel legend is not rendering despite multiple fix attempts. What has been tried:
+1. `plotly::layout(legend = ...)` on the combined subplot — no effect on whether entries appear
+2. Iterating `p_left$x$data` and forcing `showlegend = TRUE` per `legendgroup` — no visible effect
+
+Root cause is not confirmed. Likely candidates: `ggplotly()` sets `layout$showlegend = FALSE` (layout level overrides trace level), or `legendgroup` is not being set by ggplotly for density traces so the loop never fires, or the dual `scale_colour_brewer` + `scale_fill_brewer` mapping causes ggplotly to produce ambiguous trace metadata. Diagnosing requires inspecting the raw plotly object in a live R session.
+
+**This will be resolved by the ggplot-native transition (see TODOs).**
 
 ---
 
@@ -261,12 +280,23 @@ If a column is staged for cut-point transform but has no valid breakpoints, Appl
 ---
 
 ## What's not built yet
+
+### ⭐ Next: ggplot-native rendering branch
+Replace `plotly::ggplotly()` / `plotly::subplot()` with native ggplot2 rendering throughout `module_explore_output.R`. Use `renderPlot()` / `plotOutput()` instead of `renderPlotly()` / `plotlyOutput()`. Motivation: ggplotly has been a persistent source of bugs (legend suppression, theme ignored, hjust/vjust ignored, annotation clipping, dual-scale ambiguity) that are difficult or impossible to work around reliably. Native ggplot2 honours all of: `theme(legend.position)`, `guide = "none"`, `annotate()` positioning, plot titles, facet strip spacing. The `edark_two_panel` class and `.plotly_legend_config()` helper can be removed. The plotly-specific sharp edges documented above become irrelevant.
+
+Work to do in this branch:
+- `module_explore_output.R`: swap `plotlyOutput` → `plotOutput`, `renderPlotly` → `renderPlot`, remove all `plotly::ggplotly()` / `plotly::subplot()` / `plotly::style()` / `plotly::layout()` calls, remove `.plotly_legend_config()`
+- `render_plot.R`: the `edark_two_panel` class was introduced only because ggplotly drops patchwork's second panel. With native rendering, the two-panel histogram can use `patchwork` directly — remove the `edark_two_panel` structure and return a patchwork instead
+- Restore plot titles into `.apply_plot_aesthetics()` and remove the `uiOutput("plot_title")` shim (or keep it — a Shiny title element above the card is actually cleaner regardless)
+- Remove `plotly` from `DESCRIPTION` imports if no longer needed
+- The density legend bug resolves automatically
+
+### Other todos
+- **TODO**: Filter datetime/POSIXct columns out of the primary and secondary variable pickers in `module_explore_controls.R` — datetime variables should not be available for correlation/describe; they belong in the trend feature below
+- **TODO**: Time-trend functionality — separate UI section (not part of Correlate With); user wants ability to trend numeric variables (mean over time) and factor variables (proportion/count over time) by Day / Month / Quarter / Year, with optional stratification shown as separate colored lines (run chart style). Visualisation: line chart with points. This is distinct from the existing `trend_count` / `trend_mean` / `trend_proportion` plot types which are bivariate correlations — the trend feature is a standalone workflow.
+- **TODO**: `show_data_labels` aesthetic not yet wired for bivariate plot types (`violin_jitter`, `scatter_loess`, `bar_grouped`) — currently only `bar_count` respects it. For violin_jitter the label should show the median value per group.
 - `edark_report()` programmatic API (PRD §2.5, §2.3 PR-01–PR-04)
 - Report module UI/server — `3 · Report` tab is a placeholder
 - Dataset export button (PRD §2.7, DE-01)
 - `shinytest2` module tests
 - `testthat` unit tests for utility functions
-- **Bug**: legend on left density panel (two-panel numeric + factor stratify) not rendering in plotly — see sharp edge above
-- **TODO**: Filter datetime/POSIXct columns out of the primary and secondary variable pickers in `module_explore_controls.R` — datetime variables should not be available for correlation/describe; they belong in the trend feature below
-- **TODO**: Time-trend functionality — separate UI section (not part of Correlate With); user wants ability to trend numeric variables (mean over time) and factor variables (proportion/count over time) by Day / Month / Quarter / Year, with optional stratification shown as separate colored lines (run chart style). Visualisation: line chart with points. This is distinct from the existing `trend_count` / `trend_mean` / `trend_proportion` plot types which are bivariate correlations — the trend feature is a standalone workflow.
-- **TODO**: `show_data_labels` aesthetic not yet wired for any bivariate plot types (`violin_jitter`, `scatter_loess`, `bar_grouped`) — currently only `bar_count` respects it.
