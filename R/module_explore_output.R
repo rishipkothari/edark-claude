@@ -71,23 +71,22 @@ explore_output_server <- function(id, shared_state) {
     current_plot <- shiny::reactive({
       spec    <- shared_state$plot_specification
       dataset <- shared_state$dataset_working
-
-      # Aesthetic dependencies (cheap — spec already built, no data re-query)
-      shared_state$color_palette
-      shared_state$show_data_labels
-      shared_state$show_legend
-      shared_state$legend_position
-
       shiny::req(!is.null(spec), !is.null(dataset))
 
-      # Rebuild the spec with the current aesthetic values so they're reflected
-      # (The spec is re-read here, not mutated — shared_state$plot_specification
-      # is only updated by the Controls module on button clicks.)
+      # Read aesthetic values directly — creates reactive dependencies so that
+      # palette/legend changes re-render without requiring a button re-click.
+      # Do NOT use isolate() here: it can return a stale value when this reactive
+      # re-runs due to an aesthetic change.
+      color_palette    <- shared_state$color_palette
+      show_data_labels <- shared_state$show_data_labels
+      show_legend      <- shared_state$show_legend
+      legend_position  <- shared_state$legend_position
+
       spec_with_aesthetics <- modifyList(spec, list(
-        color_palette    = shiny::isolate(shared_state$color_palette),
-        show_data_labels = shiny::isolate(shared_state$show_data_labels),
-        show_legend      = shiny::isolate(shared_state$show_legend),
-        legend_position  = shiny::isolate(shared_state$legend_position)
+        color_palette    = color_palette,
+        show_data_labels = show_data_labels,
+        show_legend      = show_legend,
+        legend_position  = legend_position
       ))
 
       gg <- render_plot(spec_with_aesthetics, dataset)
@@ -104,10 +103,45 @@ explore_output_server <- function(id, shared_state) {
     output$main_plot <- plotly::renderPlotly({
       gg <- current_plot()
       shiny::req(!is.null(gg))
-      plotly::ggplotly(gg) |>
-        plotly::layout(
-          margin = list(l = 60, r = 20, t = 40, b = 60)
-        )
+
+      margins <- list(l = 60, r = 20, t = 40, b = 60)
+
+      if (inherits(gg, "edark_two_panel")) {
+        # ggplotly() silently drops patchwork's second panel — convert each
+        # panel separately and combine with subplot().
+        #
+        # Legend notes:
+        #   - ggplotly() ignores ggplot2's theme(legend.position) — must use
+        #     plotly::layout() on the final combined object instead.
+        #   - QQ panel traces are hidden from the legend with plotly::style()
+        #     so only the density/histogram stratum colours appear.
+        p_left  <- plotly::ggplotly(gg$left)
+        p_right <- plotly::style(plotly::ggplotly(gg$right), showlegend = FALSE)
+
+        plotly::subplot(p_left, p_right,
+                        nrows  = 1,
+                        shareX = FALSE, shareY = FALSE,
+                        titleX = TRUE,  titleY = TRUE,
+                        widths = c(0.45, 0.55)) |>
+          plotly::layout(
+            legend = list(orientation = "h",
+                          x          = 0.5,
+                          xanchor    = "center",
+                          y          = 1.05,
+                          yanchor    = "bottom"),
+            margin = margins
+          )
+      } else {
+        pl <- plotly::ggplotly(gg)
+        # violin_jitter: ggplotly re-generates legend traces even with guide="none"
+        # in ggplot2 (known ggplotly limitation). Suppress here — X-axis labels
+        # and facet strips make the legend redundant.
+        spec_now <- shiny::isolate(shared_state$plot_specification)
+        if (!is.null(spec_now) && identical(spec_now$plot_type, "violin_jitter")) {
+          pl <- plotly::style(pl, showlegend = FALSE)
+        }
+        pl |> plotly::layout(margin = margins)
+      }
     })
 
 

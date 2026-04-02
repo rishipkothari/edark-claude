@@ -86,6 +86,13 @@ build_bivariate_plot_spec <- function(shared_state) {
     column_b_type <- types[[primary]]
   }
 
+  # violin_jitter requires factor on X (column_a) and numeric on Y (column_b).
+  # If role-based assignment put it the other way, swap before routing.
+  if (column_a_type == "numeric" && column_b_type == "factor") {
+    tmp           <- column_a;      column_a      <- column_b;      column_b      <- tmp
+    tmp           <- column_a_type; column_a_type <- column_b_type; column_b_type <- tmp
+  }
+
   plot_type <- route_plot_type(column_a_type, column_b_type)
 
   list(

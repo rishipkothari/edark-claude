@@ -50,7 +50,10 @@ R/
 ├── module_data_preview.R       Prepare › Data Preview tab — original + working reactables
 │
 ├── module_explore_controls.R   Explore sidebar — variable pickers, Describe/Plot buttons
-└── module_explore_output.R     Explore main panel — plotly output + summary reactable
+├── module_explore_output.R     Explore main panel — plotly output + summary reactable
+│
+├── data.R                      Roxygen docs for built-in liver_tx dataset
+└── data/liver_tx.rda           120-row synthetic liver transplant dataset (default for edark())
 ```
 
 ---
@@ -78,6 +81,31 @@ R/
 3. Select included columns
 4. Apply column transforms (numeric → ordered factor)
 5. Apply row filters
+
+---
+
+## Explore stage — current behaviour
+
+### Stratify picker
+Only factor columns (ordered and unordered, both classified as `"factor"` by `detect_column_types()`) appear in the stratify picker. Numeric, datetime, and character columns are excluded. The current primary variable is also excluded.
+
+### Plot strategy — facet vs group
+All stratified plots use `facet_wrap(scales = "fixed")` so absolute values are comparable across panels. The one exception is **numeric primary + factor stratify**, which uses overlapping density curves (easier to see distribution overlap) rather than facets.
+
+### Describing a numeric variable (histogram_density)
+Returns an `edark_two_panel` object (not a ggplot/patchwork) with `$left` and `$right` slots:
+
+| | No stratify | Stratified by factor |
+|---|---|---|
+| **Left panel** | Histogram + density overlay | Overlapping `geom_density` curves (one colour per stratum) |
+| **Right panel** | Pooled Q-Q plot | Q-Q faceted by stratum (`ncol = ceiling(sqrt(n_strata))`) |
+
+Both Q-Q panels standardise the sample first (`scale()`) so theoretical and sample quantile axes are both in z-score units. `coord_cartesian(ylim = ...)` is set from actual data range to prevent plotly from over-expanding the y-axis when `subplot()` reconciles axis domains.
+
+Titles: left panel gets `"col_a  ·  stratified by stratify"` (from `.apply_plot_aesthetics`); right panel gets `"Q-Q Plot  ·  col_a  ·  stratified by stratify"` (built in the dispatch block in `render_plot()`).
+
+### Factor bar ordering
+Bar charts preserve the natural factor level order. Do **not** reorder by frequency (`fct_infreq`).
 
 ---
 
@@ -131,6 +159,21 @@ Using `class = "table-warning"` on a `<tr>` applies Bootstrap's full yellow back
 ### `shiny::NULL` is not valid R
 `NULL` is a base R keyword, not a member of the `shiny` namespace. Writing `shiny::NULL` is a parse error. Just write `NULL`.
 
+### patchwork + ggplotly silently drops the second panel
+`plotly::ggplotly()` does not understand patchwork's multi-panel layout — it silently renders only the first panel. Never return a patchwork from `render_plot()` if the output is going through `ggplotly()`.
+
+**Fix**: return `structure(list(left = p1, right = p2), class = "edark_two_panel")` instead. In `module_explore_output.R`, detect this class and use `plotly::subplot()` to combine two separately-converted plotly objects.
+
+### ggplotly ignores theme(legend.position)
+`plotly::ggplotly()` does not honour ggplot2's `theme(legend.position = ...)`. The legend always appears in its default plotly position regardless.
+
+**Fix**: call `plotly::layout(legend = list(orientation = "h", x = 0.5, xanchor = "center", y = 1.05, yanchor = "bottom"))` on the **final** plotly object (after `subplot()` if applicable).
+
+To suppress a panel's traces from the shared legend (e.g. Q-Q panel in the two-panel numeric plot), use `plotly::style(p, showlegend = FALSE)` on that plotly object **before** passing it to `subplot()`.
+
+### ⚠ Open bug: density legend not rendering in two-panel numeric + factor stratify
+The left density panel's legend (stratum colours) is still not appearing despite the `plotly::layout(legend = ...)` fix above. The `plotly::style(showlegend = FALSE)` call on `p_right` and horizontal legend on the combined subplot are in place — something in how `ggplotly()` handles the merged `scale_colour_brewer` + `scale_fill_brewer` guides may be suppressing the legend entries. Needs further investigation.
+
 ---
 
 ## Transform logic summary
@@ -150,3 +193,6 @@ If a column is staged for cut-point transform but has no valid breakpoints, Appl
 - Dataset export button (PRD §2.7, DE-01)
 - `shinytest2` module tests
 - `testthat` unit tests for utility functions
+- **Bug**: legend on left density panel (two-panel numeric + factor stratify) not rendering in plotly — see sharp edge above
+- **TODO**: Filter datetime/POSIXct columns out of the primary and secondary variable pickers in `module_explore_controls.R` — datetime variables should not be available for correlation/describe; they belong in the trend feature below
+- **TODO**: Time-trend functionality — separate UI section (not part of Correlate With); user wants ability to trend numeric variables (mean over time) and factor variables (proportion/count over time) by Day / Month / Quarter / Year, with optional stratification shown as separate colored lines (run chart style). Visualisation: line chart with points. This is distinct from the existing `trend_count` / `trend_mean` / `trend_proportion` plot types which are bivariate correlations — the trend feature is a standalone workflow.

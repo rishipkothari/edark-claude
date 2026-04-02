@@ -4,7 +4,9 @@
 #' auto-casts column types, initialises the session-scoped shared state, and
 #' launches the Shiny application.
 #'
-#' @param dataset A `data.frame` or `tibble`. Required. The dataset to explore.
+#' @param dataset A `data.frame` or `tibble`. Defaults to the built-in
+#'   `liver_tx` synthetic liver transplant dataset so that `edark()` with no
+#'   arguments launches immediately for testing and demonstration.
 #' @param max_factor_levels Integer. Character columns with no more than this
 #'   many unique non-NA values are auto-converted to `factor` at launch.
 #'   Also used as the high-cardinality guard threshold in the Explore stage.
@@ -15,10 +17,11 @@
 #' @export
 #' @examples
 #' \dontrun{
+#' edark()                  # launches with built-in liver_tx demo data
 #' edark(mtcars)
 #' edark(palmerpenguins::penguins, max_factor_levels = 10)
 #' }
-edark <- function(dataset, max_factor_levels = 20) {
+edark <- function(dataset = liver_tx, max_factor_levels = 20) {
 
   # ── Validate ───────────────────────────────────────────────────────────────
   validate_input(dataset, max_factor_levels)

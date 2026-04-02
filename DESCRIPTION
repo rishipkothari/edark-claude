@@ -44,4 +44,5 @@ Suggests:
     knitr,
     testthat (>= 3.0.0),
     shinytest2
+LazyData: true
 Config/testthat/edition: 3

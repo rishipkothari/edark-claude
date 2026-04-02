@@ -33,8 +33,9 @@ route_plot_type <- function(column_a_type, column_b_type = NULL) {
   key <- paste0(column_a_type, "|", column_b_type)
   switch(key,
     "factor|factor"   = "bar_grouped",
-    "factor|numeric"  = "violin_box",
-    "numeric|numeric" = "scatter_lm",
+    "factor|numeric"  = "violin_jitter",
+    "numeric|factor"  = "violin_jitter",
+    "numeric|numeric" = "scatter_loess",
     "datetime|numeric" = "trend_mean",
     "datetime|factor"  = "trend_proportion",
     NULL   # unsupported combination

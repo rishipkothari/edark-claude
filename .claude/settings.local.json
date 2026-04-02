@@ -4,7 +4,20 @@
       "Bash(Rscript --version)",
       "Bash(mkdir -p c:/Users/rishi/Documents/coding/R/edark-claude/R)",
       "Bash(mkdir -p c:/Users/rishi/Documents/coding/R/edark-claude/tests/testthat)",
-      "Bash(mkdir -p c:/Users/rishi/Documents/coding/R/edark-claude/man)"
+      "Bash(mkdir -p c:/Users/rishi/Documents/coding/R/edark-claude/man)",
+      "Bash(mkdir -p data)",
+      "Bash(Rscript -e \"source\\(''liver_tx_sample.R''\\); save\\(liver_tx, file=''data/liver_tx.rda'', compress=''bzip2''\\); cat\\(''Saved: '', nrow\\(liver_tx\\), ''rows\\\\n''\\)\")",
+      "Read(//c/Program Files/R//**)",
+      "Read(//c/Program Files/R/**)",
+      "Bash(\"/c/Program Files/R/R-4.3.3/bin/Rscript.exe\" -e \"source\\(''liver_tx_sample.R''\\); save\\(liver_tx, file=''data/liver_tx.rda'', compress=''bzip2''\\); cat\\(''Saved:'', nrow\\(liver_tx\\), ''rows,'', ncol\\(liver_tx\\), ''cols\\\\n''\\)\")",
+      "Bash(\"/c/Program Files/R/R-4.3.3/bin/Rscript.exe\" -e \"devtools::document\\(\\)\")",
+      "Bash(\"/c/Program Files/R/R-4.3.3/bin/Rscript.exe\" -e \"devtools::load_all\\(\\); cat\\(''''load_all OK\\\\n''''\\); cat\\(''''liver_tx rows:'''', nrow\\(liver_tx\\), ''''\\\\n''''\\); cat\\(''''edark default arg:'''', deparse\\(formals\\(edark\\)$dataset\\), ''''\\\\n''''\\)\")",
+      "Bash(\"/c/Program Files/R/R-4.3.3/bin/Rscript.exe\" -e \":*)",
+      "Bash(\"/c/Program Files/R/R-4.3.3/bin/Rscript.exe\" --vanilla -e \"suppressMessages\\(devtools::load_all\\(\\)\\); p <- render_plot\\(list\\(plot_type=''histogram_density'',column_a=''preop_meld'',column_b=NULL,stratify_by=NULL,color_palette=''Set2'',show_data_labels=FALSE,show_legend=TRUE,legend_position=''right'',trend_resolution=''Month''\\), cast_column_types\\(liver_tx\\)\\); print\\(class\\(p\\)\\); print\\(names\\(p\\)\\)\")",
+      "Bash(\"/c/Program Files/R/R-4.3.3/bin/Rscript.exe\" --vanilla -e \"suppressMessages\\(devtools::load_all\\(\\)\\); df <- cast_column_types\\(liver_tx\\); p2 <- render_plot\\(list\\(plot_type=''histogram_density'',column_a=''preop_meld'',column_b=NULL,stratify_by=''liver_donor_type'',color_palette=''Set2'',show_data_labels=FALSE,show_legend=TRUE,legend_position=''right'',trend_resolution=''Month''\\), df\\); print\\(class\\(p2\\)\\); print\\(class\\(p2$left\\)[1]\\); print\\(class\\(p2$right\\)[1]\\)\")",
+      "Bash(\"/c/Program Files/R/R-4.3.3/bin/Rscript.exe\" --vanilla -e \":*)",
+      "Bash(\"/c/Program Files/R/R-4.3.3/bin/Rscript.exe\" --vanilla -e \"cat\\(sum\\(grepl\\(''edark_two_panel'', readLines\\(''c:/Users/rxk324/Documents/TJUH PHI/R projects/edark-claude/R/render_plot.R''\\)\\)\\), ''occurrences in render_plot.R\\\\n''\\); cat\\(sum\\(grepl\\(''subplot'', readLines\\(''c:/Users/rxk324/Documents/TJUH PHI/R projects/edark-claude/R/module_explore_output.R''\\)\\)\\), ''occurrences of subplot in output module\\\\n''\\)\")",
+      "Bash(\"/c/Program Files/R/R-4.3.3/bin/Rscript.exe\" --vanilla -e \"parse\\(file=''c:/Users/rxk324/Documents/TJUH PHI/R projects/edark-claude/R/render_plot.R''\\); cat\\(''parse OK\\\\n''\\)\")"
     ]
   }
 }

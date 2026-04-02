@@ -121,7 +121,11 @@ explore_controls_server <- function(id, shared_state) {
     })
 
     output$stratify_picker <- shiny::renderUI({
-      cols_with_none <- c("None" = "", all_cols())
+      types       <- shared_state$column_types
+      factor_cols <- names(types)[types == "factor"]
+      primary     <- input$primary_variable
+      factor_cols <- setdiff(factor_cols, primary)
+      cols_with_none <- c("None" = "", factor_cols)
       shinyWidgets::pickerInput(
         ns("stratify_variable"),
         label   = "Stratification variable (optional):",
