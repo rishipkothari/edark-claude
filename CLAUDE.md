@@ -89,8 +89,40 @@ R/
 ### Stratify picker
 Only factor columns (ordered and unordered, both classified as `"factor"` by `detect_column_types()`) appear in the stratify picker. Numeric, datetime, and character columns are excluded. The current primary variable is also excluded.
 
+### Bivariate correlation plot types
+`build_bivariate_plot_spec()` assigns axes based on the primary variable's role (exposure → primary is X / column_a; outcome → primary is Y / column_b), then calls `route_plot_type()` with the resulting `column_a_type|column_b_type` key.
+
+**Special case — mixed numeric/factor:** `build_bivariate_plot_spec()` normalises the axis assignment after the role-based swap so that the factor is always `column_a` (X) and the numeric is always `column_b` (Y), regardless of role. This is required because `.plot_violin_jitter()` always reads col_a as X.
+
+| column_a type | column_b type | plot type |
+|---|---|---|
+| factor | factor | `bar_grouped` |
+| factor | numeric | `violin_jitter` |
+| numeric | factor | `violin_jitter` (axis normalised — see above) |
+| numeric | numeric | `scatter_loess` |
+| datetime | numeric | `trend_mean` |
+| datetime | factor | `trend_proportion` |
+
+All stratified bivariate plots use `facet_wrap(scales = "fixed", ncol = ceiling(sqrt(n_strata)))`. The one exception is `scatter_loess` which maps stratify to colour and still facets (coloured points + coloured loess curves per facet).
+
+### violin_jitter specifics
+- `col_a` is always the factor (X); `col_b` is always the numeric (Y).
+- NA factor levels are made explicit via `addNA()` and relabelled `"NA"` so they appear on the X-axis rather than being silently dropped.
+- A median marker (`stat_summary`, shape 21, white fill, black border) is drawn on top of each violin.
+- Legend is always suppressed — X-axis labels and facet strips make it redundant. Because ggplotly ignores `guide = "none"` on ggplot2 scales (see sharp edges), suppression is done with `plotly::style(showlegend = FALSE)` in `module_explore_output.R`.
+
+### scatter_loess specifics
+- Non-stratified: single loess smoother with SE band, hardcoded blue palette.
+- Stratified: colour aesthetic mapped to stratify, coloured loess + SE per group, faceted.
+- Correlation stats (R², r, p) are computed via `cor.test()` and formatted as a plain string. `ggpubr::stat_cor` is intentionally **not** used — it outputs plotmath expressions that ggplotly renders as raw text (e.g. `italic(R)~'='~...`).
+- Annotation is anchored at `(50% of X range, near top of Y range)` with no hjust/vjust — ggplotly centers text on the anchor coordinates and ignores ggplot2's justification hints, so the anchor IS the text center (see sharp edges).
+
+### bar_grouped specifics
+- Pre-computes a complete `col_a × col_b` grid with zeros for missing combinations. Without this, absent combinations cause remaining bars in a group to expand to double width.
+- Strat uses `facet_wrap(scales = "fixed", ncol = ceiling(sqrt(n_strata)))`.
+
 ### Plot strategy — facet vs group
-All stratified plots use `facet_wrap(scales = "fixed")` so absolute values are comparable across panels. The one exception is **numeric primary + factor stratify**, which uses overlapping density curves (easier to see distribution overlap) rather than facets.
+All stratified plots use `facet_wrap(scales = "fixed")` so absolute values are comparable across panels. The one exception is **numeric primary + factor stratify** (Describe), which uses overlapping density curves rather than facets.
 
 ### Describing a numeric variable (histogram_density)
 Returns an `edark_two_panel` object (not a ggplot/patchwork) with `$left` and `$right` slots:
@@ -171,6 +203,47 @@ Using `class = "table-warning"` on a `<tr>` applies Bootstrap's full yellow back
 
 To suppress a panel's traces from the shared legend (e.g. Q-Q panel in the two-panel numeric plot), use `plotly::style(p, showlegend = FALSE)` on that plotly object **before** passing it to `subplot()`.
 
+### `shiny::isolate()` inside a reactive returns stale aesthetic values
+When a `reactive()` reads a value to create a dependency (e.g. `shared_state$color_palette` on its own line), then re-reads the same value later with `shiny::isolate()`, the `isolate()` call can return the pre-change value. This caused palette changes to visually trigger a re-render (waiter appeared) but the plot colours didn't update.
+
+**Rule:** read aesthetic values from `shared_state` directly once, storing them in local variables. That one read both creates the dependency and captures the current value.
+
+```r
+# WRONG — isolate() may return stale value even though dependency fired
+shared_state$color_palette   # dependency line
+...
+color_palette <- shiny::isolate(shared_state$color_palette)  # stale!
+
+# RIGHT — one read, one dependency, always current
+color_palette <- shared_state$color_palette
+```
+
+### `switch(NULL, ...)` crashes with "EXPR must be a length 1 vector"
+When `route_plot_type()` returns `NULL` for an unsupported type combination, passing that `NULL` directly to `switch()` throws this error. Always NULL-guard `spec$plot_type` before dispatching.
+
+```r
+if (is.null(spec$plot_type)) {
+  return(.plot_warning_card("Unsupported variable type combination ..."))
+}
+plot_fn <- switch(spec$plot_type, ...)
+```
+
+### ggplotly ignores `guide = "none"` on ggplot2 scales
+Setting `guide = "none"` or `guide = "legend"` on `scale_fill_brewer()` / `scale_colour_brewer()` has no effect after `ggplotly()` conversion — plotly regenerates its own legend from the trace data. To suppress a legend in plotly use `plotly::style(pl, showlegend = FALSE)` on the final plotly object. This is separate from the `theme(legend.position)` issue below.
+
+### ggplotly clips annotations placed at `Inf` and ignores hjust/vjust
+`annotate("text", x = Inf, y = Inf, hjust = 1.05, ...)` works in ggplot2 (annotations can overflow the panel) but ggplotly clips at the panel boundary, making the text invisible.
+
+Additionally, ggplotly centers text at the anchor coordinates and ignores ggplot2's `hjust`/`vjust` justification hints entirely. The anchor point IS the text center.
+
+**Rule:** position annotation anchors at computed data coordinates where you want the text center to land, with no hjust/vjust override:
+
+```r
+x_pos <- x_rng[1] + 0.5 * diff(x_rng)   # horizontal center
+y_pos <- y_rng[2] - 0.04 * diff(y_rng)  # near top
+annotate("text", x = x_pos, y = y_pos, label = label)
+```
+
 ### ⚠ Open bug: density legend not rendering in two-panel numeric + factor stratify
 The left density panel's legend (stratum colours) is still not appearing despite the `plotly::layout(legend = ...)` fix above. The `plotly::style(showlegend = FALSE)` call on `p_right` and horizontal legend on the combined subplot are in place — something in how `ggplotly()` handles the merged `scale_colour_brewer` + `scale_fill_brewer` guides may be suppressing the legend entries. Needs further investigation.
 
@@ -196,3 +269,4 @@ If a column is staged for cut-point transform but has no valid breakpoints, Appl
 - **Bug**: legend on left density panel (two-panel numeric + factor stratify) not rendering in plotly — see sharp edge above
 - **TODO**: Filter datetime/POSIXct columns out of the primary and secondary variable pickers in `module_explore_controls.R` — datetime variables should not be available for correlation/describe; they belong in the trend feature below
 - **TODO**: Time-trend functionality — separate UI section (not part of Correlate With); user wants ability to trend numeric variables (mean over time) and factor variables (proportion/count over time) by Day / Month / Quarter / Year, with optional stratification shown as separate colored lines (run chart style). Visualisation: line chart with points. This is distinct from the existing `trend_count` / `trend_mean` / `trend_proportion` plot types which are bivariate correlations — the trend feature is a standalone workflow.
+- **TODO**: `show_data_labels` aesthetic not yet wired for any bivariate plot types (`violin_jitter`, `scatter_loess`, `bar_grouped`) — currently only `bar_count` respects it.
