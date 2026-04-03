@@ -141,6 +141,43 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       legend_position         = "right"
     )
 
+    # ── Prepare tab navigation guard ──────────────────────────────────────────
+    # Auto-applies pending changes when the user switches prepare sub-tabs.
+    # Invalid cut-point transforms still block (pipeline would mangle the column).
+    last_prepare_tab <- shiny::reactiveVal("columns")
+    shiny::observeEvent(input$prepare_tabs, {
+      if (isTRUE(shared_state$has_pending_changes)) {
+        invalid <- .find_invalid_transforms(shared_state)
+        if (length(invalid) > 0) {
+          bslib::nav_select("prepare_tabs", last_prepare_tab())
+          shiny::showNotification(
+            paste0("Fix cut-point transforms before switching tabs: ",
+                   paste(invalid, collapse = ", ")),
+            type = "error", duration = 6
+          )
+          return()
+        }
+        df <- tryCatch(
+          apply_prepare_pipeline(shared_state),
+          error = function(e) {
+            bslib::nav_select("prepare_tabs", last_prepare_tab())
+            shiny::showNotification(
+              paste("Error during apply:", conditionMessage(e)),
+              type = "error", duration = 8
+            )
+            NULL
+          }
+        )
+        if (is.null(df)) return()
+        shared_state$dataset_working       <- df
+        shared_state$column_types          <- detect_column_types(df)
+        shared_state$has_pending_changes   <- FALSE
+        shared_state$explore_needs_refresh <- TRUE
+        shiny::showNotification("Changes applied.", type = "message", duration = 2)
+      }
+      last_prepare_tab(input$prepare_tabs)
+    }, ignoreInit = TRUE)
+
     # Wire all modules — each is a sibling, none calls another's server.
     column_manager_server("column_manager",         shared_state)
     transform_variables_server("transform_variables", shared_state)

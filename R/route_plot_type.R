@@ -19,25 +19,22 @@
 #'
 #' @keywords internal
 route_plot_type <- function(column_a_type, column_b_type = NULL) {
-  # Univariate
+  # Univariate — datetime excluded (reserved for future Time-Trend feature)
   if (is.null(column_b_type)) {
     return(switch(column_a_type,
-      factor   = "bar_count",
-      numeric  = "histogram_density",
-      datetime = "trend_count",
-      NULL
+      factor  = "bar_count",
+      numeric = "histogram_density",
+      NULL    # datetime, character, or unknown → unsupported
     ))
   }
 
-  # Bivariate — encode as "a_type|b_type" for a clean lookup
+  # Bivariate — datetime excluded (reserved for future Time-Trend feature)
   key <- paste0(column_a_type, "|", column_b_type)
   switch(key,
     "factor|factor"   = "bar_grouped",
     "factor|numeric"  = "violin_jitter",
     "numeric|factor"  = "violin_jitter",
     "numeric|numeric" = "scatter_loess",
-    "datetime|numeric" = "trend_mean",
-    "datetime|factor"  = "trend_proportion",
-    NULL   # unsupported combination
+    NULL   # unsupported combination (includes any datetime pairing)
   )
 }

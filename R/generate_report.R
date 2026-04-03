@@ -4,21 +4,449 @@
 
 
 # ---------------------------------------------------------------------------
+# Shared utilities
+# ---------------------------------------------------------------------------
+
+# Generate a safe HTML anchor ID from arbitrary text.
+# Used by both section builders and the HTML assembler so anchors are consistent.
+.make_html_anchor <- function(x) {
+  x <- tolower(x)
+  x <- gsub("[^a-z0-9_-]", "-", x)
+  x <- gsub("-+", "-", x)
+  x <- gsub("^-+|-+$", "", x)
+  paste0("sec-", x)
+}
+
+
+# ---------------------------------------------------------------------------
+# Dataset-level summary
+# ---------------------------------------------------------------------------
+
+#' Build a wide EDA summary table across all numeric and factor columns
+#'
+#' Returns a data.frame with one row per analyzed column. Numeric stats are
+#' NA-filled for factor columns; Top_values is NA-filled for numeric columns.
+#' Datetime and character columns are excluded.
+#'
+#' @param dataset A data.frame.
+#' @param column_types Named character vector from detect_column_types().
+#' @return A data.frame suitable for flextable().
+#' @noRd
+.build_dataset_summary <- function(dataset, column_types) {
+  analyzed_cols <- names(column_types)[column_types %in% c("numeric", "factor")]
+  analyzed_cols <- analyzed_cols[analyzed_cols %in% names(dataset)]
+
+  rows <- lapply(analyzed_cols, function(col) {
+    x        <- dataset[[col]]
+    col_type <- column_types[[col]]
+    n_total  <- length(x)
+    n_miss   <- sum(is.na(x))
+    pct_miss <- sprintf("%.1f%%", 100 * n_miss / n_total)
+    n_unique <- length(unique(x[!is.na(x)]))
+
+    if (col_type == "numeric") {
+      vals <- x[!is.na(x)]
+      data.frame(
+        Variable   = col,
+        Type       = "numeric",
+        N          = n_total,
+        N_missing  = n_miss,
+        Pct_miss   = pct_miss,
+        N_unique   = n_unique,
+        Min        = if (length(vals)) round(min(vals), 2)    else NA_real_,
+        Max        = if (length(vals)) round(max(vals), 2)    else NA_real_,
+        Mean       = if (length(vals)) round(mean(vals), 2)   else NA_real_,
+        SD         = if (length(vals)) round(sd(vals), 2)     else NA_real_,
+        Median     = if (length(vals)) round(median(vals), 2) else NA_real_,
+        IQR        = if (length(vals)) round(IQR(vals), 2)    else NA_real_,
+        Skewness   = tryCatch(round(e1071::skewness(vals), 2), error = function(e) NA_real_),
+        Kurtosis   = tryCatch(round(e1071::kurtosis(vals), 2), error = function(e) NA_real_),
+        Top_values = NA_character_,
+        stringsAsFactors = FALSE
+      )
+    } else {
+      vals <- x[!is.na(x)]
+      tbl  <- sort(table(as.character(vals)), decreasing = TRUE)
+      top5 <- if (length(tbl) == 0) NA_character_ else
+        paste(head(names(tbl), 5), collapse = " | ")
+      data.frame(
+        Variable   = col,
+        Type       = "factor",
+        N          = n_total,
+        N_missing  = n_miss,
+        Pct_miss   = pct_miss,
+        N_unique   = n_unique,
+        Min        = NA_real_,
+        Max        = NA_real_,
+        Mean       = NA_real_,
+        SD         = NA_real_,
+        Median     = NA_real_,
+        IQR        = NA_real_,
+        Skewness   = NA_real_,
+        Kurtosis   = NA_real_,
+        Top_values = top5,
+        stringsAsFactors = FALSE
+      )
+    }
+  })
+
+  do.call(rbind, rows)
+}
+
+
+#' Style the dataset summary data.frame as a flextable
+#' @noRd
+.style_dataset_summary_ft <- function(df) {
+  # Replace NA numerics with em-dash for display
+  num_cols <- c("Min", "Max", "Mean", "SD", "Median", "IQR", "Skewness", "Kurtosis")
+  df_disp  <- df
+  for (col in num_cols) {
+    df_disp[[col]] <- ifelse(is.na(df_disp[[col]]), "\u2014", as.character(df_disp[[col]]))
+  }
+  df_disp$Top_values <- ifelse(is.na(df_disp$Top_values), "\u2014", df_disp$Top_values)
+
+  right_cols <- c("N", "N_missing", "Pct_miss", "N_unique",
+                  "Min", "Max", "Mean", "SD", "Median", "IQR", "Skewness", "Kurtosis")
+
+  ft <- flextable::flextable(df_disp)
+  ft <- flextable::set_header_labels(ft,
+    Variable   = "Variable",
+    Type       = "Type",
+    N          = "N",
+    N_missing  = "N Missing",
+    Pct_miss   = "% Missing",
+    N_unique   = "Unique",
+    Min        = "Min",
+    Max        = "Max",
+    Mean       = "Mean",
+    SD         = "SD",
+    Median     = "Median",
+    IQR        = "IQR",
+    Skewness   = "Skewness",
+    Kurtosis   = "Kurtosis",
+    Top_values = "Top Values (categorical)"
+  )
+  ft <- flextable::font(ft, fontname = "Arial", part = "all")
+  ft <- flextable::fontsize(ft, size = 7, part = "body")
+  ft <- flextable::fontsize(ft, size = 8, part = "header")
+  ft <- flextable::bold(ft, part = "header")
+  ft <- flextable::bg(ft,
+    i   = seq(1, nrow(df_disp), by = 2),
+    bg  = "#F7F7F7",
+    part = "body"
+  )
+  ft <- flextable::align(ft, part = "header", align = "center")
+  ft <- flextable::align(ft, j = c("Variable", "Type", "Top_values"),
+                         align = "left",  part = "body")
+  ft <- flextable::align(ft, j = right_cols, align = "right", part = "body")
+  ft <- flextable::border_remove(ft)
+  ft <- flextable::hline_top(ft,  part = "header",
+                              border = officer::fp_border(width = 1.2))
+  ft <- flextable::hline(ft,      part = "header",
+                          border = officer::fp_border(width = 0.6))
+  ft <- flextable::hline_bottom(ft, part = "body",
+                                 border = officer::fp_border(width = 1.2))
+  ft <- flextable::width(ft, j = "Variable",   width = 1.5)
+  ft <- flextable::width(ft, j = "Type",       width = 0.6)
+  ft <- flextable::width(ft, j = "N",          width = 0.4)
+  ft <- flextable::width(ft, j = "N_missing",  width = 0.6)
+  ft <- flextable::width(ft, j = "Pct_miss",   width = 0.6)
+  ft <- flextable::width(ft, j = "N_unique",   width = 0.5)
+  ft <- flextable::width(ft, j = "Min",        width = 0.55)
+  ft <- flextable::width(ft, j = "Max",        width = 0.55)
+  ft <- flextable::width(ft, j = "Mean",       width = 0.55)
+  ft <- flextable::width(ft, j = "SD",         width = 0.55)
+  ft <- flextable::width(ft, j = "Median",     width = 0.55)
+  ft <- flextable::width(ft, j = "IQR",        width = 0.45)
+  ft <- flextable::width(ft, j = "Skewness",   width = 0.6)
+  ft <- flextable::width(ft, j = "Kurtosis",   width = 0.6)
+  ft <- flextable::width(ft, j = "Top_values", width = 2.0)
+  ft <- flextable::set_table_properties(ft, layout = "fixed")
+  ft
+}
+
+
+# ---------------------------------------------------------------------------
+# Per-section table helpers
+# ---------------------------------------------------------------------------
+
+#' Univariate numeric: key-value table with Overall + per-stratum columns
+#' @noRd
+.build_univariate_numeric_table <- function(dataset, variable, stratify_by) {
+  compute_stats <- function(x) {
+    vals <- x[!is.na(x)]
+    n    <- length(x)
+    list(
+      N        = n,
+      Missing  = sum(is.na(x)),
+      Mean     = if (length(vals)) round(mean(vals),   2) else NA_real_,
+      Median   = if (length(vals)) round(median(vals), 2) else NA_real_,
+      SD       = if (length(vals)) round(sd(vals),     2) else NA_real_,
+      IQR      = if (length(vals)) round(IQR(vals),    2) else NA_real_,
+      Min      = if (length(vals)) round(min(vals),    2) else NA_real_,
+      Max      = if (length(vals)) round(max(vals),    2) else NA_real_,
+      Skewness = tryCatch(round(e1071::skewness(vals), 2), error = function(e) NA_real_),
+      Kurtosis = tryCatch(round(e1071::kurtosis(vals), 2), error = function(e) NA_real_)
+    )
+  }
+
+  x         <- dataset[[variable]]
+  overall   <- compute_stats(x)
+  stat_names <- names(overall)
+
+  df <- data.frame(Statistic = stat_names,
+                   Overall   = unlist(overall),
+                   stringsAsFactors = FALSE, row.names = NULL)
+
+  if (!is.null(stratify_by) && stratify_by %in% names(dataset)) {
+    strata <- levels(factor(dataset[[stratify_by]]))
+    for (s in strata) {
+      idx      <- !is.na(dataset[[stratify_by]]) & as.character(dataset[[stratify_by]]) == s
+      s_stats  <- compute_stats(x[idx])
+      df[[s]]  <- unlist(s_stats)
+    }
+  }
+
+  df
+}
+
+
+#' Univariate factor: level counts with Overall + per-stratum columns
+#' @noRd
+.build_univariate_factor_table <- function(dataset, variable, stratify_by) {
+  x      <- dataset[[variable]]
+  levels_all <- if (is.factor(x)) levels(x) else sort(unique(as.character(x[!is.na(x)])))
+
+  count_pct <- function(vec, lvls) {
+    n_total <- length(vec)
+    n_miss  <- sum(is.na(vec))
+    tbl     <- table(factor(vec, levels = lvls))
+    pcts    <- round(100 * as.integer(tbl) / (n_total - n_miss), 1)
+    list(n_total = n_total, n_miss = n_miss, counts = as.integer(tbl), pcts = pcts)
+  }
+
+  overall <- count_pct(x, levels_all)
+
+  # Header rows: N total, N missing
+  header_rows <- data.frame(
+    Level         = c("N", "N Missing"),
+    `N (Overall)` = c(overall$n_total, overall$n_miss),
+    `% (Overall)` = c(NA_real_, NA_real_),
+    stringsAsFactors = FALSE, check.names = FALSE
+  )
+
+  # Level rows
+  level_rows <- data.frame(
+    Level         = levels_all,
+    `N (Overall)` = overall$counts,
+    `% (Overall)` = overall$pcts,
+    stringsAsFactors = FALSE, check.names = FALSE
+  )
+
+  df <- rbind(header_rows, level_rows)
+
+  if (!is.null(stratify_by) && stratify_by %in% names(dataset)) {
+    strata <- levels(factor(dataset[[stratify_by]]))
+    for (s in strata) {
+      idx    <- !is.na(dataset[[stratify_by]]) & as.character(dataset[[stratify_by]]) == s
+      s_res  <- count_pct(x[idx], levels_all)
+      n_col  <- paste0("N (", s, ")")
+      pct_col <- paste0("% (", s, ")")
+      df[[n_col]]   <- c(s_res$n_total, s_res$n_miss, s_res$counts)
+      df[[pct_col]] <- c(NA_real_,       NA_real_,       s_res$pcts)
+    }
+  }
+
+  df
+}
+
+
+#' Bivariate numeric x numeric: correlation stats table
+#' @noRd
+.build_bivariate_num_num_table <- function(dataset, col_a, col_b, stratify_by) {
+  run_cor <- function(x, y) {
+    complete <- !is.na(x) & !is.na(y)
+    if (sum(complete) < 3) return(list(r = NA, r2 = NA, p = NA, ci_lo = NA, ci_hi = NA))
+    ct <- cor.test(x[complete], y[complete], method = "pearson")
+    list(
+      r     = round(ct$estimate, 3),
+      r2    = round(ct$estimate^2, 3),
+      p     = formatC(ct$p.value, format = "g", digits = 3),
+      ci_lo = round(ct$conf.int[1], 3),
+      ci_hi = round(ct$conf.int[2], 3)
+    )
+  }
+
+  x       <- dataset[[col_a]]
+  y       <- dataset[[col_b]]
+  overall <- run_cor(x, y)
+
+  df <- data.frame(
+    Statistic = c("r", "R\u00b2", "p-value", "95% CI (low)", "95% CI (high)"),
+    Overall   = c(overall$r, overall$r2, overall$p, overall$ci_lo, overall$ci_hi),
+    stringsAsFactors = FALSE
+  )
+
+  if (!is.null(stratify_by) && stratify_by %in% names(dataset)) {
+    strata <- levels(factor(dataset[[stratify_by]]))
+    for (s in strata) {
+      idx     <- !is.na(dataset[[stratify_by]]) & as.character(dataset[[stratify_by]]) == s
+      s_res   <- run_cor(x[idx], y[idx])
+      df[[s]] <- c(s_res$r, s_res$r2, s_res$p, s_res$ci_lo, s_res$ci_hi)
+    }
+  }
+
+  df
+}
+
+
+#' Bivariate numeric x factor: distribution by factor level + Kruskal-Wallis p
+#' @noRd
+.build_bivariate_num_fac_table <- function(dataset, numeric_col, factor_col, stratify_by) {
+  num_vec <- dataset[[numeric_col]]
+  fac_vec <- dataset[[factor_col]]
+  lvls    <- if (is.factor(fac_vec)) levels(fac_vec) else
+    sort(unique(as.character(fac_vec[!is.na(fac_vec)])))
+
+  compute_by_level <- function(num, fac, prefix = "") {
+    rows <- lapply(lvls, function(lv) {
+      idx  <- !is.na(fac) & as.character(fac) == lv
+      vals <- num[idx & !is.na(num)]
+      data.frame(
+        Level  = lv,
+        N      = sum(idx),
+        Mean   = if (length(vals)) round(mean(vals),   2) else NA_real_,
+        Median = if (length(vals)) round(median(vals), 2) else NA_real_,
+        SD     = if (length(vals)) round(sd(vals),     2) else NA_real_,
+        IQR    = if (length(vals)) round(IQR(vals),    2) else NA_real_,
+        stringsAsFactors = FALSE
+      )
+    })
+    do.call(rbind, rows)
+  }
+
+  df <- compute_by_level(num_vec, fac_vec)
+
+  # Kruskal-Wallis p appended as footer row
+  mw_p <- tryCatch({
+    grps <- split(num_vec[!is.na(num_vec)], droplevels(factor(fac_vec[!is.na(num_vec)], levels = lvls)))
+    grps <- grps[lengths(grps) > 0]
+    if (length(grps) >= 2) {
+      wt <- kruskal.test(num_vec ~ factor(fac_vec, levels = lvls), data = dataset)
+      formatC(wt$p.value, format = "g", digits = 3)
+    } else NA_character_
+  }, error = function(e) NA_character_)
+
+  footer <- data.frame(
+    Level  = if (!is.na(mw_p)) paste0("Kruskal-Wallis p = ", mw_p) else "Kruskal-Wallis p = NA",
+    N      = NA_real_, Mean = NA_real_, Median = NA_real_, SD = NA_real_, IQR = NA_real_,
+    stringsAsFactors = FALSE
+  )
+
+  rbind(df, footer)
+}
+
+
+#' Bivariate factor x factor: cross-tab N (%) + chi-square (or Fisher's) footer
+#' Uses Fisher's exact test (simulated p-value) when any expected cell count < 5.
+#' @noRd
+.build_bivariate_fac_fac_table <- function(dataset, col_a, col_b, stratify_by) {
+  make_crosstab <- function(a_vec, b_vec, a_lvls, b_lvls) {
+    tbl   <- table(factor(a_vec, levels = a_lvls), factor(b_vec, levels = b_lvls))
+    n_row <- rowSums(tbl)
+    rows  <- lapply(seq_along(a_lvls), function(i) {
+      cells <- vapply(seq_along(b_lvls), function(j) {
+        n   <- tbl[i, j]
+        pct <- if (n_row[i] > 0) round(100 * n / n_row[i], 1) else 0
+        paste0(n, " (", pct, "%)")
+      }, character(1))
+      as.data.frame(t(c(Level = a_lvls[i], cells)), stringsAsFactors = FALSE)
+    })
+    out <- do.call(rbind, rows)
+    names(out) <- c(col_a, b_lvls)
+    out
+  }
+
+  a_vec  <- dataset[[col_a]]
+  b_vec  <- dataset[[col_b]]
+  a_lvls <- if (is.factor(a_vec)) levels(a_vec) else sort(unique(as.character(a_vec[!is.na(a_vec)])))
+  b_lvls <- if (is.factor(b_vec)) levels(b_vec) else sort(unique(as.character(b_vec[!is.na(b_vec)])))
+
+  df <- make_crosstab(a_vec, b_vec, a_lvls, b_lvls)
+
+  # Use Fisher's exact when any expected count < 5, chi-square otherwise
+  tbl    <- table(factor(a_vec, levels = a_lvls), factor(b_vec, levels = b_lvls))
+  chi_ct <- suppressWarnings(chisq.test(tbl))
+  footer_label <- tryCatch({
+    if (any(chi_ct$expected < 5)) {
+      fisher_p <- fisher.test(tbl, simulate.p.value = TRUE, B = 2000)$p.value
+      paste0("Fisher's exact p = ", formatC(fisher_p, format = "g", digits = 3),
+             " (simulated; expected cell counts < 5)")
+    } else {
+      paste0("Chi-square p = ", formatC(chi_ct$p.value, format = "g", digits = 3))
+    }
+  }, error = function(e) "Test p = NA")
+
+  footer            <- df[1, , drop = FALSE]
+  footer[1, ]       <- NA
+  footer[[col_a]]   <- footer_label
+  rbind(df, footer)
+}
+
+
+#' Style a section summary data.frame as a compact flextable
+#' @noRd
+.style_section_ft <- function(df) {
+  ft <- flextable::flextable(df)
+  ft <- flextable::font(ft, fontname = "Arial", part = "all")
+  ft <- flextable::fontsize(ft, size = 8,  part = "body")
+  ft <- flextable::fontsize(ft, size = 9,  part = "header")
+  ft <- flextable::bold(ft, part = "header")
+  ft <- flextable::bg(ft,
+    i    = seq(1, nrow(df), by = 2),
+    bg   = "#F7F7F7",
+    part = "body"
+  )
+  ft <- flextable::border_remove(ft)
+  ft <- flextable::hline_top(ft,    part = "header", border = officer::fp_border(width = 1.2))
+  ft <- flextable::hline(ft,        part = "header", border = officer::fp_border(width = 0.6))
+  ft <- flextable::hline_bottom(ft, part = "body",   border = officer::fp_border(width = 1.2))
+  ft <- flextable::set_table_properties(ft, layout = "autofit")
+  ft
+}
+
+
+# ---------------------------------------------------------------------------
 # Section builders
 # ---------------------------------------------------------------------------
 
-.build_all_vars_sections <- function(dataset, column_types, variables) {
-  sections <- vector("list", length(variables))
+.build_all_vars_sections <- function(dataset, column_types, variables, stratify_variable,
+                                      progress_fn = NULL) {
+  # Only numeric and factor — datetime excluded
+  variables <- variables[variables %in% names(column_types) &
+                           column_types[variables] %in% c("numeric", "factor")]
+  # Describing a variable against itself as stratifier is nonsensical — skip it
+  if (!is.null(stratify_variable) && nzchar(stratify_variable))
+    variables <- variables[variables != stratify_variable]
+  n <- length(variables)
+
+  sections <- vector("list", n)
   for (i in seq_along(variables)) {
-    var <- variables[[i]]
-    if (!var %in% names(column_types)) next
+    if (!is.null(progress_fn)) progress_fn(i / n, paste0("Variable ", i, " of ", n, ": ", variables[[i]]))
+
+    var      <- variables[[i]]
+    var_type <- column_types[[var]]
+
+    stratify_by <- if (!is.null(stratify_variable) && nzchar(stratify_variable) &&
+                        stratify_variable %in% names(dataset))
+      stratify_variable else NULL
 
     spec <- list(
-      plot_type        = route_plot_type(column_types[[var]], NULL),
+      plot_type        = route_plot_type(var_type, NULL),
       column_a         = var,
       column_b         = NULL,
       primary_role     = "exposure",
-      stratify_by      = NULL,
+      stratify_by      = stratify_by,
       color_palette    = "Set2",
       show_data_labels = FALSE,
       show_legend      = TRUE,
@@ -26,16 +454,22 @@
       trend_resolution = "Month"
     )
 
-    plot_obj   <- render_plot(spec, dataset)
-    summary_df <- build_variable_summary(dataset, var, column_types[[var]])
+    plot_obj <- render_plot(spec, dataset, split_panels = TRUE)
+
+    summary_df <- if (var_type == "numeric") {
+      .build_univariate_numeric_table(dataset, var, stratify_by)
+    } else {
+      .build_univariate_factor_table(dataset, var, stratify_by)
+    }
+    summary_ft <- .style_section_ft(summary_df)
 
     sections[[i]] <- list(
       title      = var,
+      anchor     = .make_html_anchor(var),
       plot_obj   = plot_obj,
-      summary_df = summary_df
+      summary_ft = summary_ft
     )
   }
-  # Drop NULLs (skipped variables)
   Filter(Negate(is.null), sections)
 }
 
@@ -44,14 +478,34 @@
                                                secondary_vars,
                                                primary_variable,
                                                primary_role,
-                                               stratify_variable) {
-  sections <- vector("list", length(secondary_vars))
-  for (i in seq_along(secondary_vars)) {
-    sec_var <- secondary_vars[[i]]
-    if (!sec_var %in% names(column_types))      next
-    if (!primary_variable %in% names(column_types)) next
+                                               stratify_variable,
+                                               progress_fn = NULL) {
+  # Only numeric and factor — datetime excluded from both primary and secondary
+  valid_types <- c("numeric", "factor")
+  if (!primary_variable %in% names(column_types) ||
+      !column_types[[primary_variable]] %in% valid_types)
+    stop("primary_variable must be numeric or factor.")
 
-    # Axis assignment from role (mirrors build_bivariate_plot_spec logic)
+  secondary_vars <- secondary_vars[
+    secondary_vars %in% names(column_types) &
+    column_types[secondary_vars] %in% valid_types
+  ]
+
+  # Skip any secondary variable that is also the stratify variable — plotting
+  # a variable against itself as both a comparison and a stratifier is nonsensical.
+  if (!is.null(stratify_variable) && nzchar(stratify_variable)) {
+    secondary_vars <- secondary_vars[secondary_vars != stratify_variable]
+  }
+
+  n <- length(secondary_vars)
+  sections <- vector("list", n)
+
+  for (i in seq_along(secondary_vars)) {
+    if (!is.null(progress_fn)) progress_fn(i / n, paste0("Section ", i, " of ", n, ": ", secondary_vars[[i]]))
+
+    sec_var <- secondary_vars[[i]]
+
+    # Axis assignment from role
     if (primary_role == "exposure") {
       col_a      <- primary_variable
       col_b      <- sec_var
@@ -70,7 +524,8 @@
       tmp        <- col_a_type; col_a_type <- col_b_type; col_b_type <- tmp
     }
 
-    stratify_by <- if (!is.null(stratify_variable) && nzchar(stratify_variable))
+    stratify_by <- if (!is.null(stratify_variable) && nzchar(stratify_variable) &&
+                        stratify_variable %in% names(dataset))
       stratify_variable else NULL
 
     spec <- list(
@@ -86,17 +541,21 @@
       trend_resolution = "Month"
     )
 
-    plot_obj <- render_plot(spec, dataset)
+    plot_obj <- render_plot(spec, dataset, split_panels = TRUE)
 
-    # Summary: one row for primary + one row for secondary
-    primary_summary   <- build_variable_summary(dataset, primary_variable,
-                                                 column_types[[primary_variable]])
-    secondary_summary <- build_variable_summary(dataset, sec_var,
-                                                 column_types[[sec_var]])
-    # rbind with type-compatible alignment: only common columns
-    common_cols  <- intersect(names(primary_summary), names(secondary_summary))
-    summary_df   <- rbind(primary_summary[, common_cols, drop = FALSE],
-                          secondary_summary[, common_cols, drop = FALSE])
+    # Select appropriate bivariate table helper
+    summary_df <- if (col_a_type == "numeric" && col_b_type == "numeric") {
+      .build_bivariate_num_num_table(dataset, col_a, col_b, stratify_by)
+    } else if (col_a_type == "factor" && col_b_type == "numeric") {
+      # col_a is factor (X), col_b is numeric (Y) after normalisation
+      .build_bivariate_num_fac_table(dataset, col_b, col_a, stratify_by)
+    } else if (col_a_type == "factor" && col_b_type == "factor") {
+      .build_bivariate_fac_fac_table(dataset, col_a, col_b, stratify_by)
+    } else {
+      NULL
+    }
+
+    summary_ft <- if (!is.null(summary_df)) .style_section_ft(summary_df) else NULL
 
     title <- paste(primary_variable, "\u00d7", sec_var)
     if (!is.null(stratify_by))
@@ -104,8 +563,9 @@
 
     sections[[i]] <- list(
       title      = title,
+      anchor     = .make_html_anchor(sec_var),   # keyed on secondary var for summary table links
       plot_obj   = plot_obj,
-      summary_df = summary_df
+      summary_ft = summary_ft
     )
   }
   Filter(Negate(is.null), sections)
@@ -116,53 +576,74 @@
 # Format assemblers
 # ---------------------------------------------------------------------------
 
-.assemble_pptx <- function(sections, output_path) {
+# Helper: add a title bar to a PPTX slide
+.pptx_title <- function(prs, title) {
+  officer::ph_with(
+    prs,
+    value    = title,
+    location = officer::ph_location(left = 0.4, top = 0.2, width = 12.2, height = 0.55)
+  )
+}
+
+# Helper: add a plot to a PPTX slide (full-width body area)
+# Patchwork objects are rasterised to PNG because rvg::dml() only accepts plain ggplots.
+.pptx_plot <- function(prs, plot_obj) {
+  plot_loc <- officer::ph_location(left = 0.4, top = 0.85, width = 12.2, height = 6.0)
+  if (inherits(plot_obj, "patchwork")) {
+    tmp_png <- tempfile(fileext = ".png")
+    on.exit(unlink(tmp_png), add = TRUE)
+    ggplot2::ggsave(tmp_png, plot = plot_obj, width = 12.2, height = 6.0,
+                    units = "in", dpi = 150)
+    officer::ph_with(prs,
+      value    = officer::external_img(src = tmp_png, width = 12.2, height = 6.0),
+      location = plot_loc)
+  } else {
+    officer::ph_with(prs,
+      value    = rvg::dml(ggobj = plot_obj),
+      location = plot_loc)
+  }
+}
+
+# Helper: add a flextable to a PPTX slide (full-width body area)
+.pptx_table <- function(prs, ft) {
+  officer::ph_with(prs,
+    value    = ft,
+    location = officer::ph_location(left = 0.4, top = 0.85, width = 12.2, height = 6.0))
+}
+
+
+.assemble_pptx <- function(sections, dataset_summary_df, output_path,
+                             progress_fn = NULL) {
   prs <- officer::read_pptx(
     system.file("templates/ppt_16x9_blank_template.pptx", package = "edark")
   )
 
-  for (sec in sections) {
-    prs <- officer::add_slide(prs, layout = "Blank", master = "Office Theme")
+  # ── Dataset summary slide ────────────────────────────────────────────────
+  prs <- officer::add_slide(prs, layout = "Blank", master = "Office Theme")
+  prs <- .pptx_title(prs, "Dataset Summary")
+  ds_ft <- .style_dataset_summary_ft(dataset_summary_df)
+  prs   <- .pptx_table(prs, ds_ft)
 
-    # Title bar
-    prs <- officer::ph_with(
-      prs,
-      value    = sec$title,
-      location = officer::ph_location(left = 0.4, top = 0.2, width = 12.2, height = 0.55)
-    )
+  # ── Per-section: plot slide + table slide ────────────────────────────────
+  n <- length(sections)
+  for (i in seq_along(sections)) {
+    if (!is.null(progress_fn)) progress_fn(i / n, paste0("Slide ", i, " of ", n))
+    sec <- sections[[i]]
 
-    # Plot (left 60% of slide body)
-    plot_location <- officer::ph_location(left = 0.4, top = 0.9, width = 7.4, height = 5.8)
-
-    if (inherits(sec$plot_obj, "patchwork")) {
-      # patchwork: render to temp PNG, insert as raster image
-      tmp_png <- tempfile(fileext = ".png")
-      on.exit(unlink(tmp_png), add = TRUE)
-      ggplot2::ggsave(tmp_png, plot = sec$plot_obj,
-                      width = 7.4, height = 5.8, units = "in", dpi = 150)
-      prs <- officer::ph_with(
-        prs,
-        value    = officer::external_img(src = tmp_png, width = 7.4, height = 5.8),
-        location = plot_location
-      )
-    } else {
-      prs <- officer::ph_with(
-        prs,
-        value    = rvg::dml(ggobj = sec$plot_obj),
-        location = plot_location
-      )
+    # Plot slide(s) — split_panels may give a list of two ggplots
+    plots <- if (is.list(sec$plot_obj) && !inherits(sec$plot_obj, "ggplot")) sec$plot_obj else list(sec$plot_obj)
+    for (pl in plots) {
+      prs <- officer::add_slide(prs, layout = "Blank", master = "Office Theme")
+      prs <- .pptx_title(prs, sec$title)
+      prs <- .pptx_plot(prs, pl)
     }
 
-    # Summary flextable (right 40%)
-    ft <- flextable::flextable(sec$summary_df)
-    ft <- flextable::set_table_properties(ft, layout = "autofit")
-    ft <- flextable::fontsize(ft, size = 8, part = "all")
-
-    prs <- officer::ph_with(
-      prs,
-      value    = ft,
-      location = officer::ph_location(left = 8.0, top = 0.9, width = 4.7, height = 5.8)
-    )
+    # Table slide (only if a summary flextable exists)
+    if (!is.null(sec$summary_ft)) {
+      prs <- officer::add_slide(prs, layout = "Blank", master = "Office Theme")
+      prs <- .pptx_title(prs, sec$title)
+      prs <- .pptx_table(prs, sec$summary_ft)
+    }
   }
 
   print(prs, target = output_path)
@@ -170,27 +651,44 @@
 }
 
 
-.assemble_docx <- function(sections, output_path) {
+.assemble_docx <- function(sections, dataset_summary_df, output_path,
+                             progress_fn = NULL) {
   doc <- officer::read_docx()
 
+  # ── Dataset summary page ─────────────────────────────────────────────────
+  doc <- officer::body_add_par(doc, "Dataset Summary", style = "heading 1")
+  ds_ft <- .style_dataset_summary_ft(dataset_summary_df)
+  doc   <- flextable::body_add_flextable(doc, ds_ft)
+  doc   <- officer::body_add_break(doc)
+
+  # ── Per-section: plot page + table page ──────────────────────────────────
+  n <- length(sections)
   for (i in seq_along(sections)) {
+    if (!is.null(progress_fn)) progress_fn(i / n, paste0("Section ", i, " of ", n))
     sec <- sections[[i]]
 
-    doc <- officer::body_add_par(doc, sec$title, style = "heading 1")
-
-    # Plot — raster via body_add_gg (handles both ggplot and patchwork)
-    doc <- officer::body_add_gg(doc, value = sec$plot_obj,
-                                 width = 6, height = 4, res = 150)
-
-    # Summary table
-    ft  <- flextable::flextable(sec$summary_df)
-    ft  <- flextable::set_table_properties(ft, layout = "autofit")
-    ft  <- flextable::fontsize(ft, size = 9, part = "all")
-    doc <- flextable::body_add_flextable(doc, ft)
-
-    # Page break between sections (not after the last one)
-    if (i < length(sections)) {
+    # Plot page(s) — split_panels may give a list of two ggplots
+    plots <- if (is.list(sec$plot_obj) && !inherits(sec$plot_obj, "ggplot")) sec$plot_obj else list(sec$plot_obj)
+    for (pl in plots) {
+      doc <- officer::body_add_par(doc, sec$title, style = "heading 1")
+      if (inherits(pl, "patchwork")) {
+        tmp_png <- tempfile(fileext = ".png")
+        ggplot2::ggsave(tmp_png, plot = pl, width = 6.5, height = 5, units = "in", dpi = 150)
+        doc <- officer::body_add_img(doc, src = tmp_png, width = 6.5, height = 5)
+        unlink(tmp_png)
+      } else {
+        doc <- officer::body_add_gg(doc, value = pl, width = 6.5, height = 5, res = 150)
+      }
       doc <- officer::body_add_break(doc)
+    }
+
+    # Table page (plot loop already ended with a break)
+    if (!is.null(sec$summary_ft)) {
+      doc <- officer::body_add_par(doc, sec$title, style = "heading 1")
+      doc <- flextable::body_add_flextable(doc, sec$summary_ft)
+      if (i < n) doc <- officer::body_add_break(doc)
+    } else if (i < n) {
+      # no table — the break from the plot loop is sufficient, nothing extra needed
     }
   }
 
@@ -199,17 +697,24 @@
 }
 
 
-.assemble_html <- function(sections, output_path) {
+.assemble_html <- function(sections, dataset_summary_df, output_path,
+                             report_type = "all_vars",
+                             linked_var_anchors = NULL) {
   template_path <- system.file("report_template.Rmd", package = "edark")
 
   rmarkdown::render(
-    input            = template_path,
-    output_file      = normalizePath(output_path, mustWork = FALSE),
-    output_dir       = dirname(normalizePath(output_path, mustWork = FALSE)),
+    input             = template_path,
+    output_file       = normalizePath(output_path, mustWork = FALSE),
+    output_dir        = dirname(normalizePath(output_path, mustWork = FALSE)),
     intermediates_dir = tempdir(),
-    params           = list(sections = sections),
-    quiet            = TRUE,
-    envir            = new.env(parent = globalenv())
+    params            = list(
+      sections           = sections,
+      dataset_summary_df = dataset_summary_df,
+      report_type        = report_type,
+      linked_var_anchors = linked_var_anchors
+    ),
+    quiet             = TRUE,
+    envir             = new.env(parent = globalenv())
   )
 
   invisible(output_path)
@@ -235,6 +740,8 @@
 #' @param stratify_variable Optional column name to stratify all bivariate plots by.
 #' @param format Output format: \code{"pptx"}, \code{"docx"}, or \code{"html"}.
 #' @param output_path Absolute path to write the report to.
+#' @param progress_fn Optional \code{function(fraction, detail)} called at each
+#'   section milestone. Intended for use with \code{shiny::setProgress()}.
 #'
 #' @return Invisibly returns \code{output_path}.
 #'
@@ -247,13 +754,19 @@ generate_report <- function(dataset,
                              primary_role      = "exposure",
                              stratify_variable = NULL,
                              format,
-                             output_path) {
+                             output_path,
+                             progress_fn = NULL) {
   stopifnot(report_type %in% c("all_vars", "primary_vs_others"))
   stopifnot(format %in% c("pptx", "docx", "html"))
   stopifnot(is.data.frame(dataset), length(variables) >= 1)
 
+  # Build dataset-level summary once (numeric + factor only)
+  if (!is.null(progress_fn)) progress_fn(0, "Building dataset summary...")
+  dataset_summary_df <- .build_dataset_summary(dataset, column_types)
+
   sections <- if (report_type == "all_vars") {
-    .build_all_vars_sections(dataset, column_types, variables)
+    .build_all_vars_sections(dataset, column_types, variables, stratify_variable,
+                              progress_fn = progress_fn)
   } else {
     if (is.null(primary_variable))
       stop("primary_variable must be specified for report_type = 'primary_vs_others'")
@@ -262,17 +775,44 @@ generate_report <- function(dataset,
       stop("No secondary variables to plot — ensure variables contains columns besides primary_variable.")
     .build_primary_vs_others_sections(
       dataset, column_types, secondary_vars,
-      primary_variable, primary_role, stratify_variable
+      primary_variable, primary_role, stratify_variable,
+      progress_fn = progress_fn
     )
   }
 
   if (length(sections) == 0)
     stop("No sections could be built — check that selected variables exist in the dataset.")
 
+  # Build linked_var_anchors for HTML: named vector mapping variable name → anchor ID.
+  # For all_vars: every section variable links to its section.
+  # For primary_vs_others: only secondary variables link to their sections.
+  linked_var_anchors <- if (report_type == "all_vars") {
+    setNames(
+      sapply(sections, function(s) s$anchor),
+      sapply(sections, function(s) s$title)
+    )
+  } else {
+    sec_var_names <- setdiff(variables, primary_variable)
+    sec_var_names <- sec_var_names[
+      sec_var_names %in% names(column_types) &
+      column_types[sec_var_names] %in% c("numeric", "factor")
+    ]
+    if (!is.null(stratify_variable) && nzchar(stratify_variable))
+      sec_var_names <- sec_var_names[sec_var_names != stratify_variable]
+    setNames(
+      sapply(sections, function(s) s$anchor),
+      sec_var_names[seq_along(sections)]
+    )
+  }
+
+  if (!is.null(progress_fn)) progress_fn(0.95, "Assembling output...")
+
   switch(format,
-    pptx = .assemble_pptx(sections, output_path),
-    docx = .assemble_docx(sections, output_path),
-    html = .assemble_html(sections, output_path)
+    pptx = .assemble_pptx(sections, dataset_summary_df, output_path, progress_fn),
+    docx = .assemble_docx(sections, dataset_summary_df, output_path, progress_fn),
+    html = .assemble_html(sections, dataset_summary_df, output_path,
+                          report_type        = report_type,
+                          linked_var_anchors = linked_var_anchors)
   )
 
   invisible(output_path)

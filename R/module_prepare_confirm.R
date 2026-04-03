@@ -34,6 +34,13 @@ prepare_confirm_ui <- function(id) {
       label = "Apply Changes",
       icon  = shiny::icon("circle-check"),
       class = "btn-primary w-100"
+    ),
+    shiny::br(),
+    shiny::actionButton(
+      ns("reset_btn"),
+      label = "Reset to Original",
+      icon  = shiny::icon("rotate-left"),
+      class = "btn-outline-secondary w-100"
     )
   )
 }
@@ -133,16 +140,31 @@ prepare_confirm_server <- function(id, shared_state) {
       shared_state$has_pending_changes    <- FALSE
       shared_state$explore_needs_refresh  <- TRUE
 
-      # Navigate to the Explore tab
-      bslib::nav_select("main_navbar", "explore")
-
       shiny::showNotification(
         paste0(
-          "Applied! Working dataset: ",
-          format(nrow(df), big.mark = ","), " rows × ", ncol(df), " columns."
+          "Applied! ",
+          format(nrow(df), big.mark = ","), " rows \u00d7 ", ncol(df), " columns."
         ),
         type     = "message",
         duration = 4
+      )
+    })
+
+
+    # ── Reset button ──────────────────────────────────────────────────────────
+    shiny::observeEvent(input$reset_btn, {
+      orig <- shared_state$dataset_original
+      shared_state$included_columns       <- names(orig)
+      shared_state$column_type_overrides  <- list()
+      shared_state$column_transform_specs <- list()
+      shared_state$row_filter_specs       <- list()
+      shared_state$dataset_working        <- orig
+      shared_state$column_types           <- shared_state$original_column_types
+      shared_state$has_pending_changes    <- FALSE
+
+      shiny::showNotification(
+        "Reset to original dataset.",
+        type = "message", duration = 3
       )
     })
   })

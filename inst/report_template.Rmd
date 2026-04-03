@@ -1,15 +1,94 @@
 ---
 title: "EDARK Report"
-date: "`r format(Sys.time(), '%B %d, %Y')`"
+subtitle: "`r paste('Date created:', format(Sys.time(), '%Y-%m-%d %H:%M'))`"
 output:
   html_document:
     theme: flatly
     toc: true
-    toc_float: true
+    toc_depth: 2
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
     self_contained: true
 params:
   sections: NULL
+  dataset_summary_df: NULL
+  report_type: "all_vars"
+  linked_var_anchors: NULL
 ---
+
+```{css, echo=FALSE}
+/* ── Clean up the floating TOC — remove box, keep vertical list ── */
+#TOC {
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 4px 0;
+}
+#TOC ul {
+  padding-left: 12px;
+}
+#TOC li {
+  list-style: none;
+  line-height: 1.7;
+}
+#TOC a {
+  color: #555;
+  font-size: 0.85em;
+  text-decoration: none;
+}
+#TOC a:hover {
+  color: #2c7be5;
+  text-decoration: underline;
+}
+
+/* ── Back-to-top link ── */
+.back-to-top {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 0.78em;
+  color: #aaa;
+  text-decoration: none;
+}
+.back-to-top:hover {
+  color: #2c7be5;
+}
+
+/* ── Section separator ── */
+.section-rule {
+  border: none;
+  border-top: 1px solid #e8e8e8;
+  margin: 28px 0 18px 0;
+}
+
+/* ── Dataset summary table ── */
+.summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82em;
+  font-family: Arial, sans-serif;
+}
+.summary-table th {
+  background: #f0f0f0;
+  border-bottom: 2px solid #ccc;
+  padding: 5px 8px;
+  text-align: right;
+  font-weight: bold;
+}
+.summary-table th:first-child { text-align: left; }
+.summary-table td {
+  padding: 4px 8px;
+  text-align: right;
+  border-bottom: 1px solid #eee;
+  white-space: nowrap;
+}
+.summary-table td:first-child { text-align: left; }
+.summary-table tr:nth-child(even) td { background: #f7f7f7; }
+.summary-table tr:last-child td { border-bottom: 2px solid #ccc; }
+
+/* ── Section flextable overrides ── */
+.section-ft { margin-top: 16px; }
+```
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
@@ -17,27 +96,103 @@ knitr::opts_chunk$set(
   warning = FALSE,
   message = FALSE,
   fig.width  = 10,
-  fig.height = 5
+  fig.height = 5.5
 )
 library(ggplot2)
 library(patchwork)
-library(flextable)
+
+# Anchor ID generator — must match .make_html_anchor() in generate_report.R
+make_anchor <- function(x) {
+  x <- tolower(x)
+  x <- gsub("[^a-z0-9_-]", "-", x)
+  x <- gsub("-+", "-", x)
+  x <- gsub("^-+|-+$", "", x)
+  paste0("sec-", x)
+}
+
+report_type        <- params$report_type
+linked_var_anchors <- params$linked_var_anchors   # named vector: var_name -> "#sec-..."
 ```
 
-```{r results='asis'}
+## Dataset Summary
+
+```{r dataset-summary, results='asis'}
+if (!is.null(params$dataset_summary_df)) {
+  df      <- params$dataset_summary_df
+  linked  <- linked_var_anchors   # named: var -> anchor_id
+
+  # Format numeric columns: NA → em-dash
+  num_cols <- c("Min", "Max", "Mean", "SD", "Median", "IQR", "Skewness", "Kurtosis")
+  df_disp  <- df
+  for (col in num_cols) {
+    df_disp[[col]] <- ifelse(is.na(df_disp[[col]]), "\u2014", as.character(df_disp[[col]]))
+  }
+  df_disp$Top_values <- ifelse(is.na(df_disp$Top_values), "\u2014", df_disp$Top_values)
+
+  # Make Variable column a clickable link where the variable has a section anchor
+  df_disp$Variable <- vapply(df_disp$Variable, function(v) {
+    if (!is.null(linked) && v %in% names(linked)) {
+      paste0('<a href="#', linked[[v]], '">', v, '</a>')
+    } else {
+      v
+    }
+  }, character(1))
+
+  # Render as plain HTML table so links are preserved (flextable strips HTML)
+  col_headers <- c(
+    "Variable", "Type", "N", "N Missing", "% Miss", "Unique",
+    "Min", "Max", "Mean", "SD", "Median", "IQR", "Skewness", "Kurtosis",
+    "Top Values (categorical)"
+  )
+  names(df_disp) <- col_headers
+
+  cat('<div style="overflow-x:auto;">\n')
+  cat('<table class="summary-table">\n<thead><tr>')
+  for (h in col_headers) cat(paste0('<th>', h, '</th>'))
+  cat('</tr></thead>\n<tbody>\n')
+  for (i in seq_len(nrow(df_disp))) {
+    cat('<tr>')
+    for (j in seq_along(col_headers)) {
+      val <- df_disp[i, j]
+      cat(paste0('<td>', if (is.na(val)) "\u2014" else val, '</td>'))
+    }
+    cat('</tr>\n')
+  }
+  cat('</tbody></table></div>\n')
+}
+```
+
+---
+
+```{r sections, results='asis'}
 for (sec in params$sections) {
-  cat("## ", sec$title, "\n\n", sep = "")
+  anchor_id <- sec$anchor  # e.g. "sec-age-tx"
 
-  # Plot
-  print(sec$plot_obj)
-  cat("\n\n")
+  # ── Section heading with explicit anchor ──────────────────────────────
+  cat(paste0('## ', sec$title, ' {#', anchor_id, '}\n\n'))
 
-  # Summary table
-  ft <- flextable::flextable(sec$summary_df)
-  ft <- flextable::set_table_properties(ft, layout = "autofit")
-  ft <- flextable::fontsize(ft, size = 9, part = "all")
-  print(ft, preview = "html")
+  # ── Plot(s) ───────────────────────────────────────────────────────────
+  # histogram_density sections carry a list of two ggplots (split_panels = TRUE);
+  # all other sections carry a single ggplot. Print each at full height.
+  plot_list <- if (is.list(sec$plot_obj) && !inherits(sec$plot_obj, "ggplot")) {
+    sec$plot_obj
+  } else {
+    list(sec$plot_obj)
+  }
+  for (pl in plot_list) {
+    print(pl)
+    cat('\n\n')
+  }
 
-  cat("\n\n---\n\n")
+  # ── Summary table ─────────────────────────────────────────────────────
+  if (!is.null(sec$summary_ft)) {
+    cat('<div class="section-ft">')
+    print(flextable::htmltools_value(sec$summary_ft))
+    cat('</div>\n\n')
+  }
+
+  # ── Back to top ───────────────────────────────────────────────────────
+  cat('<a href="#" class="back-to-top">\u2191 Back to top</a>\n\n')
+  cat('<hr class="section-rule">\n\n')
 }
 ```

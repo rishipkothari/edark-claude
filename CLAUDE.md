@@ -136,7 +136,11 @@ Plots where legend is always suppressed regardless of user toggle:
 - Non-stratified: single loess smoother with SE band, hardcoded blue palette.
 - Stratified: colour aesthetic mapped to stratify, coloured loess + SE per group, faceted.
 - Correlation stats (R², r, p) are computed via `cor.test()` and formatted as a plain string. `ggpubr::stat_cor` is intentionally **not** used — it outputs plotmath expressions that render as raw text rather than formatted output.
-- Annotation is placed top-right (`x = x_rng[2] - 0.02 * diff(x_rng)`, `y = y_rng[2] - 0.04 * diff(y_rng)`) with `hjust = 1`. Uses `annotate("label")` / `geom_label()` with white fill and `#cccccc` border (`label.size = 0.3`) so it doesn't compete with points or the loess line.
+- Annotation is placed top-right (`x = x_rng[2] - 0.02 * diff(x_rng)`, `y = y_rng[2] - 0.04 * diff(y_rng)`) with `hjust = 1`. **Both stratified and non-stratified paths use `geom_label()` with a one-row data frame** — `annotate("label")` does not accept `label.colour` and will warn. The `geom_label()` path uses `label.colour = "#cccccc"`, `label.size = 0.3`, white fill.
+
+### bar_count specifics
+- NA values in the factor column are **dropped before plotting** (`df <- df[!is.na(df[[col_a]]), ]`). This prevents an empty axis slot for `NA` that has no corresponding bar. Do not use `addNA()` or `scale_x_discrete(na.translate = FALSE)` here — just filter.
+- Bar order follows natural factor level order. Do **not** reorder by frequency (`fct_infreq`).
 
 ### bar_grouped specifics
 - Pre-computes a complete `col_a × col_b` grid with zeros for missing combinations. Without this, absent combinations cause remaining bars in a group to expand to double width.
@@ -146,7 +150,11 @@ Plots where legend is always suppressed regardless of user toggle:
 All stratified plots use `facet_wrap(scales = "fixed")` so absolute values are comparable across panels. The one exception is **numeric primary + factor stratify** (Describe), which uses overlapping density curves rather than facets.
 
 ### Describing a numeric variable (histogram_density)
-`.plot_histogram_density()` returns an internal `edark_two_panel` list (`$left`, `$right`). `render_plot()` applies aesthetics to each panel separately, overrides the right panel title to `"Q-Q Plot: {col_a}"`, then combines them with `patchwork::wrap_plots(widths = c(0.45, 0.55))`. The caller always receives a patchwork — `edark_two_panel` never escapes `render_plot()`.
+`.plot_histogram_density()` returns an internal `edark_two_panel` list (`$left`, `$right`). `render_plot()` applies aesthetics to each panel separately, overrides the right panel title to `"Q-Q Plot: {col_a}"`.
+
+**In the Shiny app** (`split_panels = FALSE`, the default): the two panels are combined with `patchwork::wrap_plots(widths = c(0.45, 0.55))` and returned as a single patchwork.
+
+**In reports** (`split_panels = TRUE`): `render_plot()` returns a plain `list(left_p, right_p)` instead of a patchwork. The section builders in `generate_report.R` pass `split_panels = TRUE`. All three assemblers normalise `plot_obj` to a list before iterating — `is.list(x) && !inherits(x, "ggplot")` distinguishes a split-panel list from a single ggplot. Each panel is rendered independently at full size (HTML: two `print()` calls; PPTX: two slides; DOCX: two pages).
 
 | | No stratify | Stratified by factor |
 |---|---|---|
@@ -155,7 +163,7 @@ All stratified plots use `facet_wrap(scales = "fixed")` so absolute values are c
 
 Non-stratified left panel: primary Y axis is **Count** (raw histogram bars), density curve is scaled to count units via `after_stat(density) * n * binwidth`. Secondary Y axis shows Density via the inverse transform (`/ (n * binwidth)`). `binwidth ≈ range / 30`.
 
-Both Q-Q panels standardise the sample first (`scale()`) so theoretical and sample quantile axes are both in z-score units. `coord_cartesian(ylim = ...)` is set from actual data range to keep the Y axis tight.
+**Q-Q axis symmetry (critical):** Both Q-Q panels (`$right`) must have identical X and Y axis limits so the 45° reference diagonal is interpretable. Compute `ax_range = range(c(z_range, qnorm(ppoints(n))))` — the union of sample z-score range and expected theoretical quantile range — then apply it to both `xlim` and `ylim` of `coord_cartesian()`. Without this, variables with extreme skew (e.g. bimodal at 0) produce a Y axis that extends to 5 while X stays at ±2, making the plot unreadable.
 
 ### Factor bar ordering
 Bar charts preserve the natural factor level order. Do **not** reorder by frequency (`fct_infreq`).
@@ -199,7 +207,7 @@ observeEvent(input$cutpoints_col, {
 ```
 
 ### Transform accordion collapses when method toggle re-renders
-If the accordion `renderUI` depends on `shared_state$column_transform_specs` directly, toggling the method (auto ↔ cutpoints) updates the spec, which triggers a full accordion re-render, which collapses the open panel. 
+If the accordion `renderUI` depends on `shared_state$column_transform_specs` directly, toggling the method (auto ↔ cutpoints) updates the spec, which triggers a full accordion re-render, which collapses the open panel.
 
 The fix in `module_transform_variables.R`: use a separate `reactiveVal(transform_structure)` that only fires when the **set of staged columns** changes (not when method/breakpoints/labels change). The per-column cut-point inputs are separate `renderUI` outputs keyed on method alone — so toggling method only re-renders that inner section, not the accordion shell.
 
@@ -237,6 +245,12 @@ if (is.null(spec$plot_type)) {
 plot_fn <- switch(spec$plot_type, ...)
 ```
 
+### `annotate("label")` does not accept `label.colour`
+`ggplot2::annotate("label", ..., label.colour = "#cccccc")` emits `Ignoring unknown parameters: 'label.colour'`. The `label.colour` argument only works with `geom_label()`. For annotation labels that need separate text and border colours, always use `geom_label()` with a one-row data frame and `inherit.aes = FALSE`. Both scatter_loess paths (stratified and non-stratified) now use this pattern.
+
+### chi-square warning for small expected counts
+`chisq.test()` emits a warning when any expected cell count < 5. In `.build_bivariate_fac_fac_table()`, use `suppressWarnings(chisq.test(...))` then check `$expected` — if any < 5, fall back to `fisher.test(simulate.p.value = TRUE, B = 2000)` and note in the footer. Never let chi-square warnings propagate into report generation logs.
+
 ---
 
 ## Transform logic summary
@@ -252,31 +266,82 @@ If a column is staged for cut-point transform but has no valid breakpoints, Appl
 
 ## Report stage — current behaviour
 
-### Two report types
-- **All Variables** (`report_type = "all_vars"`): one section per variable; univariate describe plot + summary stats table. No stratification.
-- **Primary vs All Others** (`report_type = "primary_vs_others"`): one bivariate section per secondary variable. Axis assignment and violin_jitter normalisation mirrors `build_bivariate_plot_spec()`. Single global stratify variable applies to all sections.
+### Two report types (UI labels vs internal values)
+UI labels differ from internal `report_type` string values — do not change the internal values:
+
+| UI label | `report_type` value | Behaviour |
+|---|---|---|
+| **Describe Variables** | `"all_vars"` | One section per variable (numeric + factor only). Univariate plot + summary table. Optional global stratify adds per-stratum columns to the table. |
+| **Correlation** | `"primary_vs_others"` | One bivariate section per secondary variable. Axis assignment and violin_jitter normalisation mirrors `build_bivariate_plot_spec()`. Single global stratify variable applies to all sections. |
 
 ### Output formats
-- **PPT** (`pptx`): `officer` + `rvg`. Layout: title bar top, plot left 60% (`rvg::dml()` for ggplot, raster PNG fallback for patchwork), flextable right 40%.
-- **Word** (`docx`): `officer` + `flextable`. Heading 1 per section, `body_add_gg()` raster plot, flextable summary, page break between sections.
-- **HTML** (`html`): `rmarkdown::render()` with `inst/report_template.Rmd`. Sections loop via `results='asis'`. Self-contained output with floating TOC.
+All formats open with a **Dataset Summary** page/slide (one row per numeric/factor variable; full wide EDA table), then plot unit(s) + one table unit per section.
+
+- **HTML** (`html`): `rmarkdown::render()` with `inst/report_template.Rmd`. Floating TOC sidebar (box styling stripped via CSS — plain vertical list). Dataset summary rendered as a plain HTML `<table>` (`results='asis'` chunk) with clickable Variable links where a section exists. Section headings carry explicit Pandoc anchor IDs (`{#sec-...}`). Each plot in a section's plot list is `print()`ed individually at full `fig.height`. Back-to-top link after each section. Date shown as ISO `"Date created: yyyy-mm-dd hh:mm"` in the subtitle.
+- **PPTX** (`pptx`): `officer` + `rvg`. Dataset summary = 1 slide (full-width flextable). Per section = one slide per plot + one table slide. `rvg::dml()` for plain ggplot; patchwork rasterised to temp PNG via `ggsave()` then inserted as `officer::external_img()`.
+- **DOCX** (`docx`): `officer` + `flextable`. Dataset summary page first (heading + table + page break). Per section = one page per plot + one table page. Plain ggplot uses `body_add_gg()`; patchwork uses `ggsave()` + `body_add_img()`. No Word template — uses `officer::read_docx()` default blank (Tier 2 TODO).
+
+### Layout — two output units per section
+Plot and table are **never on the same slide/page**. Each section produces a plot unit first, then a table unit. This applies to all three formats.
+
+### Section table contents by type
+
+| Report type | Variable types | Table helper | Content |
+|---|---|---|---|
+| all_vars | numeric | `.build_univariate_numeric_table()` | Statistic \| Overall \| [Stratum…] — transposed key-value |
+| all_vars | factor/logical | `.build_univariate_factor_table()` | Level \| N (Overall) \| % (Overall) \| [N/% per stratum] |
+| primary_vs_others | numeric × numeric | `.build_bivariate_num_num_table()` | r, R², p-value, 95% CI from `cor.test()` |
+| primary_vs_others | numeric × factor | `.build_bivariate_num_fac_table()` | N/Mean/Median/SD/IQR per factor level + Kruskal-Wallis p |
+| primary_vs_others | factor × factor | `.build_bivariate_fac_fac_table()` | Cross-tab N (%) + chi-square p footer (Fisher's exact if expected < 5) |
+
+Datetime columns are excluded everywhere in reports — section builders filter to `column_types %in% c("numeric", "factor")` before iterating.
+
+### Overlap guards — both modes
+- **Correlation** (`primary_vs_others`): `.build_primary_vs_others_sections()` skips any secondary variable that equals the stratify variable. Plotting a variable against itself as both a comparison target and a stratifier produces degenerate plots.
+- **Describe** (`all_vars`): `.build_all_vars_sections()` removes the stratify variable from the section variable list before iterating. Without this, `bar_count`'s stratified path calls `dplyr::left_join(by = c("col", "col"))` when `col_a == stratify`, which crashes with "Input columns in `x` must be unique."
+- **UI (module_report.R)**: In Correlation mode, the stratify variable is also excluded from the variable selection modal, Select All, and the sidebar section count — so the display matches what actually generates.
+
+### Dataset summary table — `.build_dataset_summary()`
+One row per numeric/factor column. Columns: Variable, Type, N, N_missing, Pct_miss, N_unique, Min, Max, Mean, SD, Median, IQR, Skewness, Kurtosis (NA for factors), Top_values (NA for numerics — top 5 levels pipe-separated). Styled via `.style_dataset_summary_ft()` for PPTX/DOCX. For HTML, rendered as a plain `<table>` (not flextable) so Variable column can contain raw HTML links.
+
+### HTML anchor system
+`.make_html_anchor(x)` in `generate_report.R` produces consistent anchor IDs:
+```r
+.make_html_anchor <- function(x) {
+  x <- tolower(x); x <- gsub("[^a-z0-9_-]", "-", x)
+  x <- gsub("-+", "-", x); x <- gsub("^-+|-+$", "", x)
+  paste0("sec-", x)
+}
+```
+The same logic is duplicated as `make_anchor()` in `report_template.Rmd`. Each section object carries an `anchor` field set at build time. Section headings in the Rmd use `{#anchor_id}` syntax. For `all_vars`, anchor = `sec-{variable_name}`. For `primary_vs_others`, anchor = `sec-{secondary_variable_name}` (keyed on the secondary var, not the full "primary × secondary" title, so summary table links can resolve them).
+
+`linked_var_anchors` is a named character vector (var name → anchor ID) passed to the Rmd as a param. For `all_vars`, all section variables are linked. For `primary_vs_others`, only secondary variables are linked — the primary, stratify var, and non-selected variables get plain text in the summary table.
+
+### Progress tracking during generation
+`generate_report()` accepts an optional `progress_fn(fraction, detail)` callback. Section builders call it at each iteration. `module_report.R`'s `downloadHandler` wraps the call in `shiny::withProgress()` and passes `shiny::setProgress()` as the callback — this provides real-time step updates in the Shiny progress overlay during synchronous download execution. (`withProgress/setProgress` flush via the progress protocol, unlike reactive updates or `sendCustomMessage` which are blocked during sync execution.)
 
 ### Architecture — generate_report.R is Shiny-free
-`generate_report()` takes plain R arguments (no `shared_state`, no `shiny::isolate()`). The spec lists are built inline from `column_types` directly. This lets it work from both `downloadHandler` (inside Shiny) and `edark_report()` (outside Shiny).
+`generate_report()` takes plain R arguments (no `shared_state`, no `shiny::isolate()`). This lets it work from both `downloadHandler` (inside Shiny) and `edark_report()` (outside Shiny). The `progress_fn` defaults to `NULL` and is simply ignored by `edark_report()`.
+
+### Variable selection modal — report tab
+`reactiveVal(selected_vars)` initialised to **eligible columns only** (numeric + factor; datetime excluded). In **Correlation** mode, both the primary variable and the stratify variable are excluded from the modal choices (and from Select All) since neither is ever a secondary variable. The summary count in the sidebar mirrors this. Resets on dataset change (after Apply).
+
+### Stratify picker — report tab
+The Stratify By card is always visible (both Describe and Correlation modes). In Correlation mode, the primary variable is additionally excluded from the picker's choices. The stratify variable is passed to section builders in both modes — in Describe it adds per-stratum columns to summary tables, in Correlation it facets/colours all bivariate plots.
 
 ### Programmatic API
 ```r
+options(pkgType = "binary")  # always set before installing packages
+
 edark_report(liver_tx, report_format = "html", output_path = tempfile(fileext = ".html"))
 edark_report(liver_tx, report_type = "primary_vs_others",
              primary_variable = "age_tx", primary_role = "exposure",
+             stratify_variable = "graft_type",
              report_format = "pptx", output_path = tempfile(fileext = ".pptx"))
 ```
 
-### Variable selection modal
-The module uses a `reactiveVal(selected_vars)` initialised to all working dataset columns. A `modalDialog` with `checkboxGroupInput` + Select All / Deselect All buttons lets users subset variables without consuming sidebar space. `selected_vars` resets when the working dataset changes (after Apply).
-
 ### patchwork + rvg::dml incompatibility
-`rvg::dml(ggobj = p)` only accepts plain `ggplot` objects, not `patchwork`. The `histogram_density` plot type returns a patchwork from `render_plot()`. In `.assemble_pptx()` this is detected via `inherits(plot_obj, "patchwork")` and the plot is rasterised to a temp PNG via `ggplot2::ggsave()` before insertion as `officer::external_img()`.
+`rvg::dml(ggobj = p)` only accepts plain `ggplot` objects, not `patchwork`. In reports, `histogram_density` now uses `split_panels = TRUE` so both panels arrive as plain ggplots — the patchwork is never constructed. Any other future patchwork that reaches an assembler is detected via `inherits(plot_obj, "patchwork")` and rasterised to temp PNG via `ggplot2::ggsave()` then inserted as `officer::external_img()` (PPTX) or `officer::body_add_img()` (DOCX).
 
 ---
 
@@ -285,26 +350,25 @@ The module uses a `reactiveVal(selected_vars)` initialised to all working datase
 ### Todos
 
 #### Tier 1:
-- **TODO**: Filter datetime/POSIXct columns out of the primary and secondary variable pickers in `module_explore_controls.R` — datetime variables should not be available for correlation/describe; they belong in the trend feature below
-- add reset button to prepare
-- fix transforms workflow — still clunky; maybe a table that offers all transform logic in one
-- **TODO**: `show_data_labels` aesthetic not yet wired for bivariate plot types (`violin_jitter`, `scatter_loess`, `bar_grouped`) — currently only `bar_count` respects it. For violin_jitter the label should show the median value per group.
-- **TODO**: Fix console warning in `.plot_scatter_loess()` (`render_plot.R`) when plotting numeric × numeric: `Ignoring unknown parameters: 'label.colour' and 'label.size'` from `ggplot2::annotate("label", ...)`. The `label.colour` and `label.size` params are not valid for `annotate()` — replace with the correct ggplot2 equivalents (`colour` for border colour, `label.size` → `label.padding` or just remove if not needed).
+- fix transforms workflow — still clunky; maybe a table that offers all transform logic in one. Specific blocker: staging a transform from the Columns tab immediately registers as invalid (no cutpoints configured yet), which triggers the auto-apply guard and blocks navigation to the Transforms tab where the user would configure cutpoints. Circular deadlock. Full redesign needed before this is fixable.
+- Time-trend feature (datetime columns' only use) — separate UI section (not part of Correlate With); trend numeric variables (mean over time) and factor variables (proportion/count over time) by Day / Month / Quarter / Year, optional stratification as separate coloured lines (run chart style). datetime/POSIXct columns should autocasted via `cast_column_types()` to POSIXct (confirm this is happening). Visualisation: line chart with points.
+- Statistical tests in Explore tab for bivariate sections — use appropriate test by variable type combination: numeric × factor → Kruskal-Wallis (with p-value); factor × factor → chi-square or Fisher's (with p-value); numeric × numeric → already has r/R²/p from `cor.test()`. Tests should display in the summary panel in Explore. (Reports already have these via the table helpers.)
+- `show_data_labels` aesthetic not yet wired for bivariate plot types (`violin_jitter`, `scatter_loess`, `bar_grouped`) — currently only `bar_count` respects it. For violin_jitter the label should show the median value per group.
 
 #### Tier 2:
-- **TODO**: Time-trend functionality — separate UI section (not part of Correlate With); user wants ability to trend numeric variables (mean over time) and factor variables (proportion/count over time) by Day / Month / Quarter / Year, with optional stratification shown as separate colored lines (run chart style). Visualisation: line chart with points. This is distinct from the existing `trend_count` / `trend_mean` / `trend_proportion` plot types which are bivariate correlations — the trend feature is a standalone workflow.
 - integrate studybuddy stuff to move onwards towards using working dataset for direct model creation and pub quality outputs
 - correlation matrix for selecting variable inclusion?
+- Word report: create a reference `.docx` template with heading styles defined so `officer` renders `"heading 1"` correctly across Word versions
 
 #### Tier 3:
 - Dataset export button (PRD §2.7, DE-01)
 - `shinytest2` module tests
 - `testthat` unit tests for utility functions
 - offer user some options for plot types relevant to var combinations (something about a balloon, maybe a heat map, can ask claude what other types might be helpful or creative)
-- custom report generation (add this graph button)
+- custom report generation ("add this graph/plot/table" button)
+- Report cancel button — currently not feasible with synchronous `downloadHandler` (the event loop is blocked during sync execution; `observeEvent` cannot fire to set a cancel flag). Would require converting report generation to async (`future`/`promises`) with a separate "Generate" `observeEvent` + subsequent download of a tempfile. Deferred.
 
 #### Tier 4:
 - expand aesthetic options
 - add outlier detection and winsorization option in transforms
 - add imputation possibility?
-

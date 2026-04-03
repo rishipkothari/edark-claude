@@ -107,15 +107,18 @@ explore_controls_server <- function(id, shared_state) {
     ns <- session$ns
 
     # ── Populate pickers from working dataset ─────────────────────────────────
-    all_cols <- shiny::reactive({
-      names(shared_state$dataset_working)
+    # Only numeric and factor columns are eligible for Explore.
+    # Datetime and character columns are reserved for future features.
+    eligible_cols <- shiny::reactive({
+      types <- shared_state$column_types
+      names(types)[types %in% c("numeric", "factor")]
     })
 
     output$primary_var_picker <- shiny::renderUI({
       shinyWidgets::pickerInput(
         ns("primary_variable"),
         label   = "Primary variable:",
-        choices = all_cols(),
+        choices = eligible_cols(),
         options = shinyWidgets::pickerOptions(liveSearch = TRUE, container = "body")
       )
     })
@@ -137,7 +140,7 @@ explore_controls_server <- function(id, shared_state) {
     output$secondary_var_picker <- shiny::renderUI({
       # Exclude the primary variable from secondary choices
       primary  <- input$primary_variable
-      choices  <- setdiff(all_cols(), primary)
+      choices  <- setdiff(eligible_cols(), primary)
       shinyWidgets::pickerInput(
         ns("secondary_variable"),
         label   = "Secondary variable:",

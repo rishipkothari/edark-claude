@@ -67,7 +67,9 @@ row_filter_server <- function(id, shared_state) {
     # ── Row count badge ───────────────────────────────────────────────────────
     output$row_count_badge <- shiny::renderUI({
       specs   <- shared_state$row_filter_specs
-      dataset <- shared_state$dataset_original
+      # Use dataset_working as the base: it already reflects all previously
+      # applied pipeline steps (type overrides, column selection, transforms).
+      dataset <- shared_state$dataset_working
       n_orig  <- nrow(dataset)
 
       n_filt <- if (length(specs) == 0) {
@@ -95,7 +97,9 @@ row_filter_server <- function(id, shared_state) {
       if (is.null(col) || col == "") return()
       if (!is.null(shared_state$row_filter_specs[[col]])) return()
 
-      x        <- shared_state$dataset_original[[col]]
+      # Use dataset_working so that post-Apply transforms (e.g. numeric → factor)
+      # are reflected in both the type and the data values used to build the spec.
+      x        <- shared_state$dataset_working[[col]]
       col_type <- shared_state$column_types[[col]]
 
       if (col_type == "numeric") {
@@ -188,6 +192,13 @@ row_filter_server <- function(id, shared_state) {
         registered_cols <<- c(registered_cols, col)
       }
     })
+
+    # When row_filter_specs is cleared (Apply or Reset), purge the cache so
+    # the same column can be re-registered with fresh observers next time.
+    shiny::observeEvent(shared_state$row_filter_specs, {
+      if (length(shared_state$row_filter_specs) == 0)
+        registered_cols <<- character(0)
+    }, ignoreInit = TRUE)
   })
 }
 

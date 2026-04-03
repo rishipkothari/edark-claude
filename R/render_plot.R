@@ -16,7 +16,7 @@
 #'   plot cannot be generated (e.g. high-cardinality factor guard).
 #'
 #' @export
-render_plot <- function(spec, dataset, max_factor_levels = 20) {
+render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FALSE) {
   stopifnot(is.list(spec), is.data.frame(dataset))
 
   # High-cardinality guard: check any factor column used in the spec
@@ -75,6 +75,7 @@ render_plot <- function(spec, dataset, max_factor_levels = 20) {
     # QQ panel always gets its own descriptive title (overrides the one set by
     # .apply_plot_aesthetics) so it is self-contained in reports.
     right_p <- right_p + ggplot2::labs(title = paste("Q-Q Plot:", spec$column_a))
+    if (split_panels) return(list(left_p, right_p))
     p <- patchwork::wrap_plots(left_p, right_p, widths = c(0.45, 0.55))
   } else {
     p <- .apply_plot_aesthetics(p, spec)
@@ -138,7 +139,8 @@ render_plot <- function(spec, dataset, max_factor_levels = 20) {
   stratify <- spec$stratify_by
   palette  <- spec$color_palette
 
-  df <- dataset
+  # Drop NA factor values so they neither appear as bars nor create empty axis slots
+  df <- dataset[!is.na(dataset[[col_a]]), ]
 
   if (!is.null(stratify)) {
     # Build complete grid: every factor level gets a bar (count 0) in every
@@ -242,10 +244,12 @@ render_plot <- function(spec, dataset, max_factor_levels = 20) {
       FUN = function(x) as.numeric(scale(x))
     )
 
-    # Clamp y-axis to the actual z_std range so plotly cannot over-expand it
-    # when subplot() reconciles axis domains across panels.
-    z_range <- range(df_qq$z_std, na.rm = TRUE)
-    z_pad   <- diff(z_range) * 0.05
+    # Both axes use the same limits so the 45° reference line is interpretable.
+    # Range covers both the sample z-scores and the expected theoretical quantiles.
+    z_range  <- range(df_qq$z_std, na.rm = TRUE)
+    q_theor  <- range(qnorm(ppoints(nrow(df_qq))))
+    ax_range <- range(c(z_range, q_theor))
+    ax_pad   <- diff(ax_range) * 0.05
 
     right_p <- ggplot2::ggplot(df_qq, ggplot2::aes(
       sample = .data$z_std,
@@ -256,7 +260,8 @@ render_plot <- function(spec, dataset, max_factor_levels = 20) {
       ggplot2::scale_colour_brewer(palette = palette, name = stratify) +
       ggplot2::facet_wrap(as.formula(paste("~", stratify)), ncol = qq_ncol,
                           scales = "fixed", labeller = ggplot2::label_both) +
-      ggplot2::coord_cartesian(ylim = z_range + c(-z_pad, z_pad)) +
+      ggplot2::coord_cartesian(xlim = ax_range + c(-ax_pad, ax_pad),
+                               ylim = ax_range + c(-ax_pad, ax_pad)) +
       ggplot2::labs(x = "Theoretical quantiles",
                     y = "Standardised sample quantiles") +
       ggplot2::theme(legend.position = "none")
@@ -280,13 +285,17 @@ render_plot <- function(spec, dataset, max_factor_levels = 20) {
       ggplot2::labs(x = col_a)
 
     # ── Right: QQ (pooled) ────────────────────────────────────────────────────
-    df_qq   <- data.frame(z = as.numeric(scale(df[[col_a]])))
-    z_range <- range(df_qq$z, na.rm = TRUE)
-    z_pad   <- diff(z_range) * 0.05
+    # Both axes use the same limits so the 45° reference line is interpretable.
+    df_qq    <- data.frame(z = as.numeric(scale(df[[col_a]])))
+    z_range  <- range(df_qq$z, na.rm = TRUE)
+    q_theor  <- range(qnorm(ppoints(nrow(df_qq))))
+    ax_range <- range(c(z_range, q_theor))
+    ax_pad   <- diff(ax_range) * 0.05
     right_p <- ggplot2::ggplot(df_qq, ggplot2::aes(sample = .data$z)) +
       ggplot2::stat_qq(colour = "#5b9bd5", size = 1.5, alpha = 0.6) +
       ggplot2::stat_qq_line(colour = "#1f497d", linewidth = 0.8) +
-      ggplot2::coord_cartesian(ylim = z_range + c(-z_pad, z_pad)) +
+      ggplot2::coord_cartesian(xlim = ax_range + c(-ax_pad, ax_pad),
+                               ylim = ax_range + c(-ax_pad, ax_pad)) +
       ggplot2::labs(x = "Theoretical quantiles",
                     y = "Standardised sample quantiles")
   }
@@ -499,16 +508,19 @@ render_plot <- function(spec, dataset, max_factor_levels = 20) {
     y_rng <- range(df[[col_b]], na.rm = TRUE)
     x_pos <- x_rng[2] - 0.02 * diff(x_rng)
     y_pos <- y_rng[2] - 0.04 * diff(y_rng)
+    label_df <- data.frame(x_pos = x_pos, y_pos = y_pos, label = label)
 
     p <- ggplot2::ggplot(df, ggplot2::aes(x = .data[[col_a]], y = .data[[col_b]])) +
       ggplot2::geom_point(colour = "#5b9bd5", alpha = 0.6, size = 2) +
       ggplot2::geom_smooth(method = "loess", se = TRUE,
                            colour = "#1f497d", linewidth = 0.8) +
-      ggplot2::annotate("label",
-        x = x_pos, y = y_pos, label = label,
-        size = 3.5, colour = "grey30", hjust = 1,
-        fill = "white", label.colour = "#cccccc", label.size = 0.3,
-        label.padding = ggplot2::unit(0.3, "lines")
+      ggplot2::geom_label(
+        data        = label_df,
+        ggplot2::aes(x = x_pos, y = y_pos, label = label),
+        size        = 3.5, colour = "grey30", hjust = 1,
+        fill        = "white", label.colour = "#cccccc", label.size = 0.3,
+        label.padding = ggplot2::unit(0.3, "lines"),
+        inherit.aes = FALSE
       )
   }
 
