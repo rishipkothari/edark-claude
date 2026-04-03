@@ -292,11 +292,29 @@ Work to do in this branch:
 - The density legend bug resolves automatically
 
 ### Other todos
+
+#### Tier 1: 
 - **TODO**: Filter datetime/POSIXct columns out of the primary and secondary variable pickers in `module_explore_controls.R` — datetime variables should not be available for correlation/describe; they belong in the trend feature below
-- **TODO**: Time-trend functionality — separate UI section (not part of Correlate With); user wants ability to trend numeric variables (mean over time) and factor variables (proportion/count over time) by Day / Month / Quarter / Year, with optional stratification shown as separate colored lines (run chart style). Visualisation: line chart with points. This is distinct from the existing `trend_count` / `trend_mean` / `trend_proportion` plot types which are bivariate correlations — the trend feature is a standalone workflow.
-- **TODO**: `show_data_labels` aesthetic not yet wired for bivariate plot types (`violin_jitter`, `scatter_loess`, `bar_grouped`) — currently only `bar_count` respects it. For violin_jitter the label should show the median value per group.
 - `edark_report()` programmatic API (PRD §2.5, §2.3 PR-01–PR-04)
 - Report module UI/server — `3 · Report` tab is a placeholder
+- add reset button to prepare
+- fix transforms workflow -- still clunky; maybe a table that offers all transform logic in one
+- **TODO**: `show_data_labels` aesthetic not yet wired for bivariate plot types (`violin_jitter`, `scatter_loess`, `bar_grouped`) — currently only `bar_count` respects it. For violin_jitter the label should show the median value per group.
+
+#### Tier 2: 
+- **TODO**: Time-trend functionality — separate UI section (not part of Correlate With); user wants ability to trend numeric variables (mean over time) and factor variables (proportion/count over time) by Day / Month / Quarter / Year, with optional stratification shown as separate colored lines (run chart style). Visualisation: line chart with points. This is distinct from the existing `trend_count` / `trend_mean` / `trend_proportion` plot types which are bivariate correlations — the trend feature is a standalone workflow.
+- integrate studybuddy stuff to move onwards towards using working dataset for direct model creation and pub quality outputs
+- correlation matrix for selecting variable inclusion? 
+
+#### Tier 3: 
 - Dataset export button (PRD §2.7, DE-01)
 - `shinytest2` module tests
 - `testthat` unit tests for utility functions
+- offer user some options for plot types relevant to var combinations (something about a balloon, maybe a heat map, can ask claude what other types might be helpful or creative)
+- custom report generation (add this graph button)
+
+#### Tier 4:
+- expand aesthetic options
+- add outlier detection and winsorization option in transforms
+- add imputation possibility? 
+

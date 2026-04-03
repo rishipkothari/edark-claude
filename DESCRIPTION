@@ -31,7 +31,6 @@ Imports:
     ggplot2,
     ggpubr,
     patchwork,
-    plotly,
     e1071,
     gtsummary,
     gt,

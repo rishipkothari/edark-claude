@@ -2,9 +2,7 @@
 #'
 #' Takes a plot spec produced by `build_univariate_plot_spec()` or
 #' `build_bivariate_plot_spec()` and the current working dataset, and returns
-#' a `ggplot` object. The caller is responsible for wrapping it with
-#' `plotly::ggplotly()` for interactive display, or using it directly for
-#' report export.
+#' a `ggplot` or `patchwork` object ready for `renderPlot()` or report export.
 #'
 #' @param spec A named list as returned by `build_univariate_plot_spec()` or
 #'   `build_bivariate_plot_spec()`.
@@ -14,8 +12,8 @@
 #'   than this will not be plotted; a warning message is returned instead.
 #'   Default `20`.
 #'
-#' @return A `ggplot` object, or a `ggplot` error-card if the plot cannot be
-#'   generated (e.g. high-cardinality factor guard).
+#' @return A `ggplot` or `patchwork` object, or a `ggplot` error-card if the
+#'   plot cannot be generated (e.g. high-cardinality factor guard).
 #'
 #' @export
 render_plot <- function(spec, dataset, max_factor_levels = 20) {
@@ -66,13 +64,18 @@ render_plot <- function(spec, dataset, max_factor_levels = 20) {
 
   p <- plot_fn(spec, dataset)
 
-  # histogram_density returns an edark_two_panel; apply aesthetics to each panel
+  # histogram_density returns an edark_two_panel intermediate; apply aesthetics
+  # to each panel separately then combine into a patchwork for rendering.
+  # Left (density): honours show_legend / legend_position from spec
+  # Right (QQ):     legend suppressed — facet strips label each stratum
   if (inherits(p, "edark_two_panel")) {
-    # Left (density): honours show_legend / legend_position from spec
-    # Right (QQ):     legend suppressed — facet strips label each stratum
     spec_right <- modifyList(spec, list(show_legend = FALSE))
-    p$left  <- .apply_plot_aesthetics(p$left,  spec)
-    p$right <- .apply_plot_aesthetics(p$right, spec_right)
+    left_p  <- .apply_plot_aesthetics(p$left,  spec)
+    right_p <- .apply_plot_aesthetics(p$right, spec_right)
+    # QQ panel always gets its own descriptive title (overrides the one set by
+    # .apply_plot_aesthetics) so it is self-contained in reports.
+    right_p <- right_p + ggplot2::labs(title = paste("Q-Q Plot:", spec$column_a))
+    p <- patchwork::wrap_plots(left_p, right_p, widths = c(0.45, 0.55))
   } else {
     p <- .apply_plot_aesthetics(p, spec)
   }
@@ -82,13 +85,22 @@ render_plot <- function(spec, dataset, max_factor_levels = 20) {
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
-# Applies shared aesthetics (legend, theme) to any finished ggplot.
-# Plot title is NOT added here — it is rendered as a separate Shiny UI element
-# above the plot card in module_explore_output so it clears the facet strips.
+# Applies shared aesthetics (title, legend, theme) to any finished ggplot.
 .apply_plot_aesthetics <- function(p, spec) {
+  title <- spec$column_a
+  if (!is.null(spec$column_b)) {
+    title <- paste0(title, "  \u00d7  ", spec$column_b)
+  }
+  if (!is.null(spec$stratify_by)) {
+    title <- paste0(title, "  \u00b7  stratified by ", spec$stratify_by)
+  }
+
   p <- p +
+    ggplot2::labs(title = title) +
     ggplot2::theme_minimal(base_size = 13) +
     ggplot2::theme(
+      plot.title = ggplot2::element_text(size = 13, face = "bold", colour = "#444444",
+                                         margin = ggplot2::margin(b = 6)),
       strip.text = ggplot2::element_text(margin = ggplot2::margin(t = 6, b = 4))
     )
 
@@ -199,9 +211,8 @@ render_plot <- function(spec, dataset, max_factor_levels = 20) {
 #                       (one per stratum, no bars)           stratum, ncol =
 #                                                            ceiling(sqrt(n))
 #
-# Returns an edark_two_panel list (NOT a ggplot / patchwork) so that
-# module_explore_output can hand each panel to plotly::subplot() separately.
-# ggplotly() silently drops patchwork's second panel — hence this design.
+# Returns an edark_two_panel intermediate (left + right ggplots) so that
+# render_plot() can apply aesthetics per-panel before combining into a patchwork.
 .plot_histogram_density <- function(spec, dataset) {
   col_a    <- spec$column_a
   stratify <- spec$stratify_by
@@ -251,13 +262,22 @@ render_plot <- function(spec, dataset, max_factor_levels = 20) {
       ggplot2::theme(legend.position = "none")
   } else {
     # ── Left: histogram + density overlay ─────────────────────────────────────
+    # Primary Y axis is count; density curve is scaled to count units.
+    # Secondary Y axis shows the density scale via inverse transform.
+    n_obs <- nrow(df)
+    bw    <- diff(range(df[[col_a]], na.rm = TRUE)) / 30
+
     left_p <- ggplot2::ggplot(df, ggplot2::aes(x = .data[[col_a]])) +
-      ggplot2::geom_histogram(
-        ggplot2::aes(y = ggplot2::after_stat(density)),
-        bins = 30, fill = "#5b9bd5", alpha = 0.7
+      ggplot2::geom_histogram(bins = 30, fill = "#5b9bd5", alpha = 0.7) +
+      ggplot2::geom_density(
+        ggplot2::aes(y = ggplot2::after_stat(density) * n_obs * bw),
+        colour = "#1f497d", linewidth = 0.9
       ) +
-      ggplot2::geom_density(colour = "#1f497d", linewidth = 0.9) +
-      ggplot2::labs(x = col_a, y = "Density")
+      ggplot2::scale_y_continuous(
+        name     = "Count",
+        sec.axis = ggplot2::sec_axis(~ . / (n_obs * bw), name = "Density")
+      ) +
+      ggplot2::labs(x = col_a)
 
     # ── Right: QQ (pooled) ────────────────────────────────────────────────────
     df_qq   <- data.frame(z = as.numeric(scale(df[[col_a]])))
@@ -420,9 +440,9 @@ render_plot <- function(spec, dataset, max_factor_levels = 20) {
 
 
 # scatter_loess: numeric × numeric — points + loess smoother + correlation stats
-# Correlation label shows R², r, and p as plain text (not plotmath) so it renders
-# correctly after ggplotly conversion. ggpubr::stat_cor is intentionally NOT used
-# because its plotmath output appears as raw expression strings in plotly.
+# Correlation label shows R², r, and p as plain text (not plotmath).
+# ggpubr::stat_cor is intentionally NOT used — its plotmath output renders as
+# raw expression strings rather than formatted text.
 # Stratified: colour per stratum, faceted with ceiling(sqrt(n)) columns.
 .plot_scatter_loess <- function(spec, dataset) {
   col_a    <- spec$column_a
@@ -443,16 +463,14 @@ render_plot <- function(spec, dataset, max_factor_levels = 20) {
     n_strata  <- nlevels(factor(df[[stratify]]))
     ncol_wrap <- ceiling(sqrt(n_strata))
 
-    # Per-stratum labels — anchor at 50% of X range, near top of Y range.
-    # ggplotly centers text on the anchor coordinates and ignores ggplot2's
-    # hjust/vjust, so we place the anchor where we want the text center to land.
+    # Per-stratum labels — top-left corner, left-justified.
     x_rng <- range(df[[col_a]], na.rm = TRUE)
     y_rng <- range(df[[col_b]], na.rm = TRUE)
 
     cor_df <- dplyr::group_by(df, .data[[stratify]]) |>
       dplyr::summarise(
         label  = .cor_label(.data[[col_a]], .data[[col_b]]),
-        x_pos  = x_rng[1] + 0.5  * diff(x_rng),
+        x_pos  = x_rng[2] - 0.02 * diff(x_rng),
         y_pos  = y_rng[2] - 0.04 * diff(y_rng),
         .groups = "drop"
       )
@@ -465,10 +483,12 @@ render_plot <- function(spec, dataset, max_factor_levels = 20) {
       ggplot2::geom_point(alpha = 0.6, size = 2) +
       ggplot2::geom_smooth(method = "loess", se = TRUE, linewidth = 0.8) +
       ggplot2::scale_colour_brewer(palette = palette, name = stratify, guide = "none") +
-      ggplot2::geom_text(
+      ggplot2::geom_label(
         data        = cor_df,
         ggplot2::aes(x = x_pos, y = y_pos, label = label),
-        size        = 3, colour = "grey30",
+        size        = 3, colour = "grey30", hjust = 1,
+        fill        = "white", label.colour = "#cccccc", label.size = 0.3,
+        label.padding = ggplot2::unit(0.3, "lines"),
         inherit.aes = FALSE
       ) +
       ggplot2::facet_wrap(as.formula(paste("~", stratify)), scales = "fixed",
@@ -477,16 +497,18 @@ render_plot <- function(spec, dataset, max_factor_levels = 20) {
     label <- .cor_label(df[[col_a]], df[[col_b]])
     x_rng <- range(df[[col_a]], na.rm = TRUE)
     y_rng <- range(df[[col_b]], na.rm = TRUE)
-    x_pos <- x_rng[1] + 0.5  * diff(x_rng)
+    x_pos <- x_rng[2] - 0.02 * diff(x_rng)
     y_pos <- y_rng[2] - 0.04 * diff(y_rng)
 
     p <- ggplot2::ggplot(df, ggplot2::aes(x = .data[[col_a]], y = .data[[col_b]])) +
       ggplot2::geom_point(colour = "#5b9bd5", alpha = 0.6, size = 2) +
       ggplot2::geom_smooth(method = "loess", se = TRUE,
                            colour = "#1f497d", linewidth = 0.8) +
-      ggplot2::annotate("text",
+      ggplot2::annotate("label",
         x = x_pos, y = y_pos, label = label,
-        size = 3.5, colour = "grey30"
+        size = 3.5, colour = "grey30", hjust = 1,
+        fill = "white", label.colour = "#cccccc", label.size = 0.3,
+        label.padding = ggplot2::unit(0.3, "lines")
       )
   }
 
