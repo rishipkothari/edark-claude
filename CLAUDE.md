@@ -34,6 +34,7 @@ devtools::install_deps()
 ```
 R/
 ├── edark.R                     Entry point: validates input, casts types, builds UI+server
+├── edark_report.R              Programmatic API: edark_report() — no Shiny required
 ├── validate_input.R            Input guard called before Shiny launches
 ├── cast_column_types.R         Auto-cast rules (PRD §4.2) — runs once at launch
 ├── detect_column_types.R       Returns named char vector: col → "numeric"/"factor"/"datetime"/"character"
@@ -41,6 +42,7 @@ R/
 ├── build_plot_spec.R           build_univariate_plot_spec() / build_bivariate_plot_spec()
 ├── render_plot.R               All 8 plot types; dispatches from a spec list
 ├── build_variable_summary.R    Summary stats table for a single variable
+├── generate_report.R           Core report generation: builds sections, assembles PPT/Word/HTML
 │
 ├── module_column_manager.R     Prepare › Columns tab — include/exclude + transform checkboxes
 ├── module_column_transform.R   Pipeline helpers only: .apply_column_transforms, .make_range_labels
@@ -51,9 +53,15 @@ R/
 │
 ├── module_explore_controls.R   Explore sidebar — variable pickers, Describe/Plot buttons
 ├── module_explore_output.R     Explore main panel — plot output + summary reactable
+├── module_report.R             Report tab — type selector, variable modal, download handler
 │
 ├── data.R                      Roxygen docs for built-in liver_tx dataset
 └── data/liver_tx.rda           120-row synthetic liver transplant dataset (default for edark())
+
+inst/
+├── report_template.Rmd         Bundled Rmd template for HTML report output
+└── templates/
+    └── ppt_16x9_blank_template.pptx   Bundled slide template for PPT output
 ```
 
 ---
@@ -106,13 +114,13 @@ Only factor columns (ordered and unordered, both classified as `"factor"` by `de
 All stratified bivariate plots use `facet_wrap(scales = "fixed", ncol = ceiling(sqrt(n_strata)))`. The one exception is `scatter_loess` which maps stratify to colour and still facets (coloured points + coloured loess curves per facet).
 
 ### Plot title rendering
-Plot titles are **not** embedded in the ggplot/plotly object. They are rendered as a `uiOutput("plot_title")` element above the plot card in `module_explore_output.R`. This keeps them reliably clear of facet strips (ggplotly provides no reliable title-to-strip gap control). Format: `col_a [× col_b] [· stratified by stratify_col]`.
+Plot titles are embedded in the ggplot object by `.apply_plot_aesthetics()` via `labs(title = ...)`. Format: `col_a [× col_b] [· stratified by stratify_col]`. The `edark_two_panel` Q-Q right panel overrides its title to `"Q-Q Plot: {col_a}"` in `render_plot()` after aesthetics are applied, so it is self-contained for reporting.
 
 ### Facet labels
 All `facet_wrap()` calls use `labeller = ggplot2::label_both`, which formats strip labels as `"variable = value"`. **Critical:** the formula must be `as.formula(paste("~", stratify))`, not `~ .data[[stratify]]`. The tidy-eval `.data[[]]` syntax prevents `label_both` from extracting the column name, producing `<unknown>` labels.
 
 ### Legend defaults and positioning
-Default legend position is `"top"`. ggplotly ignores `theme(legend.position)` — legend position is applied post-conversion via `plotly::layout(legend = .plotly_legend_config(position))` in `module_explore_output.R`. `.plotly_legend_config()` maps `"top"/"bottom"/"left"/"right"` to the appropriate plotly orientation/anchor settings.
+Default legend position is `"top"`. `.apply_plot_aesthetics()` applies `theme(legend.position = spec$legend_position)` directly — native ggplot2 honours this. Legend suppression for certain plot types is applied in `renderPlot` after `current_plot()` returns, via `+ theme(legend.position = "none")`.
 
 Plots where legend is always suppressed regardless of user toggle:
 - `violin_jitter` — axes + facet strips are sufficient
@@ -127,8 +135,8 @@ Plots where legend is always suppressed regardless of user toggle:
 ### scatter_loess specifics
 - Non-stratified: single loess smoother with SE band, hardcoded blue palette.
 - Stratified: colour aesthetic mapped to stratify, coloured loess + SE per group, faceted.
-- Correlation stats (R², r, p) are computed via `cor.test()` and formatted as a plain string. `ggpubr::stat_cor` is intentionally **not** used — it outputs plotmath expressions that ggplotly renders as raw text (e.g. `italic(R)~'='~...`).
-- Annotation is anchored at `(50% of X range, near top of Y range)` with no hjust/vjust — ggplotly centers text on the anchor coordinates and ignores ggplot2's justification hints, so the anchor IS the text center (see sharp edges).
+- Correlation stats (R², r, p) are computed via `cor.test()` and formatted as a plain string. `ggpubr::stat_cor` is intentionally **not** used — it outputs plotmath expressions that render as raw text rather than formatted output.
+- Annotation is placed top-right (`x = x_rng[2] - 0.02 * diff(x_rng)`, `y = y_rng[2] - 0.04 * diff(y_rng)`) with `hjust = 1`. Uses `annotate("label")` / `geom_label()` with white fill and `#cccccc` border (`label.size = 0.3`) so it doesn't compete with points or the loess line.
 
 ### bar_grouped specifics
 - Pre-computes a complete `col_a × col_b` grid with zeros for missing combinations. Without this, absent combinations cause remaining bars in a group to expand to double width.
@@ -138,16 +146,16 @@ Plots where legend is always suppressed regardless of user toggle:
 All stratified plots use `facet_wrap(scales = "fixed")` so absolute values are comparable across panels. The one exception is **numeric primary + factor stratify** (Describe), which uses overlapping density curves rather than facets.
 
 ### Describing a numeric variable (histogram_density)
-Returns an `edark_two_panel` object (not a ggplot/patchwork) with `$left` and `$right` slots:
+`.plot_histogram_density()` returns an internal `edark_two_panel` list (`$left`, `$right`). `render_plot()` applies aesthetics to each panel separately, overrides the right panel title to `"Q-Q Plot: {col_a}"`, then combines them with `patchwork::wrap_plots(widths = c(0.45, 0.55))`. The caller always receives a patchwork — `edark_two_panel` never escapes `render_plot()`.
 
 | | No stratify | Stratified by factor |
 |---|---|---|
 | **Left panel** | Histogram + density overlay | Overlapping `geom_density` curves (one colour per stratum) |
 | **Right panel** | Pooled Q-Q plot | Q-Q faceted by stratum (`ncol = ceiling(sqrt(n_strata))`) |
 
-Both Q-Q panels standardise the sample first (`scale()`) so theoretical and sample quantile axes are both in z-score units. `coord_cartesian(ylim = ...)` is set from actual data range to prevent plotly from over-expanding the y-axis when `subplot()` reconciles axis domains.
+Non-stratified left panel: primary Y axis is **Count** (raw histogram bars), density curve is scaled to count units via `after_stat(density) * n * binwidth`. Secondary Y axis shows Density via the inverse transform (`/ (n * binwidth)`). `binwidth ≈ range / 30`.
 
-The main title is rendered via `uiOutput("plot_title")` in `module_explore_output.R` (not embedded in the ggplot). `.apply_plot_aesthetics()` does **not** add a title.
+Both Q-Q panels standardise the sample first (`scale()`) so theoretical and sample quantile axes are both in z-score units. `coord_cartesian(ylim = ...)` is set from actual data range to keep the Y axis tight.
 
 ### Factor bar ordering
 Bar charts preserve the natural factor level order. Do **not** reorder by frequency (`fct_infreq`).
@@ -204,18 +212,6 @@ Using `class = "table-warning"` on a `<tr>` applies Bootstrap's full yellow back
 ### `shiny::NULL` is not valid R
 `NULL` is a base R keyword, not a member of the `shiny` namespace. Writing `shiny::NULL` is a parse error. Just write `NULL`.
 
-### patchwork + ggplotly silently drops the second panel
-`plotly::ggplotly()` does not understand patchwork's multi-panel layout — it silently renders only the first panel. Never return a patchwork from `render_plot()` if the output is going through `ggplotly()`.
-
-**Fix**: return `structure(list(left = p1, right = p2), class = "edark_two_panel")` instead. In `module_explore_output.R`, detect this class and use `plotly::subplot()` to combine two separately-converted plotly objects.
-
-### ggplotly ignores theme(legend.position)
-`plotly::ggplotly()` does not honour ggplot2's `theme(legend.position = ...)`. The legend always appears in its default plotly position regardless.
-
-**Fix**: call `plotly::layout(legend = list(orientation = "h", x = 0.5, xanchor = "center", y = 1.05, yanchor = "bottom"))` on the **final** plotly object (after `subplot()` if applicable).
-
-To suppress a panel's traces from the shared legend (e.g. Q-Q panel in the two-panel numeric plot), use `plotly::style(p, showlegend = FALSE)` on that plotly object **before** passing it to `subplot()`.
-
 ### `shiny::isolate()` inside a reactive returns stale aesthetic values
 When a `reactive()` reads a value to create a dependency (e.g. `shared_state$color_palette` on its own line), then re-reads the same value later with `shiny::isolate()`, the `isolate()` call can return the pre-change value. This caused palette changes to visually trigger a re-render (waiter appeared) but the plot colours didn't update.
 
@@ -241,31 +237,6 @@ if (is.null(spec$plot_type)) {
 plot_fn <- switch(spec$plot_type, ...)
 ```
 
-### ggplotly ignores `guide = "none"` on ggplot2 scales
-Setting `guide = "none"` or `guide = "legend"` on `scale_fill_brewer()` / `scale_colour_brewer()` has no effect after `ggplotly()` conversion — plotly regenerates its own legend from the trace data. To suppress a legend in plotly use `plotly::style(pl, showlegend = FALSE)` on the final plotly object. This is separate from the `theme(legend.position)` issue below.
-
-### ggplotly clips annotations placed at `Inf` and ignores hjust/vjust
-`annotate("text", x = Inf, y = Inf, hjust = 1.05, ...)` works in ggplot2 (annotations can overflow the panel) but ggplotly clips at the panel boundary, making the text invisible.
-
-Additionally, ggplotly centers text at the anchor coordinates and ignores ggplot2's `hjust`/`vjust` justification hints entirely. The anchor point IS the text center.
-
-**Rule:** position annotation anchors at computed data coordinates where you want the text center to land, with no hjust/vjust override:
-
-```r
-x_pos <- x_rng[1] + 0.5 * diff(x_rng)   # horizontal center
-y_pos <- y_rng[2] - 0.04 * diff(y_rng)  # near top
-annotate("text", x = x_pos, y = y_pos, label = label)
-```
-
-### ⚠ Density legend in two-panel numeric + factor stratify — STILL UNRESOLVED
-The left density panel legend is not rendering despite multiple fix attempts. What has been tried:
-1. `plotly::layout(legend = ...)` on the combined subplot — no effect on whether entries appear
-2. Iterating `p_left$x$data` and forcing `showlegend = TRUE` per `legendgroup` — no visible effect
-
-Root cause is not confirmed. Likely candidates: `ggplotly()` sets `layout$showlegend = FALSE` (layout level overrides trace level), or `legendgroup` is not being set by ggplotly for density traces so the loop never fires, or the dual `scale_colour_brewer` + `scale_fill_brewer` mapping causes ggplotly to produce ambiguous trace metadata. Diagnosing requires inspecting the raw plotly object in a live R session.
-
-**This will be resolved by the ggplot-native transition (see TODOs).**
-
 ---
 
 ## Transform logic summary
@@ -279,34 +250,53 @@ If a column is staged for cut-point transform but has no valid breakpoints, Appl
 
 ---
 
+## Report stage — current behaviour
+
+### Two report types
+- **All Variables** (`report_type = "all_vars"`): one section per variable; univariate describe plot + summary stats table. No stratification.
+- **Primary vs All Others** (`report_type = "primary_vs_others"`): one bivariate section per secondary variable. Axis assignment and violin_jitter normalisation mirrors `build_bivariate_plot_spec()`. Single global stratify variable applies to all sections.
+
+### Output formats
+- **PPT** (`pptx`): `officer` + `rvg`. Layout: title bar top, plot left 60% (`rvg::dml()` for ggplot, raster PNG fallback for patchwork), flextable right 40%.
+- **Word** (`docx`): `officer` + `flextable`. Heading 1 per section, `body_add_gg()` raster plot, flextable summary, page break between sections.
+- **HTML** (`html`): `rmarkdown::render()` with `inst/report_template.Rmd`. Sections loop via `results='asis'`. Self-contained output with floating TOC.
+
+### Architecture — generate_report.R is Shiny-free
+`generate_report()` takes plain R arguments (no `shared_state`, no `shiny::isolate()`). The spec lists are built inline from `column_types` directly. This lets it work from both `downloadHandler` (inside Shiny) and `edark_report()` (outside Shiny).
+
+### Programmatic API
+```r
+edark_report(liver_tx, report_format = "html", output_path = tempfile(fileext = ".html"))
+edark_report(liver_tx, report_type = "primary_vs_others",
+             primary_variable = "age_tx", primary_role = "exposure",
+             report_format = "pptx", output_path = tempfile(fileext = ".pptx"))
+```
+
+### Variable selection modal
+The module uses a `reactiveVal(selected_vars)` initialised to all working dataset columns. A `modalDialog` with `checkboxGroupInput` + Select All / Deselect All buttons lets users subset variables without consuming sidebar space. `selected_vars` resets when the working dataset changes (after Apply).
+
+### patchwork + rvg::dml incompatibility
+`rvg::dml(ggobj = p)` only accepts plain `ggplot` objects, not `patchwork`. The `histogram_density` plot type returns a patchwork from `render_plot()`. In `.assemble_pptx()` this is detected via `inherits(plot_obj, "patchwork")` and the plot is rasterised to a temp PNG via `ggplot2::ggsave()` before insertion as `officer::external_img()`.
+
+---
+
 ## What's not built yet
 
-### ⭐ Next: ggplot-native rendering branch
-Replace `plotly::ggplotly()` / `plotly::subplot()` with native ggplot2 rendering throughout `module_explore_output.R`. Use `renderPlot()` / `plotOutput()` instead of `renderPlotly()` / `plotlyOutput()`. Motivation: ggplotly has been a persistent source of bugs (legend suppression, theme ignored, hjust/vjust ignored, annotation clipping, dual-scale ambiguity) that are difficult or impossible to work around reliably. Native ggplot2 honours all of: `theme(legend.position)`, `guide = "none"`, `annotate()` positioning, plot titles, facet strip spacing. The `edark_two_panel` class and `.plotly_legend_config()` helper can be removed. The plotly-specific sharp edges documented above become irrelevant.
+### Todos
 
-Work to do in this branch:
-- `module_explore_output.R`: swap `plotlyOutput` → `plotOutput`, `renderPlotly` → `renderPlot`, remove all `plotly::ggplotly()` / `plotly::subplot()` / `plotly::style()` / `plotly::layout()` calls, remove `.plotly_legend_config()`
-- `render_plot.R`: the `edark_two_panel` class was introduced only because ggplotly drops patchwork's second panel. With native rendering, the two-panel histogram can use `patchwork` directly — remove the `edark_two_panel` structure and return a patchwork instead
-- Restore plot titles into `.apply_plot_aesthetics()` and remove the `uiOutput("plot_title")` shim (or keep it — a Shiny title element above the card is actually cleaner regardless)
-- Remove `plotly` from `DESCRIPTION` imports if no longer needed
-- The density legend bug resolves automatically
-
-### Other todos
-
-#### Tier 1: 
+#### Tier 1:
 - **TODO**: Filter datetime/POSIXct columns out of the primary and secondary variable pickers in `module_explore_controls.R` — datetime variables should not be available for correlation/describe; they belong in the trend feature below
-- `edark_report()` programmatic API (PRD §2.5, §2.3 PR-01–PR-04)
-- Report module UI/server — `3 · Report` tab is a placeholder
 - add reset button to prepare
-- fix transforms workflow -- still clunky; maybe a table that offers all transform logic in one
+- fix transforms workflow — still clunky; maybe a table that offers all transform logic in one
 - **TODO**: `show_data_labels` aesthetic not yet wired for bivariate plot types (`violin_jitter`, `scatter_loess`, `bar_grouped`) — currently only `bar_count` respects it. For violin_jitter the label should show the median value per group.
+- **TODO**: Fix console warning in `.plot_scatter_loess()` (`render_plot.R`) when plotting numeric × numeric: `Ignoring unknown parameters: 'label.colour' and 'label.size'` from `ggplot2::annotate("label", ...)`. The `label.colour` and `label.size` params are not valid for `annotate()` — replace with the correct ggplot2 equivalents (`colour` for border colour, `label.size` → `label.padding` or just remove if not needed).
 
-#### Tier 2: 
+#### Tier 2:
 - **TODO**: Time-trend functionality — separate UI section (not part of Correlate With); user wants ability to trend numeric variables (mean over time) and factor variables (proportion/count over time) by Day / Month / Quarter / Year, with optional stratification shown as separate colored lines (run chart style). Visualisation: line chart with points. This is distinct from the existing `trend_count` / `trend_mean` / `trend_proportion` plot types which are bivariate correlations — the trend feature is a standalone workflow.
 - integrate studybuddy stuff to move onwards towards using working dataset for direct model creation and pub quality outputs
-- correlation matrix for selecting variable inclusion? 
+- correlation matrix for selecting variable inclusion?
 
-#### Tier 3: 
+#### Tier 3:
 - Dataset export button (PRD §2.7, DE-01)
 - `shinytest2` module tests
 - `testthat` unit tests for utility functions
@@ -316,5 +306,5 @@ Work to do in this branch:
 #### Tier 4:
 - expand aesthetic options
 - add outlier detection and winsorization option in transforms
-- add imputation possibility? 
+- add imputation possibility?
 

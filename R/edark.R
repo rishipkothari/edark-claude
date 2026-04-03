@@ -93,19 +93,11 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       )
     ),
 
-    # ── Tab 3: Report (post-MVP placeholder) ────────────────────────────────
+    # ── Tab 3: Report ───────────────────────────────────────────────────────
     bslib::nav_panel(
       value = "report",
       title = shiny::tagList(shiny::icon("file-export"), " 3 \u00b7 Report"),
-      bslib::card(
-        bslib::card_body(
-          shiny::tags$p(
-            class = "text-muted",
-            shiny::icon("clock"),
-            " Report generation is coming in a future release."
-          )
-        )
-      )
+      report_ui("report")
     )
   )
 
@@ -157,6 +149,7 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
     prepare_confirm_server("prepare_confirm",       shared_state)
     explore_controls_server("explore_controls", shared_state)
     explore_output_server("explore_output",   shared_state)
+    report_server("report",                   shared_state)
   }
 
   shiny::shinyApp(ui = ui, server = server)

@@ -35,12 +35,12 @@ Imports:
     gtsummary,
     gt,
     flextable,
-    reactable
-Suggests:
+    reactable,
     officer,
     rvg,
     rmarkdown,
-    knitr,
+    knitr
+Suggests:
     testthat (>= 3.0.0),
     shinytest2
 LazyData: true

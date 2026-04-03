@@ -1,0 +1,43 @@
+---
+title: "EDARK Report"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    self_contained: true
+params:
+  sections: NULL
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo    = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width  = 10,
+  fig.height = 5
+)
+library(ggplot2)
+library(patchwork)
+library(flextable)
+```
+
+```{r results='asis'}
+for (sec in params$sections) {
+  cat("## ", sec$title, "\n\n", sep = "")
+
+  # Plot
+  print(sec$plot_obj)
+  cat("\n\n")
+
+  # Summary table
+  ft <- flextable::flextable(sec$summary_df)
+  ft <- flextable::set_table_properties(ft, layout = "autofit")
+  ft <- flextable::fontsize(ft, size = 9, part = "all")
+  print(ft, preview = "html")
+
+  cat("\n\n---\n\n")
+}
+```
