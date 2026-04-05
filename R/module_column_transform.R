@@ -16,7 +16,7 @@
       lvls           <- sort(unique(x[!is.na(x)]))
       dataset[[col]] <- factor(x, levels = lvls, ordered = TRUE)
 
-    } else {
+    } else if (identical(spec$method, "cutpoints")) {
       breaks <- spec$breakpoints
       if (is.null(breaks) || length(breaks) == 0) next
 
@@ -43,21 +43,33 @@
         right          = FALSE,
         ordered_result = TRUE
       )
+
+    } else if (identical(spec$method, "log")) {
+      base_fn <- switch(
+        spec$log_base %||% "ln",
+        ln    = log,
+        log10 = log10,
+        log2  = log2,
+        log   # fallback
+      )
+      dataset[[col]] <- base_fn(x)
+
+    } else if (identical(spec$method, "winsorize")) {
+      lo             <- quantile(x, (spec$lower_pct %||% 1)  / 100, na.rm = TRUE)
+      hi             <- quantile(x, (spec$upper_pct %||% 99) / 100, na.rm = TRUE)
+      dataset[[col]] <- pmin(pmax(x, lo), hi)
+
+    } else if (identical(spec$method, "round")) {
+      dp             <- max(0L, as.integer(spec$decimal_places %||% 0))
+      dataset[[col]] <- round(x, digits = dp)
+
+    } else if (identical(spec$method, "standardize")) {
+      mu <- mean(x, na.rm = TRUE)
+      s  <- sd(x,   na.rm = TRUE)
+      dataset[[col]] <- if (s > 0) (x - mu) / s else x
     }
   }
   dataset
-}
-
-
-# Build a preview data frame — only used when method = "auto".
-# For cut-points the preview is removed from the UI.
-.build_transform_preview <- function(spec, x_vals) {
-  if (!identical(spec$method, "auto")) return(NULL)
-  data.frame(
-    Original_value = as.character(x_vals),
-    New_level      = as.character(seq_along(x_vals)),
-    stringsAsFactors = FALSE
-  )
 }
 
 
@@ -69,10 +81,8 @@
 
   fmt <- function(x) {
     if (x == round(x)) {
-      # Integer-valued: no decimal point
       formatC(x, format = "d", big.mark = ",")
     } else {
-      # Decimal: trim trailing zeros manually
       s <- formatC(x, format = "f", digits = 2)
       sub("\\.?0+$", "", s)
     }
@@ -94,13 +104,30 @@
 # Check whether a staged transform spec is valid (ready to apply).
 # Returns TRUE if valid, FALSE if it needs user attention.
 .transform_spec_is_valid <- function(spec, x) {
-  if (identical(spec$method, "auto")) return(TRUE)
+  switch(spec$method,
+    auto        = TRUE,
+    standardize = TRUE,
+    round       = TRUE,
 
-  breaks <- spec$breakpoints
-  if (is.null(breaks) || length(breaks) == 0) return(FALSE)
+    cutpoints = {
+      breaks <- spec$breakpoints
+      if (is.null(breaks) || length(breaks) == 0) return(FALSE)
+      x_min      <- min(x, na.rm = TRUE)
+      x_max      <- max(x, na.rm = TRUE)
+      length(breaks[breaks > x_min & breaks < x_max]) > 0
+    },
 
-  x_min      <- min(x, na.rm = TRUE)
-  x_max      <- max(x, na.rm = TRUE)
-  breaks_use <- breaks[breaks > x_min & breaks < x_max]
-  length(breaks_use) > 0
+    log = {
+      if (any(!is.na(x) & x <= 0)) return(FALSE)
+      TRUE
+    },
+
+    winsorize = {
+      lo <- spec$lower_pct %||% 1
+      hi <- spec$upper_pct %||% 99
+      lo >= 0 && hi <= 100 && lo < hi
+    },
+
+    TRUE  # unknown method: pass through
+  )
 }

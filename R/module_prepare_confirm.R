@@ -70,7 +70,12 @@ prepare_confirm_server <- function(id, shared_state) {
 
 
     # ── Dimension preview ─────────────────────────────────────────────────────
+    # apply_prepare_pipeline() isolates all reads, so we touch the relevant
+    # fields here to create reactive dependencies before calling it.
     preview_dataset <- shiny::reactive({
+      shared_state$included_columns       # dependency: col include/exclude
+      shared_state$row_filter_specs       # dependency: row filters
+      shared_state$column_transform_specs # dependency: transforms
       tryCatch(apply_prepare_pipeline(shared_state), error = function(e) NULL)
     })
 
@@ -90,8 +95,7 @@ prepare_confirm_server <- function(id, shared_state) {
 
 
     # ── Transform validation warning ──────────────────────────────────────────
-    # Shows a red warning listing any staged cut-point transforms that have no
-    # valid breakpoints configured. Blocks are listed by column name.
+    # Shows a red warning listing any staged transforms that fail validation.
     output$transform_warnings <- shiny::renderUI({
       invalid <- .find_invalid_transforms(shared_state)
       if (length(invalid) == 0) return(NULL)
@@ -100,9 +104,9 @@ prepare_confirm_server <- function(id, shared_state) {
         shiny::tags$strong(shiny::icon("triangle-exclamation"), " Transforms need attention:"),
         shiny::tags$ul(
           class = "mb-0 ps-3",
-          lapply(invalid, function(col) shiny::tags$li(col, ": no valid breakpoints"))
+          lapply(invalid, function(col) shiny::tags$li(col))
         ),
-        "Go to the Transforms tab to configure cut-points."
+        "Go to the Transforms tab to fix the configuration."
       )
     })
 
@@ -115,7 +119,7 @@ prepare_confirm_server <- function(id, shared_state) {
         # Navigate to Transforms tab so user sees what needs fixing
         bslib::nav_select("prepare_tabs", "transforms")
         shiny::showNotification(
-          paste0("Fix cut-point transforms before applying: ",
+          paste0("Fix transforms before applying: ",
                  paste(invalid, collapse = ", ")),
           type = "error", duration = 6
         )
@@ -262,15 +266,14 @@ apply_prepare_pipeline <- function(shared_state) {
 }
 
 
-# Return names of staged cut-point transforms that have no valid breakpoints.
+# Return names of staged transforms that fail validation.
 .find_invalid_transforms <- function(shared_state) {
   specs   <- shared_state$column_transform_specs
   dataset <- shared_state$dataset_original
   invalid <- character(0)
   for (col in names(specs)) {
     spec <- specs[[col]]
-    if (!identical(spec$method, "cutpoints")) next
-    x <- dataset[[col]]
+    x    <- dataset[[col]]
     if (!.transform_spec_is_valid(spec, x)) invalid <- c(invalid, col)
   }
   invalid

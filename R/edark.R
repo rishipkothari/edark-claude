@@ -143,7 +143,7 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
 
     # ── Prepare tab navigation guard ──────────────────────────────────────────
     # Auto-applies pending changes when the user switches prepare sub-tabs.
-    # Invalid cut-point transforms still block (pipeline would mangle the column).
+    # Invalid transforms block navigation (pipeline would mangle the column).
     last_prepare_tab <- shiny::reactiveVal("columns")
     shiny::observeEvent(input$prepare_tabs, {
       if (isTRUE(shared_state$has_pending_changes)) {
@@ -151,7 +151,7 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
         if (length(invalid) > 0) {
           bslib::nav_select("prepare_tabs", last_prepare_tab())
           shiny::showNotification(
-            paste0("Fix cut-point transforms before switching tabs: ",
+            paste0("Fix transforms before switching tabs: ",
                    paste(invalid, collapse = ", ")),
             type = "error", duration = 6
           )
