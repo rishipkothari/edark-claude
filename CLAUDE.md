@@ -44,12 +44,12 @@ R/
 ├── build_variable_summary.R    Summary stats table for a single variable
 ├── generate_report.R           Core report generation: builds sections, assembles PPT/Word/HTML
 │
-├── module_column_manager.R     Prepare › Columns tab — include/exclude + transform checkboxes
-├── module_column_transform.R   Pipeline helpers only: .apply_column_transforms, .make_range_labels
-├── module_transform_variables.R Prepare › Transforms tab — accordion of staged transform configs
+├── module_column_manager.R     Prepare › Columns tab — include/exclude only (no transform controls)
+├── module_column_transform.R   Pipeline helpers: .apply_column_transforms, .make_range_labels, .transform_spec_is_valid
+├── module_transform_variables.R Prepare › Transforms tab — flat table, one row per numeric col, inline config
 ├── module_row_filter.R         Prepare › Row Filters tab
 ├── module_prepare_confirm.R    Apply Changes sidebar — pipeline, validation, navigation
-├── module_data_preview.R       Prepare › Data Preview tab — original + working reactables
+├── module_data_preview.R       Prepare › Data Preview tab — original + working reactables + summary sub-tabs
 │
 ├── module_explore_controls.R   Explore sidebar — variable pickers, Describe/Plot buttons
 ├── module_explore_output.R     Explore main panel — plot output + summary reactable
@@ -87,7 +87,7 @@ inst/
 1. Start from `dataset_original`
 2. Apply column type overrides
 3. Select included columns
-4. Apply column transforms (numeric → ordered factor)
+4. Apply column transforms (see transform types below)
 5. Apply row filters
 
 ---
@@ -206,10 +206,12 @@ observeEvent(input$cutpoints_col, {
 })
 ```
 
-### Transform accordion collapses when method toggle re-renders
-If the accordion `renderUI` depends on `shared_state$column_transform_specs` directly, toggling the method (auto ↔ cutpoints) updates the spec, which triggers a full accordion re-render, which collapses the open panel.
+### Transforms tab — flat table renderUI layering
+The Transforms tab uses two-level `renderUI`:
+1. **`output$transform_table`** — rebuilds only when the **set** of `eligible_cols` changes (not on per-column edits). Renders the full table skeleton including each `selectInput` and a `uiOutput` config cell per column.
+2. **`output$config_{col}`** — re-renders only when `input$type_{col}` changes. Renders the inline config inputs for that column's method.
 
-The fix in `module_transform_variables.R`: use a separate `reactiveVal(transform_structure)` that only fires when the **set of staged columns** changes (not when method/breakpoints/labels change). The per-column cut-point inputs are separate `renderUI` outputs keyed on method alone — so toggling method only re-renders that inner section, not the accordion shell.
+Per-column observers (breakpoints, log base, percentiles, etc.) are registered lazily via `registered_cols` guard — same pattern as `module_row_filter.R`. This prevents double-registration when `eligible_cols` re-fires.
 
 ### Row filter observers must be registered lazily with a guard
 Row filter input observers (`sliderInput`, `checkboxGroupButtons`) are registered inside a `shiny::observe()` that fires when new filter specs are added. Without tracking which columns already have observers (`registered_cols` vector + `setdiff`), every time `row_filter_specs` changes the observe re-runs and double-registers observers for existing columns — leading to duplicate writes and erratic filter behavior.
@@ -219,6 +221,22 @@ Using `class = "table-warning"` on a `<tr>` applies Bootstrap's full yellow back
 
 ### `shiny::NULL` is not valid R
 `NULL` is a base R keyword, not a member of the `shiny` namespace. Writing `shiny::NULL` is a parse error. Just write `NULL`.
+
+### `apply_prepare_pipeline()` uses `isolate()` — reactive callers must create their own dependencies
+`apply_prepare_pipeline()` wraps all `shared_state` reads in `shiny::isolate()` so it can be called from both reactive contexts (dimension preview) and non-reactive ones (`downloadHandler`, `edark_report()`). This means a `reactive({})` that only calls `apply_prepare_pipeline(shared_state)` will **never invalidate** — it creates no reactive dependencies.
+
+**Rule:** any reactive that needs to re-run when prepare state changes must read the relevant fields directly before calling the pipeline:
+
+```r
+preview_dataset <- shiny::reactive({
+  shared_state$included_columns       # dependency
+  shared_state$row_filter_specs       # dependency
+  shared_state$column_transform_specs # dependency
+  tryCatch(apply_prepare_pipeline(shared_state), error = function(e) NULL)
+})
+```
+
+This bit us in `module_prepare_confirm.R` — the dimension preview showed stale row/col counts until the explicit dependency reads were added.
 
 ### `shiny::isolate()` inside a reactive returns stale aesthetic values
 When a `reactive()` reads a value to create a dependency (e.g. `shared_state$color_palette` on its own line), then re-reads the same value later with `shiny::isolate()`, the `isolate()` call can return the pre-change value. This caused palette changes to visually trigger a re-render (waiter appeared) but the plot colours didn't update.
@@ -255,12 +273,35 @@ plot_fn <- switch(spec$plot_type, ...)
 
 ## Transform logic summary
 
-**Auto-factor**: every unique numeric value becomes one level of an ordered factor (sorted ascending). Only available when the column has ≤ 20 unique values.
+Transforms are staged and configured entirely in the **Transforms tab** — the Columns tab no longer has transform controls. The tab navigation guard (`edark.R`) blocks leaving the Transforms tab if any staged transform fails validation. `column_transform_specs` is **not cleared** by Apply — specs persist so the table shows the current applied state on return.
 
-**Cut-points**: user provides comma-separated breakpoints. Breakpoints outside the actual data range are silently dropped. Default labels are generated by `.make_range_labels()` in `module_column_transform.R`:
+`eligible_cols` in `module_transform_variables.R` uses `original_column_types` (never changes), so all initially-numeric included columns always appear in the table regardless of what type they currently have after Apply.
+
+Adding a new transform type requires: (1) new dropdown option in `transform_variables_ui`, (2) new config `renderUI` case, (3) new branch in `.apply_column_transforms()` + `.transform_spec_is_valid()` in `module_column_transform.R`. No other files need changes.
+
+| Method | UI label | Config | Output type | Invalid when |
+|---|---|---|---|---|
+| `"auto"` | Auto-factor | none | ordered factor | never |
+| `"cutpoints"` | Cut-points | breakpoints (req) + labels (opt) | ordered factor | no valid breakpoints in data range |
+| `"log"` | Log transform | base: ln / log10 / log2 | numeric | any value ≤ 0 |
+| `"winsorize"` | Winsorize | lower % + upper % (defaults 1/99) | numeric | lower ≥ upper |
+| `"round"` | Round | decimal places (default 0) | numeric | never |
+| `"standardize"` | Standardize (z-score) | none | numeric | SD = 0 |
+
+**Auto-factor**: every unique numeric value becomes one level of an ordered factor (sorted ascending). Recommended for columns with ≤ 20 unique values.
+
+**Cut-points**: user provides comma-separated breakpoints. Breakpoints outside the actual data range are silently dropped. Default labels generated by `.make_range_labels()` in `module_column_transform.R`:
 - e.g. breakpoints `c(25, 40)` → `c("< 25", "25 – < 40", "≥ 40")`
 
-If a column is staged for cut-point transform but has no valid breakpoints, Apply is blocked: a red alert appears in the sidebar and the app navigates to the Transforms tab.
+**Log**: applies `log()` / `log10()` / `log2()` per chosen base. Blocked if any non-NA value ≤ 0.
+
+**Winsorize**: clamps values to `[quantile(lo%), quantile(hi%)]` using `pmin`/`pmax`. Blocked if lower percentile ≥ upper.
+
+**Round**: `round(x, digits = dp)`. Always valid.
+
+**Standardize**: `(x - mean) / sd`. Falls back to identity if SD = 0 (all values identical).
+
+`.find_invalid_transforms()` in `module_prepare_confirm.R` validates all spec types (not just cut-points) by calling `.transform_spec_is_valid(spec, x)` for each staged column.
 
 ---
 
@@ -303,6 +344,8 @@ Datetime columns are excluded everywhere in reports — section builders filter 
 
 ### Dataset summary table — `.build_dataset_summary()`
 One row per numeric/factor column. Columns: Variable, Type, N, N_missing, Pct_miss, N_unique, Min, Max, Mean, SD, Median, IQR, Skewness, Kurtosis (NA for factors), Top_values (NA for numerics — top 5 levels pipe-separated). Styled via `.style_dataset_summary_ft()` for PPTX/DOCX. For HTML, rendered as a plain `<table>` (not flextable) so Variable column can contain raw HTML links.
+
+This same function is also used in `module_data_preview.R` — the Data Preview tab renders summary sub-tabs (Original › Summary and Working › Summary) as reactables via `.render_summary_reactable()`. NA numerics display as em-dash.
 
 ### HTML anchor system
 `.make_html_anchor(x)` in `generate_report.R` produces consistent anchor IDs:
@@ -350,7 +393,6 @@ edark_report(liver_tx, report_type = "primary_vs_others",
 ### Todos
 
 #### Tier 1:
-- fix transforms workflow — still clunky; maybe a table that offers all transform logic in one. Specific blocker: staging a transform from the Columns tab immediately registers as invalid (no cutpoints configured yet), which triggers the auto-apply guard and blocks navigation to the Transforms tab where the user would configure cutpoints. Circular deadlock. Full redesign needed before this is fixable.
 - Time-trend feature (datetime columns' only use) — separate UI section (not part of Correlate With); trend numeric variables (mean over time) and factor variables (proportion/count over time) by Day / Month / Quarter / Year, optional stratification as separate coloured lines (run chart style). datetime/POSIXct columns should autocasted via `cast_column_types()` to POSIXct (confirm this is happening). Visualisation: line chart with points.
 - Statistical tests in Explore tab for bivariate sections — use appropriate test by variable type combination: numeric × factor → Kruskal-Wallis (with p-value); factor × factor → chi-square or Fisher's (with p-value); numeric × numeric → already has r/R²/p from `cor.test()`. Tests should display in the summary panel in Explore. (Reports already have these via the table helpers.)
 - `show_data_labels` aesthetic not yet wired for bivariate plot types (`violin_jitter`, `scatter_loess`, `bar_grouped`) — currently only `bar_count` respects it. For violin_jitter the label should show the median value per group.
@@ -370,5 +412,5 @@ edark_report(liver_tx, report_type = "primary_vs_others",
 
 #### Tier 4:
 - expand aesthetic options
-- add outlier detection and winsorization option in transforms
+- add outlier detection option in transforms (winsorize is already implemented)
 - add imputation possibility?
