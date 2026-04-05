@@ -20,10 +20,12 @@ explore_controls_ui <- function(id) {
 
   shiny::tagList(
 
-    # ── Primary variable ────────────────────────────────────────────────────
     bslib::card(
-      bslib::card_header(shiny::icon("crosshairs"), " Primary Variable"),
       bslib::card_body(
+
+        # ── Primary variable ──────────────────────────────────────────────────
+        shiny::tags$p(class = "fw-semibold mb-1",
+                      shiny::icon("crosshairs"), " Primary Variable"),
         shiny::uiOutput(ns("primary_var_picker")),
         shinyWidgets::radioGroupButtons(
           ns("primary_role"),
@@ -40,26 +42,18 @@ explore_controls_ui <- function(id) {
           label = "Describe",
           icon  = shiny::icon("chart-bar"),
           class = "btn-primary w-100"
-        )
-      )
-    ),
+        ),
 
-    shiny::br(),
 
-    # ── Stratification ──────────────────────────────────────────────────────
-    bslib::card(
-      bslib::card_header(shiny::icon("layer-group"), " Stratify By"),
-      bslib::card_body(
-        shiny::uiOutput(ns("stratify_picker"))
-      )
-    ),
+        # ── Stratification ────────────────────────────────────────────────────
+        shiny::tags$p(class = "fw-semibold mb-1",
+                      shiny::icon("layer-group"), " Stratify By"),
+        shiny::uiOutput(ns("stratify_picker")),
 
-    shiny::br(),
 
-    # ── Bivariate ───────────────────────────────────────────────────────────
-    bslib::card(
-      bslib::card_header(shiny::icon("arrow-right-arrow-left"), " Correlate With"),
-      bslib::card_body(
+        # ── Bivariate ─────────────────────────────────────────────────────────
+        shiny::tags$p(class = "fw-semibold mb-1",
+                      shiny::icon("arrow-right-arrow-left"), " Correlate With"),
         shiny::uiOutput(ns("secondary_var_picker")),
         shiny::actionButton(
           ns("plot_btn"),
@@ -67,6 +61,7 @@ explore_controls_ui <- function(id) {
           icon  = shiny::icon("chart-line"),
           class = "btn-outline-primary w-100"
         )
+
       )
     ),
 

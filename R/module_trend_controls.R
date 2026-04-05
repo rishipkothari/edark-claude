@@ -21,37 +21,42 @@ trend_controls_ui <- function(id) {
 
   shiny::tagList(
 
-    # ── Timestamp ───────────────────────────────────────────────────────────
     bslib::card(
       bslib::card_body(
-        shiny::uiOutput(ns("timestamp_picker"))
-      )
-    ),
 
-    # ── Resolution ──────────────────────────────────────────────────────────
-    bslib::card(
-      bslib::card_body(
+        # ── Timestamp ───────────────────────────────────────────────────────
+        shiny::tags$p(class = "fw-semibold mb-1",
+                      shiny::icon("clock"), " Timestamp"),
+        shiny::uiOutput(ns("timestamp_picker")),
+
+
+        # ── Resolution ──────────────────────────────────────────────────────
+        shiny::tags$p(class = "fw-semibold mb-1",
+                      shiny::icon("sliders"), " Resolution"),
         shiny::selectInput(
           ns("trend_resolution"),
-          label   = "Time resolution:",
-          choices = c("Hour", "Day", "Week", "Month", "Quarter", "Year"),
+          label    = NULL,
+          choices  = c("Hour", "Day", "Week", "Month", "Quarter", "Year"),
           selected = "Month"
-        )
-      )
-    ),
+        ),
 
-    # ── Trend variable + stat picker ─────────────────────────────────────────
-    bslib::card(
-      bslib::card_body(
+
+        # ── Trend variable + stat picker ─────────────────────────────────────
+        shiny::tags$p(class = "fw-semibold mb-1",
+                      shiny::icon("chart-line"), " Trend Variable"),
         shiny::uiOutput(ns("trend_var_picker")),
-        shiny::uiOutput(ns("stat_picker_ui"))
-      )
-    ),
+        shiny::uiOutput(ns("stat_picker_ui")),
 
-    # ── Stratify By ─────────────────────────────────────────────────────────
-    bslib::card(
-      bslib::card_body(
-        shiny::uiOutput(ns("stratify_picker"))
+
+        # ── Stratify By ─────────────────────────────────────────────────────
+        shiny::tags$p(class = "fw-semibold mb-1",
+                      shiny::icon("layer-group"), " Stratify By"),
+        shiny::uiOutput(ns("stratify_picker")),
+
+
+        # ── Zero baseline ────────────────────────────────────────────────────
+        shiny::uiOutput(ns("zero_baseline_ui"))
+
       )
     ),
 
@@ -140,9 +145,11 @@ trend_controls_server <- function(id, shared_state) {
         ns("trend_summary_stat"),
         label   = "Summary statistic:",
         choices = c(
+          "Mean only"           = "mean_only",
           "Mean \u00b1 SD"      = "mean_sd",
           "Mean \u00b1 SE"      = "mean_se",
           "Mean \u00b1 95% CI"  = "mean_ci",
+          "Median only"         = "median_only",
           "Median (IQR)"        = "median_iqr",
           "Count"               = "count",
           "Sum"                 = "sum",
@@ -151,6 +158,14 @@ trend_controls_server <- function(id, shared_state) {
         ),
         selected = shiny::isolate(shared_state$trend_summary_stat)
       )
+    })
+
+    output$zero_baseline_ui <- shiny::renderUI({
+      tv      <- input$trend_variable
+      default <- is.null(tv) || identical(tv, "")   # TRUE for count mode
+      shiny::checkboxInput(ns("trend_zero_baseline"),
+                           "Include zero baseline (y-axis)",
+                           value = default)
     })
 
     output$stratify_picker <- shiny::renderUI({
@@ -190,6 +205,12 @@ trend_controls_server <- function(id, shared_state) {
       val <- input$trend_summary_stat
       if (!is.null(val) && !identical(shared_state$trend_summary_stat, val))
         shared_state$trend_summary_stat <- val
+    })
+
+    shiny::observeEvent(input$trend_zero_baseline, {
+      val <- isTRUE(input$trend_zero_baseline)
+      if (!identical(shared_state$trend_zero_baseline, val))
+        shared_state$trend_zero_baseline <- val
     })
 
     shiny::observeEvent(input$trend_stratify_variable, {

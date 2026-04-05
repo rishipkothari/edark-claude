@@ -335,7 +335,9 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
       ggplot2::geom_point(colour = "#1f497d", size = 2)
   }
 
-  p + ggplot2::labs(x = resolution, y = "Count")
+  p <- p + ggplot2::labs(x = resolution, y = "Count")
+  if (isTRUE(spec$trend_zero_baseline)) p <- p + ggplot2::expand_limits(y = 0)
+  p
 }
 
 
@@ -611,6 +613,7 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
       ggplot2::labs(x = resolution, y = "Count")
   }
 
+  if (isTRUE(spec$trend_zero_baseline)) p <- p + ggplot2::expand_limits(y = 0)
   p
 }
 
@@ -637,9 +640,11 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
     x <- d[[col_b]]
     n <- sum(!is.na(x))
     y <- switch(stat,
+      mean_only  = mean(x, na.rm = TRUE),
       mean_sd    = mean(x, na.rm = TRUE),
       mean_se    = mean(x, na.rm = TRUE),
       mean_ci    = mean(x, na.rm = TRUE),
+      median_only = stats::median(x, na.rm = TRUE),
       median_iqr = stats::median(x, na.rm = TRUE),
       count      = as.numeric(n),
       sum        = sum(x, na.rm = TRUE),
@@ -705,6 +710,7 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
       ggplot2::labs(x = resolution, y = y_label)
   }
 
+  if (isTRUE(spec$trend_zero_baseline)) p <- p + ggplot2::expand_limits(y = 0)
   p
 }
 
@@ -712,14 +718,16 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
 # Returns the Y-axis label for a trend_numeric summary stat.
 .trend_stat_label <- function(stat) {
   switch(stat,
-    mean_sd    = "Mean \u00b1 SD",
-    mean_se    = "Mean \u00b1 SE",
-    mean_ci    = "Mean \u00b1 95% CI",
-    median_iqr = "Median (IQR)",
-    count      = "Count",
-    sum        = "Sum",
-    max        = "Max",
-    min        = "Min",
+    mean_only   = "Mean",
+    mean_sd     = "Mean \u00b1 SD",
+    mean_se     = "Mean \u00b1 SE",
+    mean_ci     = "Mean \u00b1 95% CI",
+    median_only = "Median",
+    median_iqr  = "Median (IQR)",
+    count       = "Count",
+    sum         = "Sum",
+    max         = "Max",
+    min         = "Min",
     stat
   )
 }

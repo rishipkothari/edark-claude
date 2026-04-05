@@ -145,16 +145,17 @@ build_trend_plot_spec <- function(shared_state) {
   }
 
   list(
-    plot_type          = plot_type,
-    column_a           = timestamp_var,
-    column_b           = trend_var,
-    primary_role       = "exposure",
-    stratify_by        = if (!is.null(stratify) && nchar(stratify) > 0) stratify else NULL,
-    trend_resolution   = resolution,
-    trend_summary_stat = summary_stat,
-    color_palette      = shiny::isolate(shared_state$color_palette),
-    show_data_labels   = shiny::isolate(shared_state$show_data_labels),
-    show_legend        = shiny::isolate(shared_state$show_legend),
-    legend_position    = shiny::isolate(shared_state$legend_position)
+    plot_type           = plot_type,
+    column_a            = timestamp_var,
+    column_b            = trend_var,
+    primary_role        = "exposure",
+    stratify_by         = if (!is.null(stratify) && nchar(stratify) > 0) stratify else NULL,
+    trend_resolution    = resolution,
+    trend_summary_stat  = summary_stat,
+    trend_zero_baseline = isTRUE(shiny::isolate(shared_state$trend_zero_baseline)),
+    color_palette       = shiny::isolate(shared_state$color_palette),
+    show_data_labels    = shiny::isolate(shared_state$show_data_labels),
+    show_legend         = shiny::isolate(shared_state$show_legend),
+    legend_position     = shiny::isolate(shared_state$legend_position)
   )
 }

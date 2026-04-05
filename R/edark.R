@@ -136,6 +136,7 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       trend_summary_stat       = "mean_sd",
       trend_resolution         = "Month",
       trend_stratify_variable  = NULL,
+      trend_zero_baseline      = TRUE,
 
       # Plot state
       plot_specification      = NULL,

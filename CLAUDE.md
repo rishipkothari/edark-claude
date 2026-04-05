@@ -73,7 +73,7 @@ inst/
 
 ### Reactivity discipline
 - Data recomputation is triggered by **button clicks**, not by input changes — keeps the app performant and state transitions predictable.
-- Aesthetic changes (palette, legend, etc.) are the only exception: they re-render the current plot cheaply without rebuilding the spec.
+- Aesthetic changes (palette, legend, `trend_zero_baseline`, etc.) are the only exception: they re-render the current plot cheaply without rebuilding the spec. These are read directly from `shared_state` inside `current_plot()` in `module_explore_output.R` and merged over the stored spec via `modifyList()`.
 - All changes in Prepare are **staged** — nothing touches `dataset_working` until Apply is clicked.
 
 ### Prepare pipeline order (mandatory, do not reorder)
@@ -118,9 +118,11 @@ Resolutions: Hour / Day / Week / Month / Quarter / Year (`.trend_floor_fn()` in 
 - `trend_proportion` + stratify → facet by stratum; factor levels as coloured lines within each facet
 
 Numeric stat options (stored in `shared_state$trend_summary_stat`):
-`mean_sd`, `mean_se`, `mean_ci`, `median_iqr`, `count`, `sum`, `max`, `min`. Stats with intervals (`mean_*`, `median_iqr`) render a `geom_ribbon`.
+`mean_only`, `mean_sd`, `mean_se`, `mean_ci`, `median_only`, `median_iqr`, `count`, `sum`, `max`, `min`. Stats with intervals (`mean_sd/se/ci`, `median_iqr`) render a `geom_ribbon`; `mean_only` and `median_only` are line+point only.
 
-Trend tab has its own shared_state fields: `trend_timestamp_variable`, `trend_variable`, `trend_summary_stat`, `trend_resolution`, `trend_stratify_variable`. These are separate from the Analyse tab fields (`primary_variable`, `stratify_variable`, etc.).
+**Zero baseline** (`shared_state$trend_zero_baseline`): checkbox in the trend sidebar, reactive like aesthetics (re-renders without re-clicking Plot Trend). Defaults to TRUE when no trend variable is selected (count mode), FALSE for numeric/factor variables. Applied via `expand_limits(y = 0)` in all three trend plot functions.
+
+Trend tab has its own shared_state fields: `trend_timestamp_variable`, `trend_variable`, `trend_summary_stat`, `trend_resolution`, `trend_stratify_variable`, `trend_zero_baseline`. These are separate from the Analyse tab fields (`primary_variable`, `stratify_variable`, etc.).
 
 ### Plot types reference
 
@@ -257,23 +259,22 @@ edark_report(liver_tx, report_type = "primary_vs_others",
 
 ## What's not built yet
 
-#### Tier 1
-- trend - ymin on plots by default is the min in the dataset; sometimes it makes sense to include zero as a reference; actually, this is only for counts; but i wonder if it's also for numerics that are < a certain #, like lactates which are <15 or hb < 20 or something....
+#### High magnitude change
+- Integrate studybuddy — use working dataset for direct model creation and publication-quality outputs
+- Word report: reference `.docx` template with defined heading styles
+- Custom report generation ("add this graph/table" button)
+
+#### Mid magnitude change
 - Statistical tests in Explore › Analyse tab for bivariate plots — numeric × factor → Kruskal-Wallis; factor × factor → chi-square/Fisher's. (Reports already have these via the table helpers; Explore summary panel does not.)
 - `show_data_labels` not yet wired for `violin_jitter` (should show median per group), `scatter_loess`, or `bar_grouped`. Only `bar_count` respects it currently.
+- Alternative plot type options per variable combination (heat map, balloon plot, etc.)
+- Imputation in the Prepare stage
+- options for dataset level items like dataset summary, correlation matrix, etc
+- add univariate table to correlation report (selects logistic vs linear regression vs anova to correlate) but this is also presented in a descriptive table 1 if stratified for exposure or outcome right? whats the difference between the univariate assocations in both of these tables that i know are routinely calculated for different reasons? what am i missing?
 
-#### Tier 2
-- Integrate studybuddy — use working dataset for direct model creation and publication-quality outputs
+#### Small magnitude change
 - Correlation matrix for variable selection
-- Word report: reference `.docx` template with defined heading styles
-
-#### Tier 3
 - Dataset export button
 - `shinytest2` module tests + `testthat` unit tests
-- Alternative plot type options per variable combination (heat map, balloon plot, etc.)
-- Custom report generation ("add this graph/table" button)
 - Async report generation (currently synchronous; cancel not feasible without `future`/`promises`)
-
-#### Tier 4
 - Expanded aesthetic options
-- Imputation in the Prepare stage

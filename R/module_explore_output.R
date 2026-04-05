@@ -77,16 +77,18 @@ explore_output_server <- function(id, shared_state) {
       # palette/legend changes re-render without requiring a button re-click.
       # Do NOT use isolate() here: it can return a stale value when this reactive
       # re-runs due to an aesthetic change.
-      color_palette    <- shared_state$color_palette
-      show_data_labels <- shared_state$show_data_labels
-      show_legend      <- shared_state$show_legend
-      legend_position  <- shared_state$legend_position
+      color_palette       <- shared_state$color_palette
+      show_data_labels    <- shared_state$show_data_labels
+      show_legend         <- shared_state$show_legend
+      legend_position     <- shared_state$legend_position
+      trend_zero_baseline <- shared_state$trend_zero_baseline
 
       spec_with_aesthetics <- modifyList(spec, list(
-        color_palette    = color_palette,
-        show_data_labels = show_data_labels,
-        show_legend      = show_legend,
-        legend_position  = legend_position
+        color_palette       = color_palette,
+        show_data_labels    = show_data_labels,
+        show_legend         = show_legend,
+        legend_position     = legend_position,
+        trend_zero_baseline = trend_zero_baseline
       ))
 
       gg <- render_plot(spec_with_aesthetics, dataset)
