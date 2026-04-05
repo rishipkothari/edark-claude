@@ -258,6 +258,7 @@ edark_report(liver_tx, report_type = "primary_vs_others",
 ## What's not built yet
 
 #### Tier 1
+- trend - ymin on plots by default is the min in the dataset; sometimes it makes sense to include zero as a reference; actually, this is only for counts; but i wonder if it's also for numerics that are < a certain #, like lactates which are <15 or hb < 20 or something....
 - Statistical tests in Explore › Analyse tab for bivariate plots — numeric × factor → Kruskal-Wallis; factor × factor → chi-square/Fisher's. (Reports already have these via the table helpers; Explore summary panel does not.)
 - `show_data_labels` not yet wired for `violin_jitter` (should show median per group), `scatter_loess`, or `bar_grouped`. Only `bar_count` respects it currently.
 
