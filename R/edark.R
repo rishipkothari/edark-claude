@@ -87,7 +87,10 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       bslib::layout_sidebar(
         sidebar = bslib::sidebar(
           width = 320,
-          explore_controls_ui("explore_controls")
+          bslib::navset_pill(
+            bslib::nav_panel("Analyse", explore_controls_ui("explore_controls")),
+            bslib::nav_panel("Trend",   trend_controls_ui("trend_controls"))
+          )
         ),
         explore_output_ui("explore_output")
       )
@@ -121,12 +124,18 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       column_transform_specs  = list(),
       has_pending_changes     = FALSE,
 
-      # Explore stage
+      # Explore stage — Analyse tab
       primary_variable        = NULL,
       primary_variable_role   = "exposure",
       secondary_variable      = NULL,
       stratify_variable       = NULL,
-      trend_resolution        = "Day",
+
+      # Explore stage — Trend tab
+      trend_timestamp_variable = NULL,
+      trend_variable           = NULL,
+      trend_summary_stat       = "mean_sd",
+      trend_resolution         = "Month",
+      trend_stratify_variable  = NULL,
 
       # Plot state
       plot_specification      = NULL,
@@ -185,6 +194,7 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
     data_preview_server("data_preview",             shared_state)
     prepare_confirm_server("prepare_confirm",       shared_state)
     explore_controls_server("explore_controls", shared_state)
+    trend_controls_server("trend_controls",   shared_state)
     explore_output_server("explore_output",   shared_state)
     report_server("report",                   shared_state)
   }

@@ -50,6 +50,7 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
     violin_jitter      = .plot_violin_jitter,
     scatter_loess      = .plot_scatter_loess,
     trend_mean         = .plot_trend_mean,
+    trend_numeric      = .plot_trend_numeric,
     trend_proportion   = .plot_trend_proportion,
     NULL
   )
@@ -565,7 +566,9 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
 }
 
 
-# trend_proportion: datetime (X) × factor (Y) — proportion per level over time
+# trend_proportion: datetime (X) × factor (Y)
+# No stratify: count per factor level per timepoint, all levels as coloured lines.
+# Stratify: facet by stratum; within each facet, count per level as coloured lines.
 .plot_trend_proportion <- function(spec, dataset) {
   col_a      <- spec$column_a
   col_b      <- spec$column_b
@@ -577,28 +580,148 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
   df        <- dataset[!is.na(dataset[[col_a]]) & !is.na(dataset[[col_b]]), ]
   df$._time <- floor_fn(df[[col_a]])
 
-  df_agg <- dplyr::count(df, .data$._time, .data[[col_b]]) |>
-    dplyr::group_by(.data$._time) |>
-    dplyr::mutate(prop = .data$n / sum(.data$n)) |>
-    dplyr::ungroup()
-
-  p <- ggplot2::ggplot(df_agg, ggplot2::aes(
-    x      = .data$._time,
-    y      = .data$prop,
-    colour = .data[[col_b]]
-  )) +
-    ggplot2::geom_line(linewidth = 0.9) +
-    ggplot2::geom_point(size = 2) +
-    ggplot2::scale_colour_brewer(palette = palette, name = col_b) +
-    ggplot2::scale_y_continuous(labels = scales::percent_format()) +
-    ggplot2::labs(x = resolution, y = "Proportion")
-
   if (!is.null(stratify)) {
-    p <- p + ggplot2::facet_wrap(as.formula(paste("~", stratify)),
-                                  labeller = ggplot2::label_both)
+    # Include stratify in the count so the facet variable exists in df_agg
+    df_agg <- dplyr::count(df, .data$._time, .data[[stratify]], .data[[col_b]])
+
+    p <- ggplot2::ggplot(df_agg, ggplot2::aes(
+      x      = .data$._time,
+      y      = .data$n,
+      colour = .data[[col_b]]
+    )) +
+      ggplot2::geom_line(linewidth = 0.9) +
+      ggplot2::geom_point(size = 2) +
+      ggplot2::scale_colour_brewer(palette = palette, name = col_b) +
+      ggplot2::labs(x = resolution, y = "Count") +
+      ggplot2::facet_wrap(as.formula(paste("~", stratify)),
+                          labeller = ggplot2::label_both,
+                          scales = "fixed",
+                          ncol = ceiling(sqrt(length(unique(df[[stratify]])))))
+  } else {
+    df_agg <- dplyr::count(df, .data$._time, .data[[col_b]])
+
+    p <- ggplot2::ggplot(df_agg, ggplot2::aes(
+      x      = .data$._time,
+      y      = .data$n,
+      colour = .data[[col_b]]
+    )) +
+      ggplot2::geom_line(linewidth = 0.9) +
+      ggplot2::geom_point(size = 2) +
+      ggplot2::scale_colour_brewer(palette = palette, name = col_b) +
+      ggplot2::labs(x = resolution, y = "Count")
   }
 
   p
+}
+
+
+# trend_numeric: datetime (X) × numeric (Y) — flexible summary stat with
+# optional error ribbon (SD, SE, 95% CI, IQR).
+.plot_trend_numeric <- function(spec, dataset) {
+  col_a      <- spec$column_a
+  col_b      <- spec$column_b
+  stratify   <- spec$stratify_by
+  resolution <- spec$trend_resolution
+  palette    <- spec$color_palette
+  stat       <- if (!is.null(spec$trend_summary_stat)) spec$trend_summary_stat else "mean_sd"
+
+  floor_fn  <- .trend_floor_fn(resolution)
+  df        <- dataset[!is.na(dataset[[col_a]]) & !is.na(dataset[[col_b]]), ]
+  df$._time <- floor_fn(df[[col_a]])
+
+  has_ribbon <- stat %in% c("mean_sd", "mean_se", "mean_ci", "median_iqr")
+  y_label    <- .trend_stat_label(stat)
+
+  # Build aggregation function based on stat
+  .agg <- function(d) {
+    x <- d[[col_b]]
+    n <- sum(!is.na(x))
+    y <- switch(stat,
+      mean_sd    = mean(x, na.rm = TRUE),
+      mean_se    = mean(x, na.rm = TRUE),
+      mean_ci    = mean(x, na.rm = TRUE),
+      median_iqr = stats::median(x, na.rm = TRUE),
+      count      = as.numeric(n),
+      sum        = sum(x, na.rm = TRUE),
+      max        = max(x, na.rm = TRUE),
+      min        = min(x, na.rm = TRUE)
+    )
+    if (has_ribbon) {
+      bounds <- switch(stat,
+        mean_sd    = { s <- stats::sd(x, na.rm = TRUE); c(y - s, y + s) },
+        mean_se    = { se <- stats::sd(x, na.rm = TRUE) / sqrt(n); c(y - se, y + se) },
+        mean_ci    = { ci <- stats::qt(0.975, df = max(n - 1, 1)) *
+                           stats::sd(x, na.rm = TRUE) / sqrt(n); c(y - ci, y + ci) },
+        median_iqr = c(stats::quantile(x, 0.25, na.rm = TRUE),
+                       stats::quantile(x, 0.75, na.rm = TRUE))
+      )
+      data.frame(._y = y, ._ymin = bounds[[1]], ._ymax = bounds[[2]])
+    } else {
+      data.frame(._y = y)
+    }
+  }
+
+  if (!is.null(stratify)) {
+    df_agg <- dplyr::group_by(df, .data$._time, .data[[stratify]]) |>
+      dplyr::group_modify(~ .agg(.x)) |>
+      dplyr::ungroup()
+
+    p <- ggplot2::ggplot(df_agg, ggplot2::aes(
+      x      = .data$._time,
+      y      = .data$._y,
+      colour = .data[[stratify]]
+    ))
+
+    if (has_ribbon) {
+      p <- p + ggplot2::geom_ribbon(
+        ggplot2::aes(ymin = .data$._ymin, ymax = .data$._ymax, fill = .data[[stratify]]),
+        alpha = 0.1, colour = NA
+      )
+    }
+
+    p <- p +
+      ggplot2::geom_line(linewidth = 0.9) +
+      ggplot2::geom_point(size = 2) +
+      ggplot2::scale_colour_brewer(palette = palette, aesthetics = c("colour", "fill"),
+                                   name = stratify) +
+      ggplot2::labs(x = resolution, y = y_label)
+  } else {
+    df_agg <- dplyr::group_by(df, .data$._time) |>
+      dplyr::group_modify(~ .agg(.x)) |>
+      dplyr::ungroup()
+
+    p <- ggplot2::ggplot(df_agg, ggplot2::aes(x = .data$._time, y = .data$._y))
+
+    if (has_ribbon) {
+      p <- p + ggplot2::geom_ribbon(
+        ggplot2::aes(ymin = .data$._ymin, ymax = .data$._ymax),
+        alpha = 0.15, fill = "#5b9bd5"
+      )
+    }
+
+    p <- p +
+      ggplot2::geom_line(colour = "#5b9bd5", linewidth = 0.9) +
+      ggplot2::geom_point(colour = "#1f497d", size = 2) +
+      ggplot2::labs(x = resolution, y = y_label)
+  }
+
+  p
+}
+
+
+# Returns the Y-axis label for a trend_numeric summary stat.
+.trend_stat_label <- function(stat) {
+  switch(stat,
+    mean_sd    = "Mean \u00b1 SD",
+    mean_se    = "Mean \u00b1 SE",
+    mean_ci    = "Mean \u00b1 95% CI",
+    median_iqr = "Median (IQR)",
+    count      = "Count",
+    sum        = "Sum",
+    max        = "Max",
+    min        = "Min",
+    stat
+  )
 }
 
 
@@ -607,9 +730,11 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
 # Returns the appropriate lubridate floor function for a trend resolution string.
 .trend_floor_fn <- function(resolution) {
   switch(resolution,
-    Day   = function(x) lubridate::floor_date(x, "day"),
-    Week  = function(x) lubridate::floor_date(x, "week"),
-    Month = function(x) lubridate::floor_date(x, "month"),
+    Hour    = function(x) lubridate::floor_date(x, "hour"),
+    Day     = function(x) lubridate::floor_date(x, "day"),
+    Week    = function(x) lubridate::floor_date(x, "week"),
+    Month   = function(x) lubridate::floor_date(x, "month"),
+    Quarter = function(x) lubridate::floor_date(x, "quarter"),
     Year  = function(x) lubridate::floor_date(x, "year"),
     stop("Unknown trend_resolution: ", resolution, call. = FALSE)
   )

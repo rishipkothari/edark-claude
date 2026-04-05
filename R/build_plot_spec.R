@@ -108,3 +108,53 @@ build_bivariate_plot_spec <- function(shared_state) {
     trend_resolution = shiny::isolate(shared_state$trend_resolution)
   )
 }
+
+
+#' Build a plot specification for a time-trend plot
+#'
+#' Constructs the spec list for trend plots. Unlike the Analyse-tab spec
+#' builders, this bypasses `route_plot_type()` and sets `plot_type` directly
+#' based on the trend variable's type.
+#'
+#' @inheritParams build_univariate_plot_spec
+#'
+#' @return A named list with the same structure as `build_univariate_plot_spec()`
+#'   plus `trend_summary_stat`.
+#'
+#' @export
+build_trend_plot_spec <- function(shared_state) {
+  timestamp_var <- shiny::isolate(shared_state$trend_timestamp_variable)
+  trend_var     <- shiny::isolate(shared_state$trend_variable)
+  summary_stat  <- shiny::isolate(shared_state$trend_summary_stat)
+  stratify      <- shiny::isolate(shared_state$trend_stratify_variable)
+  resolution    <- shiny::isolate(shared_state$trend_resolution)
+  col_types     <- shiny::isolate(shared_state$column_types)
+
+  shiny::req(!is.null(timestamp_var), nchar(timestamp_var) > 0)
+
+  if (is.null(trend_var)) {
+    plot_type <- "trend_count"
+    trend_var <- NULL
+  } else {
+    trend_var_type <- if (trend_var %in% names(col_types)) col_types[[trend_var]] else NULL
+    plot_type <- switch(trend_var_type %||% "",
+      numeric = "trend_numeric",
+      factor  = "trend_proportion",
+      NULL
+    )
+  }
+
+  list(
+    plot_type          = plot_type,
+    column_a           = timestamp_var,
+    column_b           = trend_var,
+    primary_role       = "exposure",
+    stratify_by        = if (!is.null(stratify) && nchar(stratify) > 0) stratify else NULL,
+    trend_resolution   = resolution,
+    trend_summary_stat = summary_stat,
+    color_palette      = shiny::isolate(shared_state$color_palette),
+    show_data_labels   = shiny::isolate(shared_state$show_data_labels),
+    show_legend        = shiny::isolate(shared_state$show_legend),
+    legend_position    = shiny::isolate(shared_state$legend_position)
+  )
+}

@@ -129,8 +129,12 @@ explore_output_server <- function(id, shared_state) {
 
       shiny::req(!is.null(spec), !is.null(dataset))
 
-      primary  <- spec$column_a  # column_a is always the "describe this" column
-      col_type <- types[[primary]]
+      # For trend plots the meaningful variable is column_b (the trend variable).
+      # Fall back to column_a (the datetime timestamp) for trend_count (no column_b).
+      trend_types <- c("trend_count", "trend_numeric", "trend_proportion")
+      is_trend    <- !is.null(spec$plot_type) && spec$plot_type %in% trend_types
+      primary     <- if (is_trend && !is.null(spec$column_b)) spec$column_b else spec$column_a
+      col_type    <- if (primary %in% names(types)) types[[primary]] else "datetime"
 
       summary_df <- build_variable_summary(dataset, primary, col_type)
 
