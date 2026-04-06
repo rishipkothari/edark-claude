@@ -145,10 +145,14 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       explore_needs_refresh   = FALSE,
 
       # Aesthetics
+      ggplot_theme            = "minimal",
       color_palette           = "Set2",
       show_data_labels        = FALSE,
       show_legend             = TRUE,
-      legend_position         = "right"
+      legend_position         = "right",
+
+      # Plot options (captured on plot button click, not reactive)
+      bar_display             = "count"
     )
 
     # ── Prepare tab navigation guard ──────────────────────────────────────────

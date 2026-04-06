@@ -45,6 +45,14 @@ trend_controls_ui <- function(id) {
         shiny::tags$p(class = "fw-semibold mb-1",
                       shiny::icon("chart-line"), " Trend Variable"),
         shiny::uiOutput(ns("trend_var_picker")),
+        shinyWidgets::radioGroupButtons(
+          ns("bar_display"),
+          label    = "Trend display:",
+          choices  = c("Count" = "count", "Proportion" = "proportion"),
+          selected = "count",
+          size     = "sm",
+          width    = "100%"
+        ),
         shiny::uiOutput(ns("stat_picker_ui")),
 
 
@@ -70,6 +78,22 @@ trend_controls_ui <- function(id) {
       bslib::accordion_panel(
         "Plot Aesthetics",
         icon = shiny::icon("palette"),
+        shinyWidgets::pickerInput(
+          ns("ggplot_theme"),
+          label    = "Plot theme:",
+          choices  = c(
+            "Minimal"          = "minimal",
+            "Ipsum"            = "ipsum",
+            "Ipsum RC"         = "ipsum_rc",
+            "Publication"      = "publication",
+            "Cowplot"          = "cowplot",
+            "Economist"        = "economist",
+            "FiveThirtyEight"  = "fivethirtyeight",
+            "Tufte"            = "tufte",
+            "Modern"           = "modern"
+          ),
+          selected = "minimal"
+        ),
         shinyWidgets::pickerInput(
           ns("color_palette"),
           label    = "Colour palette:",
@@ -124,11 +148,10 @@ trend_controls_server <- function(id, shared_state) {
     })
 
     output$trend_var_picker <- shiny::renderUI({
-      choices <- c("None (event count)" = "", eligible_trend_cols())
       shinyWidgets::pickerInput(
         ns("trend_variable"),
-        label   = "Trend variable (optional):",
-        choices = choices,
+        label   = "Trend variable:",
+        choices = eligible_trend_cols(),
         options = shinyWidgets::pickerOptions(liveSearch = TRUE, container = "body")
       )
     })
@@ -161,11 +184,9 @@ trend_controls_server <- function(id, shared_state) {
     })
 
     output$zero_baseline_ui <- shiny::renderUI({
-      tv      <- input$trend_variable
-      default <- is.null(tv) || identical(tv, "")   # TRUE for count mode
       shiny::checkboxInput(ns("trend_zero_baseline"),
                            "Include zero baseline (y-axis)",
-                           value = default)
+                           value = FALSE)
     })
 
     output$stratify_picker <- shiny::renderUI({
@@ -222,6 +243,12 @@ trend_controls_server <- function(id, shared_state) {
     })
 
     # Aesthetics — shared with Analyse tab (same shared_state fields)
+    shiny::observeEvent(input$ggplot_theme, {
+      val <- input$ggplot_theme
+      if (!is.null(val) && !identical(shared_state$ggplot_theme, val))
+        shared_state$ggplot_theme <- val
+    })
+
     shiny::observeEvent(input$color_palette, {
       val <- input$color_palette
       if (!is.null(val) && !identical(shared_state$color_palette, val))
@@ -250,7 +277,10 @@ trend_controls_server <- function(id, shared_state) {
     # ── Plot Trend button ─────────────────────────────────────────────────────
     shiny::observeEvent(input$plot_trend, {
       shiny::req(!is.null(shared_state$trend_timestamp_variable),
-                 nchar(shared_state$trend_timestamp_variable) > 0)
+                 nchar(shared_state$trend_timestamp_variable) > 0,
+                 !is.null(shared_state$trend_variable),
+                 nchar(shared_state$trend_variable) > 0)
+      shared_state$bar_display        <- input$bar_display
       shared_state$plot_specification <- build_trend_plot_spec(shared_state)
     })
 

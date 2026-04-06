@@ -46,7 +46,9 @@ build_univariate_plot_spec <- function(shared_state) {
     show_data_labels = shiny::isolate(shared_state$show_data_labels),
     show_legend      = shiny::isolate(shared_state$show_legend),
     legend_position  = shiny::isolate(shared_state$legend_position),
-    trend_resolution = shiny::isolate(shared_state$trend_resolution)
+    trend_resolution = shiny::isolate(shared_state$trend_resolution),
+    ggplot_theme     = shiny::isolate(shared_state$ggplot_theme),
+    bar_display      = shiny::isolate(shared_state$bar_display)
   )
 }
 
@@ -105,7 +107,9 @@ build_bivariate_plot_spec <- function(shared_state) {
     show_data_labels = shiny::isolate(shared_state$show_data_labels),
     show_legend      = shiny::isolate(shared_state$show_legend),
     legend_position  = shiny::isolate(shared_state$legend_position),
-    trend_resolution = shiny::isolate(shared_state$trend_resolution)
+    trend_resolution = shiny::isolate(shared_state$trend_resolution),
+    ggplot_theme     = shiny::isolate(shared_state$ggplot_theme),
+    bar_display      = shiny::isolate(shared_state$bar_display)
   )
 }
 
@@ -130,19 +134,15 @@ build_trend_plot_spec <- function(shared_state) {
   resolution    <- shiny::isolate(shared_state$trend_resolution)
   col_types     <- shiny::isolate(shared_state$column_types)
 
-  shiny::req(!is.null(timestamp_var), nchar(timestamp_var) > 0)
+  shiny::req(!is.null(timestamp_var), nchar(timestamp_var) > 0,
+             !is.null(trend_var), nchar(trend_var) > 0)
 
-  if (is.null(trend_var)) {
-    plot_type <- "trend_count"
-    trend_var <- NULL
-  } else {
-    trend_var_type <- if (trend_var %in% names(col_types)) col_types[[trend_var]] else NULL
-    plot_type <- switch(trend_var_type %||% "",
-      numeric = "trend_numeric",
-      factor  = "trend_proportion",
-      NULL
-    )
-  }
+  trend_var_type <- if (trend_var %in% names(col_types)) col_types[[trend_var]] else NULL
+  plot_type <- switch(trend_var_type %||% "",
+    numeric = "trend_numeric",
+    factor  = "trend_factor",
+    NULL
+  )
 
   list(
     plot_type           = plot_type,
@@ -156,6 +156,8 @@ build_trend_plot_spec <- function(shared_state) {
     color_palette       = shiny::isolate(shared_state$color_palette),
     show_data_labels    = shiny::isolate(shared_state$show_data_labels),
     show_legend         = shiny::isolate(shared_state$show_legend),
-    legend_position     = shiny::isolate(shared_state$legend_position)
+    legend_position     = shiny::isolate(shared_state$legend_position),
+    ggplot_theme        = shiny::isolate(shared_state$ggplot_theme),
+    bar_display         = shiny::isolate(shared_state$bar_display)
   )
 }

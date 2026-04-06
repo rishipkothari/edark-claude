@@ -12,9 +12,9 @@
 #'   or `NULL` for univariate plots.
 #'
 #' @return A single character string — one of:
-#'   `"bar_count"`, `"histogram_density"`, `"trend_count"`,
-#'   `"bar_grouped"`, `"violin_box"`, `"scatter_lm"`,
-#'   `"trend_mean"`, `"trend_proportion"`.
+#'   `"bar_count"`, `"histogram_density"`,
+#'   `"bar_grouped"`, `"violin_jitter"`, `"scatter_loess"`,
+#'   `"trend_mean"`, `"trend_factor"`.
 #'   Returns `NULL` if the combination is not supported.
 #'
 #' @keywords internal

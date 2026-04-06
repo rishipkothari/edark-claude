@@ -36,6 +36,14 @@ explore_controls_ui <- function(id) {
           size     = "sm",
           width    = "100%"
         ),
+        shinyWidgets::radioGroupButtons(
+          ns("bar_display"),
+          label    = "Bar display:",
+          choices  = c("Count" = "count", "Proportion" = "proportion"),
+          selected = "count",
+          size     = "sm",
+          width    = "100%"
+        ),
         shiny::br(),
         shiny::actionButton(
           ns("describe_btn"),
@@ -73,6 +81,22 @@ explore_controls_ui <- function(id) {
       bslib::accordion_panel(
         "Plot Aesthetics",
         icon = shiny::icon("palette"),
+        shinyWidgets::pickerInput(
+          ns("ggplot_theme"),
+          label    = "Plot theme:",
+          choices  = c(
+            "Minimal"          = "minimal",
+            "Ipsum"            = "ipsum",
+            "Ipsum RC"         = "ipsum_rc",
+            "Publication"      = "publication",
+            "Cowplot"          = "cowplot",
+            "Economist"        = "economist",
+            "FiveThirtyEight"  = "fivethirtyeight",
+            "Tufte"            = "tufte",
+            "Modern"           = "modern"
+          ),
+          selected = "minimal"
+        ),
         shinyWidgets::pickerInput(
           ns("color_palette"),
           label    = "Colour palette:",
@@ -164,6 +188,10 @@ explore_controls_server <- function(id, shared_state) {
       shared_state$secondary_variable <- input$secondary_variable
     }, ignoreNULL = TRUE)
 
+    shiny::observeEvent(input$ggplot_theme, {
+      shared_state$ggplot_theme <- input$ggplot_theme
+    })
+
     shiny::observeEvent(input$color_palette, {
       shared_state$color_palette <- input$color_palette
     })
@@ -184,6 +212,7 @@ explore_controls_server <- function(id, shared_state) {
     # ── Describe button: build univariate spec ────────────────────────────────
     shiny::observeEvent(input$describe_btn, {
       shiny::req(input$primary_variable)
+      shared_state$bar_display        <- input$bar_display
       shared_state$plot_specification <- build_univariate_plot_spec(shared_state)
     })
 
@@ -191,6 +220,7 @@ explore_controls_server <- function(id, shared_state) {
     # ── Plot Correlation button: build bivariate spec ─────────────────────────
     shiny::observeEvent(input$plot_btn, {
       shiny::req(input$primary_variable, input$secondary_variable)
+      shared_state$bar_display        <- input$bar_display
       shared_state$plot_specification <- build_bivariate_plot_spec(shared_state)
     })
   })

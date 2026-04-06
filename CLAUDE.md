@@ -30,7 +30,7 @@ R/
 ├── validate_input.R            Input guard called before Shiny launches
 ├── cast_column_types.R         Auto-cast rules — runs once at launch
 ├── detect_column_types.R       Returns named char vector: col → "numeric"/"factor"/"datetime"/"character"
-├── route_plot_type.R           Type combo → plot type string (Analyse tab only)
+├── route_plot_type.R           Type combo → plot type string (Analyze tab only)
 ├── build_plot_spec.R           build_univariate_plot_spec() / build_bivariate_plot_spec() / build_trend_plot_spec()
 ├── render_plot.R               All 11 plot types; dispatches from a spec list
 ├── build_variable_summary.R    Summary stats table for a single variable
@@ -43,7 +43,7 @@ R/
 ├── module_prepare_confirm.R    Apply Changes sidebar — pipeline, validation, navigation
 ├── module_data_preview.R       Prepare › Data Preview tab — original + working reactables + summary sub-tabs
 │
-├── module_explore_controls.R   Explore › Analyse tab sidebar — variable pickers, Describe/Correlate buttons
+├── module_explore_controls.R   Explore › Analyze tab sidebar — variable pickers, Describe/Correlate buttons
 ├── module_trend_controls.R     Explore › Trend tab sidebar — timestamp/resolution/variable/stat pickers
 ├── module_explore_output.R     Explore main panel — plot output + summary reactable (shared by both tabs)
 ├── module_report.R             Report tab — type selector, variable modal, download handler
@@ -87,9 +87,9 @@ inst/
 
 ## Explore stage
 
-The Explore sidebar has two pill tabs — **Analyse** and **Trend** — sharing the same output panel (`module_explore_output.R`). Both tabs write to `shared_state$plot_specification`; clicking a plot button overwrites it.
+The Explore sidebar has two pill tabs — **Analyze** and **Trend** — sharing the same output panel (`module_explore_output.R`). Both tabs write to `shared_state$plot_specification`; clicking a plot button overwrites it.
 
-### Analyse tab (module_explore_controls.R)
+### Analyze tab (module_explore_controls.R)
 Eligible columns: numeric + factor only (datetime excluded from pickers here).
 
 Stratify picker: factor columns only; excludes the current primary variable.
@@ -122,7 +122,7 @@ Numeric stat options (stored in `shared_state$trend_summary_stat`):
 
 **Zero baseline** (`shared_state$trend_zero_baseline`): checkbox in the trend sidebar, reactive like aesthetics (re-renders without re-clicking Plot Trend). Defaults to TRUE when no trend variable is selected (count mode), FALSE for numeric/factor variables. Applied via `expand_limits(y = 0)` in all three trend plot functions.
 
-Trend tab has its own shared_state fields: `trend_timestamp_variable`, `trend_variable`, `trend_summary_stat`, `trend_resolution`, `trend_stratify_variable`, `trend_zero_baseline`. These are separate from the Analyse tab fields (`primary_variable`, `stratify_variable`, etc.).
+Trend tab has its own shared_state fields: `trend_timestamp_variable`, `trend_variable`, `trend_summary_stat`, `trend_resolution`, `trend_stratify_variable`, `trend_zero_baseline`. These are separate from the Analyze tab fields (`primary_variable`, `stratify_variable`, etc.).
 
 ### Plot types reference
 
@@ -265,9 +265,11 @@ edark_report(liver_tx, report_type = "primary_vs_others",
 - Custom report generation ("add this graph/table" button)
     - Also some thoughts on the custom report. I'd love to show a preview, like a PowerPoint slide view, that could just indicate what the plots look like before they come out into the report. That would also be the basis for adding or removing plots from the custom report on the fly.
     - The problem is how the data would be stored in the meantime. If I wanted previews, would we be saving image previews somewhere as well as plot parameters to feed into the generate report function? The other way to do it would be simply to create a list of report objects without the ability to preview. We would still need the ability to add or remove on the fly, so that would probably look like a table or list with a text description of what each plot would be. The controls for that would be on the plot UI over in the corner, within the Add Plot button, and then a link to the report tab to modify the contents of the custom report. 
+- a question to investigate: how does plot theming work if edark_report is called from outside GUI? is there a plot spec variable that contains plot aesthetic data? if so, what happens when func is called without this being present in a reactive variable? is there a check for a default plot spec? i suppose all aspects of external function calls should inspect for reactive variables that are used that are not initialized within the function in a safety check, but this is far down the road -- not critical functionality
+- save individual plot to file (same area/panel as custom report generation)
 
 #### Mid magnitude change
-- Statistical tests in Explore › Analyse tab for bivariate plots — numeric × factor → Kruskal-Wallis; factor × factor → chi-square/Fisher's. (Reports already have these via the table helpers; Explore summary panel does not.)
+- Statistical tests in Explore › Analyze tab for bivariate plots — numeric × factor → Kruskal-Wallis; factor × factor → chi-square/Fisher's. (Reports already have these via the table helpers; Explore summary panel does not.)
 - `show_data_labels` not yet wired for `violin_jitter` (should show median per group), `scatter_loess`, or `bar_grouped`. Only `bar_count` respects it currently.
 - Alternative plot type options per variable combination (heat map, balloon plot, etc.)
 - Imputation in the Prepare stage
@@ -276,11 +278,9 @@ edark_report(liver_tx, report_type = "primary_vs_others",
 
 #### Small magnitude change
 - Correlation matrix for variable selection
-- Dataset export button
+- Dataset export: save working dataset to RDS, save original dataset and variable transform spec to RDS (or similar), save transformed dataset to CSV
 - `shinytest2` module tests + `testthat` unit tests
 - Async report generation (currently synchronous; cancel not feasible without `future`/`promises`)
-- Expanded aesthetic options
-    - Solicit ideas for theming, not only colors for the UI but also additional packages with UI paradigms or visual styles, maybe the potential for something like a Windows 95 theme. 
-    - consider things like hrbr_themes, looking for additional styles that are clean and professional
-    - outlines on bar charts for bars
-    - drop downs in aesthetic for preconfigured themes
+- Rename "Bar display" / "Trend display" label to "Factor statistic" on both the Analyze tab (`module_explore_controls.R`) and the Trend tab (`module_trend_controls.R`) — the `radioGroupButtons` label argument
+- Tab label "Analyse" → "Analyze" in the UI (wherever the pill tab is rendered in `edark.R` or the UI scaffold)
+- **Bug — `trend_factor` gaps**: when trending a factor variable, time periods with no observations produce gaps in the run chart rather than explicit zero lines. Fix: after `dplyr::count()`, build a complete time × level grid (same `expand.grid` + `left_join` pattern used in `.plot_bar_count()` stratified path) and fill missing `n` with `0L` before computing proportions or plotting.

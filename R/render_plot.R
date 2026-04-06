@@ -45,13 +45,12 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
   plot_fn <- switch(spec$plot_type,
     bar_count          = .plot_bar_count,
     histogram_density  = .plot_histogram_density,
-    trend_count        = .plot_trend_count,
     bar_grouped        = .plot_bar_grouped,
     violin_jitter      = .plot_violin_jitter,
     scatter_loess      = .plot_scatter_loess,
     trend_mean         = .plot_trend_mean,
     trend_numeric      = .plot_trend_numeric,
-    trend_proportion   = .plot_trend_proportion,
+    trend_factor       = .plot_trend_factor,
     NULL
   )
 
@@ -97,9 +96,22 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
     title <- paste0(title, "  \u00b7  stratified by ", spec$stratify_by)
   }
 
+  base_theme <- switch(spec$ggplot_theme %||% "minimal",
+    minimal         = ggplot2::theme_minimal(base_size = 13),
+    ipsum           = hrbrthemes::theme_ipsum(base_size = 13),
+    ipsum_rc        = hrbrthemes::theme_ipsum_rc(base_size = 13),
+    publication     = ggpubr::theme_pubr(base_size = 13),
+    cowplot         = cowplot::theme_cowplot(font_size = 13),
+    economist       = ggthemes::theme_economist(base.size = 13),
+    fivethirtyeight = ggthemes::theme_fivethirtyeight(),
+    tufte           = ggthemes::theme_tufte(base_size = 13),
+    modern          = see::theme_modern(base_size = 13),
+    ggplot2::theme_minimal(base_size = 13)
+  )
+
   p <- p +
     ggplot2::labs(title = title) +
-    ggplot2::theme_minimal(base_size = 13) +
+    base_theme +
     ggplot2::theme(
       plot.title = ggplot2::element_text(size = 13, face = "bold", colour = "#444444",
                                          margin = ggplot2::margin(b = 6)),
@@ -161,45 +173,81 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
     df_counts[[stratify]] <- factor(df_counts[[stratify]], levels = all_strata)
     df_counts[[col_a]]    <- factor(df_counts[[col_a]],    levels = all_levels)
 
+    # Proportion mode: within each stratum, bars sum to 1
+    if (isTRUE(spec$bar_display == "proportion")) {
+      df_counts <- df_counts |>
+        dplyr::group_by(.data[[stratify]]) |>
+        dplyr::mutate(y_val = n / sum(n)) |>
+        dplyr::ungroup()
+      y_label <- "Proportion"
+    } else {
+      df_counts$y_val <- df_counts$n
+      y_label <- "Count"
+    }
+
     # Facet by stratum; x = primary factor levels; fill = primary factor levels
     # (legend is redundant with x-axis so hidden)
     p <- ggplot2::ggplot(df_counts, ggplot2::aes(
       x    = .data[[col_a]],
-      y    = .data$n,
+      y    = .data$y_val,
       fill = .data[[col_a]]
     )) +
-      ggplot2::geom_col() +
+      ggplot2::geom_col(colour = "#555555", linewidth = 0.3) +
       ggplot2::scale_fill_brewer(palette = palette, guide = "none") +
       ggplot2::facet_wrap(as.formula(paste("~", stratify)), scales = "fixed",
                           labeller = ggplot2::label_both) +
-      ggplot2::labs(x = col_a, y = "Count") +
+      ggplot2::labs(x = col_a, y = y_label) +
       ggplot2::theme(axis.text.x = ggplot2::element_text(size = 11))
 
     if (spec$show_data_labels) {
-      p <- p + ggplot2::geom_text(
-        ggplot2::aes(label = .data$n),
-        vjust = -0.3,
-        size  = 3.5
-      )
+      if (isTRUE(spec$bar_display == "proportion")) {
+        p <- p + ggplot2::geom_text(
+          ggplot2::aes(label = scales::percent(.data$y_val, accuracy = 0.1)),
+          vjust = -0.3, size = 3.5
+        )
+      } else {
+        p <- p + ggplot2::geom_text(
+          ggplot2::aes(label = .data$y_val),
+          vjust = -0.3, size = 3.5
+        )
+      }
     }
   } else {
     # Keep natural factor level order — do not reorder by frequency
-    p <- ggplot2::ggplot(df, ggplot2::aes(
+    df_counts <- dplyr::count(df, .data[[col_a]])
+
+    if (isTRUE(spec$bar_display == "proportion")) {
+      df_counts <- dplyr::mutate(df_counts, y_val = n / sum(n))
+      y_label <- "Proportion"
+    } else {
+      df_counts$y_val <- df_counts$n
+      y_label <- "Count"
+    }
+
+    df_counts[[col_a]] <- factor(df_counts[[col_a]], levels = levels(factor(df[[col_a]])))
+
+    p <- ggplot2::ggplot(df_counts, ggplot2::aes(
       x    = .data[[col_a]],
+      y    = .data$y_val,
       fill = .data[[col_a]]
     )) +
-      ggplot2::geom_bar() +
+      ggplot2::geom_col(colour = "#555555", linewidth = 0.3) +
       ggplot2::scale_fill_brewer(palette = palette, guide = "none") +
-      ggplot2::labs(x = col_a, y = "Count") +
+      ggplot2::labs(x = col_a, y = y_label) +
       ggplot2::theme(axis.text.x = ggplot2::element_text(size = 11))
 
     if (spec$show_data_labels) {
-      p <- p + ggplot2::stat_count(
-        ggplot2::aes(label = ggplot2::after_stat(count)),
-        geom  = "text",
-        vjust = -0.3,
-        size  = 3.5
-      )
+      if (isTRUE(spec$bar_display == "proportion")) {
+        p <- p + ggplot2::geom_text(
+          ggplot2::aes(label = scales::percent(.data$y_val, accuracy = 0.1)),
+          vjust = -0.3, size = 3.5
+        )
+      } else {
+        p <- p + ggplot2::geom_text(
+          ggplot2::aes(label = .data$y_val),
+          vjust = -0.3, size = 3.5
+        )
+      }
     }
   }
 
@@ -305,43 +353,7 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
 }
 
 
-# trend_count: univariate datetime — event counts over time
-.plot_trend_count <- function(spec, dataset) {
-  col_a      <- spec$column_a
-  stratify   <- spec$stratify_by
-  resolution <- spec$trend_resolution
-  palette    <- spec$color_palette
-
-  floor_fn <- .trend_floor_fn(resolution)
-  df        <- dataset[!is.na(dataset[[col_a]]), ]
-  df$._time <- floor_fn(df[[col_a]])
-
-  if (!is.null(stratify)) {
-    df_agg <- dplyr::count(df, .data$._time, .data[[stratify]])
-    p <- ggplot2::ggplot(df_agg, ggplot2::aes(
-      x      = .data$._time,
-      y      = .data$n,
-      colour = .data[[stratify]]
-    )) +
-      ggplot2::geom_line(linewidth = 0.9) +
-      ggplot2::geom_point(size = 2) +
-      ggplot2::scale_colour_brewer(palette = palette, name = stratify) +
-      ggplot2::facet_wrap(as.formula(paste("~", stratify)),
-                          labeller = ggplot2::label_both)
-  } else {
-    df_agg <- dplyr::count(df, .data$._time)
-    p <- ggplot2::ggplot(df_agg, ggplot2::aes(x = .data$._time, y = .data$n)) +
-      ggplot2::geom_line(colour = "#5b9bd5", linewidth = 0.9) +
-      ggplot2::geom_point(colour = "#1f497d", size = 2)
-  }
-
-  p <- p + ggplot2::labs(x = resolution, y = "Count")
-  if (isTRUE(spec$trend_zero_baseline)) p <- p + ggplot2::expand_limits(y = 0)
-  p
-}
-
-
-# bar_grouped: factor × factor — grouped bar chart
+# bar_grouped: factor × factor — grouped/dodged bar chart
 # Pre-computes a complete grid (every col_a × col_b combination) so that
 # missing combinations appear as zero-height bars rather than being absent,
 # which would otherwise cause remaining bars to expand to double width.
@@ -367,14 +379,26 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
     df_counts[[col_a]]    <- factor(df_counts[[col_a]],    levels = all_x)
     df_counts[[col_b]]    <- factor(df_counts[[col_b]],    levels = all_fill)
 
+    # Proportion mode: within each col_a cluster, bars (col_b levels) sum to 1
+    if (isTRUE(spec$bar_display == "proportion")) {
+      df_counts <- df_counts |>
+        dplyr::group_by(.data[[stratify]], .data[[col_a]]) |>
+        dplyr::mutate(y_val = n / sum(n)) |>
+        dplyr::ungroup()
+      y_label <- "Proportion"
+    } else {
+      df_counts$y_val <- df_counts$n
+      y_label <- "Count"
+    }
+
     p <- ggplot2::ggplot(df_counts, ggplot2::aes(
       x    = .data[[col_a]],
-      y    = .data$n,
+      y    = .data$y_val,
       fill = .data[[col_b]]
     )) +
-      ggplot2::geom_col(position = "dodge") +
+      ggplot2::geom_col(position = "dodge", colour = "#555555", linewidth = 0.3) +
       ggplot2::scale_fill_brewer(palette = palette, name = col_b) +
-      ggplot2::labs(x = col_a, y = "Count") +
+      ggplot2::labs(x = col_a, y = y_label) +
       ggplot2::facet_wrap(as.formula(paste("~", stratify)), scales = "fixed",
                           ncol     = ceiling(sqrt(length(all_strata))),
                           labeller = ggplot2::label_both)
@@ -388,14 +412,26 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
     df_counts[[col_a]] <- factor(df_counts[[col_a]], levels = all_x)
     df_counts[[col_b]] <- factor(df_counts[[col_b]], levels = all_fill)
 
+    # Proportion mode: within each col_a cluster, bars (col_b levels) sum to 1
+    if (isTRUE(spec$bar_display == "proportion")) {
+      df_counts <- df_counts |>
+        dplyr::group_by(.data[[col_a]]) |>
+        dplyr::mutate(y_val = n / sum(n)) |>
+        dplyr::ungroup()
+      y_label <- "Proportion"
+    } else {
+      df_counts$y_val <- df_counts$n
+      y_label <- "Count"
+    }
+
     p <- ggplot2::ggplot(df_counts, ggplot2::aes(
       x    = .data[[col_a]],
-      y    = .data$n,
+      y    = .data$y_val,
       fill = .data[[col_b]]
     )) +
-      ggplot2::geom_col(position = "dodge") +
+      ggplot2::geom_col(position = "dodge", colour = "#555555", linewidth = 0.3) +
       ggplot2::scale_fill_brewer(palette = palette, name = col_b) +
-      ggplot2::labs(x = col_a, y = "Count")
+      ggplot2::labs(x = col_a, y = y_label)
   }
 
   p
@@ -568,10 +604,11 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
 }
 
 
-# trend_proportion: datetime (X) × factor (Y)
-# No stratify: count per factor level per timepoint, all levels as coloured lines.
-# Stratify: facet by stratum; within each facet, count per level as coloured lines.
-.plot_trend_proportion <- function(spec, dataset) {
+# trend_factor: datetime (X) × factor (Y)
+# No stratify: count (or proportion) per factor level per timepoint, all levels as coloured lines.
+# Stratify: facet by stratum; within each facet, count (or proportion) per level as coloured lines.
+# Proportion mode: y = n / total within each time period (and stratum).
+.plot_trend_factor <- function(spec, dataset) {
   col_a      <- spec$column_a
   col_b      <- spec$column_b
   stratify   <- spec$stratify_by
@@ -586,15 +623,26 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
     # Include stratify in the count so the facet variable exists in df_agg
     df_agg <- dplyr::count(df, .data$._time, .data[[stratify]], .data[[col_b]])
 
+    if (isTRUE(spec$bar_display == "proportion")) {
+      df_agg <- df_agg |>
+        dplyr::group_by(.data$._time, .data[[stratify]]) |>
+        dplyr::mutate(y_val = n / sum(n)) |>
+        dplyr::ungroup()
+      y_label <- "Proportion"
+    } else {
+      df_agg$y_val <- df_agg$n
+      y_label <- "Count"
+    }
+
     p <- ggplot2::ggplot(df_agg, ggplot2::aes(
       x      = .data$._time,
-      y      = .data$n,
+      y      = .data$y_val,
       colour = .data[[col_b]]
     )) +
       ggplot2::geom_line(linewidth = 0.9) +
       ggplot2::geom_point(size = 2) +
       ggplot2::scale_colour_brewer(palette = palette, name = col_b) +
-      ggplot2::labs(x = resolution, y = "Count") +
+      ggplot2::labs(x = resolution, y = y_label) +
       ggplot2::facet_wrap(as.formula(paste("~", stratify)),
                           labeller = ggplot2::label_both,
                           scales = "fixed",
@@ -602,18 +650,33 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
   } else {
     df_agg <- dplyr::count(df, .data$._time, .data[[col_b]])
 
+    if (isTRUE(spec$bar_display == "proportion")) {
+      df_agg <- df_agg |>
+        dplyr::group_by(.data$._time) |>
+        dplyr::mutate(y_val = n / sum(n)) |>
+        dplyr::ungroup()
+      y_label <- "Proportion"
+    } else {
+      df_agg$y_val <- df_agg$n
+      y_label <- "Count"
+    }
+
     p <- ggplot2::ggplot(df_agg, ggplot2::aes(
       x      = .data$._time,
-      y      = .data$n,
+      y      = .data$y_val,
       colour = .data[[col_b]]
     )) +
       ggplot2::geom_line(linewidth = 0.9) +
       ggplot2::geom_point(size = 2) +
       ggplot2::scale_colour_brewer(palette = palette, name = col_b) +
-      ggplot2::labs(x = resolution, y = "Count")
+      ggplot2::labs(x = resolution, y = y_label)
   }
 
-  if (isTRUE(spec$trend_zero_baseline)) p <- p + ggplot2::expand_limits(y = 0)
+  if (isTRUE(spec$bar_display == "proportion")) {
+    p <- p + ggplot2::expand_limits(y = c(0, 1))
+  } else if (isTRUE(spec$trend_zero_baseline)) {
+    p <- p + ggplot2::expand_limits(y = 0)
+  }
   p
 }
 
