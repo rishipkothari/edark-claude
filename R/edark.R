@@ -158,13 +158,46 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       # Custom report
       custom_report_items     = list(),   # list of item objects added from Explore tab
       requested_tab           = NULL,     # cross-tab navigation signal
-      requested_report_subtab = NULL      # navigate to report pill (full_report / custom_report)
+      requested_report_subtab = NULL,     # navigate to report pill (full_report / custom_report)
+
+      # Prepare stage revert support
+      last_applied_specs = list(
+        included_columns       = names(dataset_cast),
+        column_type_overrides  = list(),
+        column_transform_specs = list(),
+        row_filter_specs       = list()
+      ),
+      revert_trigger = 0L               # incremented by .revert_to_last_applied(); modules observe
     )
 
     # ── Prepare tab navigation guard ──────────────────────────────────────────
     # Auto-applies pending changes when the user switches prepare sub-tabs.
     # Invalid transforms block navigation (pipeline would mangle the column).
+    # If custom report items exist, shows a modal before applying.
     last_prepare_tab <- shiny::reactiveVal("columns")
+
+    # Shared helper: run the pipeline and commit to shared_state.
+    .do_nav_apply <- function() {
+      df <- tryCatch(
+        apply_prepare_pipeline(shared_state),
+        error = function(e) {
+          bslib::nav_select("prepare_tabs", last_prepare_tab())
+          shiny::showNotification(
+            paste("Error during apply:", conditionMessage(e)),
+            type = "error", duration = 8
+          )
+          NULL
+        }
+      )
+      if (is.null(df)) return()
+      shared_state$dataset_working       <- df
+      shared_state$column_types          <- detect_column_types(df)
+      shared_state$has_pending_changes   <- FALSE
+      shared_state$explore_needs_refresh <- TRUE
+      .snapshot_last_applied_specs(shared_state)
+      shiny::showNotification("Changes applied.", type = "message", duration = 2)
+    }
+
     shiny::observeEvent(input$prepare_tabs, {
       if (isTRUE(shared_state$has_pending_changes)) {
         invalid <- .find_invalid_transforms(shared_state)
@@ -177,25 +210,46 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
           )
           return()
         }
-        df <- tryCatch(
-          apply_prepare_pipeline(shared_state),
-          error = function(e) {
-            bslib::nav_select("prepare_tabs", last_prepare_tab())
-            shiny::showNotification(
-              paste("Error during apply:", conditionMessage(e)),
-              type = "error", duration = 8
-            )
-            NULL
-          }
-        )
-        if (is.null(df)) return()
-        shared_state$dataset_working       <- df
-        shared_state$column_types          <- detect_column_types(df)
-        shared_state$has_pending_changes   <- FALSE
-        shared_state$explore_needs_refresh <- TRUE
-        shiny::showNotification("Changes applied.", type = "message", duration = 2)
+        # Guard: warn if custom report items exist (same guard as Apply button).
+        n_items <- length(shiny::isolate(shared_state$custom_report_items))
+        if (n_items > 0) {
+          shiny::showModal(shiny::modalDialog(
+            title = "Custom Report May Be Affected",
+            paste0(
+              "You have ", n_items, " item(s) in your custom report. ",
+              "Dataset changes may invalidate those plots. Proceed anyway?"
+            ),
+            footer = shiny::tagList(
+              shiny::actionButton("cancel_nav_apply_btn",
+                                  "Cancel & Revert Changes",
+                                  class = "btn-outline-secondary"),
+              shiny::actionButton("confirm_nav_apply_btn",
+                                  "Apply Anyway",
+                                  class = "btn-warning")
+            ),
+            easyClose = FALSE
+          ))
+          return()  # do NOT update last_prepare_tab — stays on old tab
+        }
+        .do_nav_apply()
       }
       last_prepare_tab(input$prepare_tabs)
+    }, ignoreInit = TRUE)
+
+    # Confirm: apply the pending changes and advance last_prepare_tab.
+    shiny::observeEvent(input$confirm_nav_apply_btn, {
+      shiny::removeModal()
+      .do_nav_apply()
+      last_prepare_tab(shiny::isolate(input$prepare_tabs))
+    }, ignoreInit = TRUE)
+
+    # Cancel: revert staged changes back to last-applied specs and return to
+    # the previous tab (the tab navigation has already occurred in the DOM,
+    # so we explicitly navigate back).
+    shiny::observeEvent(input$cancel_nav_apply_btn, {
+      shiny::removeModal()
+      .revert_to_last_applied(shared_state)
+      bslib::nav_select("prepare_tabs", last_prepare_tab())
     }, ignoreInit = TRUE)
 
     # ── Cross-tab navigation (requested by modules via shared_state$requested_tab) ─

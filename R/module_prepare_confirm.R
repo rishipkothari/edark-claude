@@ -129,6 +129,7 @@ prepare_confirm_server <- function(id, shared_state) {
       shared_state$column_types          <- detect_column_types(df)
       shared_state$has_pending_changes   <- FALSE
       shared_state$explore_needs_refresh <- TRUE
+      .snapshot_last_applied_specs(shared_state)
       shiny::showNotification(
         paste0("Applied! ",
                format(nrow(df), big.mark = ","), " rows \u00d7 ", ncol(df), " columns."),
@@ -146,11 +147,14 @@ prepare_confirm_server <- function(id, shared_state) {
       shared_state$dataset_working        <- orig
       shared_state$column_types           <- shared_state$original_column_types
       shared_state$has_pending_changes    <- FALSE
+      .snapshot_last_applied_specs(shared_state)
       shiny::showNotification("Reset to original dataset.", type = "message", duration = 3)
     }
 
     # Show a confirmation modal when custom report items exist.
-    .custom_items_guard <- function(action_label, confirm_btn_id) {
+    # Both a "Proceed" and a "Cancel & Revert" button are provided so the user
+    # can roll back staged changes if they decide not to proceed.
+    .custom_items_guard <- function(action_label, confirm_btn_id, cancel_btn_id) {
       n_items <- length(shiny::isolate(shared_state$custom_report_items))
       if (n_items == 0) return(FALSE)  # no guard needed
       shiny::showModal(shiny::modalDialog(
@@ -160,10 +164,11 @@ prepare_confirm_server <- function(id, shared_state) {
           "Dataset changes may invalidate those plots. Proceed anyway?"
         ),
         footer = shiny::tagList(
-          shiny::modalButton("Cancel"),
+          shiny::actionButton(ns(cancel_btn_id), "Cancel & Revert Changes",
+                              class = "btn-outline-secondary"),
           shiny::actionButton(ns(confirm_btn_id), action_label, class = "btn-warning")
         ),
-        easyClose = TRUE
+        easyClose = FALSE
       ))
       TRUE  # guard was triggered
     }
@@ -184,7 +189,7 @@ prepare_confirm_server <- function(id, shared_state) {
       }
 
       # Warn if custom report items exist
-      if (.custom_items_guard("Apply Anyway", "confirm_apply_btn")) return()
+      if (.custom_items_guard("Apply Anyway", "confirm_apply_btn", "cancel_apply_btn")) return()
 
       do_apply()
     })
@@ -194,17 +199,27 @@ prepare_confirm_server <- function(id, shared_state) {
       do_apply()
     }, ignoreInit = TRUE)
 
+    shiny::observeEvent(input$cancel_apply_btn, {
+      shiny::removeModal()
+      .revert_to_last_applied(shared_state)
+    }, ignoreInit = TRUE)
+
 
     # ── Reset button ──────────────────────────────────────────────────────────
     shiny::observeEvent(input$reset_btn, {
       # Warn if custom report items exist
-      if (.custom_items_guard("Reset Anyway", "confirm_reset_btn")) return()
+      if (.custom_items_guard("Reset Anyway", "confirm_reset_btn", "cancel_reset_btn")) return()
       do_reset()
     })
 
     shiny::observeEvent(input$confirm_reset_btn, {
       shiny::removeModal()
       do_reset()
+    }, ignoreInit = TRUE)
+
+    shiny::observeEvent(input$cancel_reset_btn, {
+      shiny::removeModal()
+      .revert_to_last_applied(shared_state)
     }, ignoreInit = TRUE)
   })
 }
@@ -298,6 +313,32 @@ apply_prepare_pipeline <- function(shared_state) {
   all_cols     <- names(shared_state$dataset_original)
   n_excluded   <- length(setdiff(all_cols, shared_state$included_columns))
   n_transforms + n_filters + n_excluded
+}
+
+
+# Snapshot the current staged specs into shared_state$last_applied_specs.
+# Called after every successful Apply or Reset so Cancel can revert to this point.
+.snapshot_last_applied_specs <- function(shared_state) {
+  shared_state$last_applied_specs <- list(
+    included_columns       = shiny::isolate(shared_state$included_columns),
+    column_type_overrides  = shiny::isolate(shared_state$column_type_overrides),
+    column_transform_specs = shiny::isolate(shared_state$column_transform_specs),
+    row_filter_specs       = shiny::isolate(shared_state$row_filter_specs)
+  )
+}
+
+
+# Restore staged specs to last_applied_specs and signal all modules to sync their UIs.
+# Increments shared_state$revert_trigger so modules can observe the revert event.
+.revert_to_last_applied <- function(shared_state) {
+  specs <- shiny::isolate(shared_state$last_applied_specs)
+  if (is.null(specs)) return()
+  shared_state$included_columns       <- specs$included_columns
+  shared_state$column_type_overrides  <- specs$column_type_overrides
+  shared_state$column_transform_specs <- specs$column_transform_specs
+  shared_state$row_filter_specs       <- specs$row_filter_specs
+  shared_state$has_pending_changes    <- FALSE
+  shared_state$revert_trigger         <- shiny::isolate(shared_state$revert_trigger) + 1L
 }
 
 

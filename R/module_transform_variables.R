@@ -341,5 +341,17 @@ transform_variables_server <- function(id, shared_state) {
       }
     })
 
+    # Revert trigger: column_transform_specs has already been restored by
+    # .revert_to_last_applied(); update each column's selectInput to show the
+    # reverted method so the UI matches the underlying spec.
+    shiny::observeEvent(shared_state$revert_trigger, {
+      cols  <- eligible_cols()
+      specs <- shiny::isolate(shared_state$column_transform_specs)
+      lapply(cols, function(col) {
+        method <- if (!is.null(specs[[col]])) specs[[col]]$method else "none"
+        shiny::updateSelectInput(session, paste0("type_", col), selected = method)
+      })
+    }, ignoreInit = TRUE)
+
   })
 }

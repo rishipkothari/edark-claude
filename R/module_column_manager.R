@@ -101,21 +101,35 @@ column_manager_server <- function(id, shared_state) {
 
     # ── Observe include checkboxes ────────────────────────────────────────────
     # Register once for all columns (column list never changes within a session).
+    # Guard with !identical() so that UI re-renders during revert (which reset
+    # checkboxes to already-current values) do not spuriously set has_pending_changes.
     shiny::observe({
       col_names <- names(shiny::isolate(shared_state$dataset_original))
       lapply(col_names, function(col) {
         shiny::observeEvent(input[[paste0("include_", col)]], {
-          included <- shared_state$included_columns
-          if (isTRUE(input[[paste0("include_", col)]])) {
-            if (!col %in% included)
-              shared_state$included_columns <- c(included, col)
+          included     <- shared_state$included_columns
+          new_included <- if (isTRUE(input[[paste0("include_", col)]])) {
+            union(included, col)
           } else {
-            shared_state$included_columns <- setdiff(included, col)
+            setdiff(included, col)
           }
-          shared_state$has_pending_changes <- TRUE
+          if (!identical(new_included, included)) {
+            shared_state$included_columns    <- new_included
+            shared_state$has_pending_changes <- TRUE
+          }
         }, ignoreInit = TRUE)
       })
     })
+
+    # ── Revert trigger: sync checkboxes to last-applied state ─────────────────
+    shiny::observeEvent(shared_state$revert_trigger, {
+      specs     <- shared_state$last_applied_specs
+      col_names <- names(shared_state$dataset_original)
+      included  <- if (!is.null(specs$included_columns)) specs$included_columns else col_names
+      lapply(col_names, function(col)
+        shiny::updateCheckboxInput(session, paste0("include_", col), value = col %in% included)
+      )
+    }, ignoreInit = TRUE)
 
 
     # ── Select / Deselect all ────────────────────────────────────────────────

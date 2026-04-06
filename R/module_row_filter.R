@@ -199,6 +199,13 @@ row_filter_server <- function(id, shared_state) {
       if (length(shared_state$row_filter_specs) == 0)
         registered_cols <<- character(0)
     }, ignoreInit = TRUE)
+
+    # Revert trigger: row_filter_specs has already been restored by
+    # .revert_to_last_applied(); clear the registration cache so the reverted
+    # filter specs can register fresh observers when active_filters re-renders.
+    shiny::observeEvent(shared_state$revert_trigger, {
+      registered_cols <<- character(0)
+    }, ignoreInit = TRUE)
   })
 }
 

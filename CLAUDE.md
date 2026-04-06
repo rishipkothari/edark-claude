@@ -232,8 +232,13 @@ Datetime columns are excluded from both Full Report types.
 - If a column referenced in a custom item was removed after adding, `.build_custom_report_sections()` traps the error per-item and renders a placeholder rather than aborting.
 - PNG thumbnails are saved to `tempdir()` and cleaned up via `session$onSessionEnded` in `edark.R`.
 
+### Report contents options (Full Report only)
+Two checkboxes in the sidebar between "Select Variables" and "Output Format":
+- **Dataset Summary** (default on): one row per numeric/factor variable across the whole dataset. When unchecked the dataset summary slide/page is omitted entirely.
+- **Table One** (default off, only shown in Describe Variables mode): classic clinical Table 1 — one row per numeric variable (mean ± SD + Kruskal-Wallis p) and multi-row for factor variables (N per level + chi-square/Fisher's p). Rendered before the dataset summary. Stratification follows the sidebar Stratify By picker; columns are `Overall (N=X)`, one per stratum, and `p-value`. Built by `.build_tableone_df()` / `.style_tableone_ft()` in `generate_report.R`. `generate_report()` accepts `include_dataset_summary` and `include_tableone` flags (both default safe for backward-compatible programmatic API calls).
+
 ### Output formats
-All formats open with a **Dataset Summary** (one row per numeric/factor variable), then plot + table per section. Plot and table are **never on the same slide/page**.
+All formats optionally open with a **Table One** and/or **Dataset Summary**, then plot + table per section. Plot and table are **never on the same slide/page**.
 
 - **HTML**: `rmarkdown::render()` with `inst/report_template.Rmd`. Floating TOC, plain `<table>` for dataset summary (so Variable column accepts raw HTML links), Pandoc anchor IDs (`{#sec-...}`) on headings, back-to-top links.
 - **PPTX**: `officer` + `rvg`. Plain ggplot via `rvg::dml()`; patchwork rasterised to temp PNG.
@@ -261,7 +266,7 @@ All formats open with a **Dataset Summary** (one row per numeric/factor variable
 - Progress: optional `progress_fn(fraction, detail)` callback. `module_report.R` wraps in `withProgress`/`setProgress` which flush via the progress protocol during synchronous execution.
 - `custom_report_items` list structure: `list(id, plot_spec, thumb_path, title, added_at)`. `plot_spec` is a snapshot at add-time (aesthetics frozen); dataset is re-rendered from current `dataset_working` at generation time.
 - Dynamic observers for gallery up/down/remove use the same lazy-registration + `local({})` closure pattern as `module_row_filter.R`. `registered_item_ids` reactiveVal prevents double-registration.
-- Stale-data guard: clicking Apply or Reset in `module_prepare_confirm.R` when `custom_report_items` is non-empty shows a modal asking the user to confirm before proceeding.
+- Stale-data guard: clicking Apply, Reset, or navigating Prepare sub-tabs (auto-apply) when `custom_report_items` is non-empty shows a modal. "Cancel & Revert Changes" calls `.revert_to_last_applied()` which restores `included_columns`, `column_type_overrides`, `column_transform_specs`, `row_filter_specs` from `shared_state$last_applied_specs` and increments `shared_state$revert_trigger`. Modules observe `revert_trigger` to sync their UIs (column_manager via `updateCheckboxInput`, transform_variables via `updateSelectInput`, row_filter by clearing `registered_cols`). `last_applied_specs` is snapshotted after every successful Apply or Reset via `.snapshot_last_applied_specs()`.
 
 ### Programmatic API
 ```r
@@ -285,18 +290,15 @@ edark_report(liver_tx, report_type = "primary_vs_others",
 - save individual plot to file — "Save Plot" button placeholder already in the UI row above the plot panel (not yet wired)
 
 #### Mid magnitude change
+- `show_data_labels` not yet wired for `scatter_loess`. Currently wired for `bar_count`, `bar_grouped` (count+proportion labels with dodge), `violin_jitter` (median+IQR per group).
+- Dataset export: save working dataset to RDS, save original dataset and variable transform spec to RDS (or similar), save transformed dataset to CSV
 - Statistical tests in Explore › Analyze tab for bivariate plots — numeric × factor → Kruskal-Wallis; factor × factor → chi-square/Fisher's. (Reports already have these via the table helpers; Explore summary panel does not.)
-- `show_data_labels` not yet wired for `violin_jitter` (should show median per group), `scatter_loess`, or `bar_grouped`. Only `bar_count` respects it currently.
 - Alternative plot type options per variable combination (heat map, balloon plot, etc.)
-- Imputation in the Prepare stage
-- options for dataset level items like dataset summary, correlation matrix, etc
+- Report contents options: Dataset Summary checkbox + Table One checkbox (all_vars mode only) are wired. Still TODO: correlation matrix option.
 - add univariate table to correlation report (selects logistic vs linear regression vs anova to correlate) but this is also presented in a descriptive table 1 if stratified for exposure or outcome right? whats the difference between the univariate assocations in both of these tables that i know are routinely calculated for different reasons? what am i missing?
 
 #### Small magnitude change
 - Correlation matrix for variable selection
-- Dataset export: save working dataset to RDS, save original dataset and variable transform spec to RDS (or similar), save transformed dataset to CSV
 - `shinytest2` module tests + `testthat` unit tests
 - Async report generation (currently synchronous; cancel not feasible without `future`/`promises`)
 - **Bug — center tables in PPT + HTML reports**: `flextable::set_table_properties(align = "center")` is set in both `.style_dataset_summary_ft()` and `.style_section_ft()` in `generate_report.R` but tables still appear left-aligned in PPT and HTML output. DOCX may work. Investigate `officer` slide content alignment for PPT and the Rmd template's table rendering for HTML.
-- prepare - auto apply when navigating to different tab does not trigger the same custom report data invalidation guard that apply button does; also, if user clicks cancel, the staged changes on the current screen should probably revert to the last applied version; this might require storing 3 distinct states - "original", clean, no mods (easy), last apply (regardless of mechanism), and current staged (which might be reverted to last applied if a user attempts to apply with a custom report in place, decides not to accept changes, and clicking cancel "undoes staging changes" 
-- include tableone option in full report tab; if stratified, 3 columns, 1 for overall, and 2 for stratified with p-value for difference between strata

@@ -408,6 +408,23 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
       ggplot2::facet_wrap(as.formula(paste("~", stratify)), scales = "fixed",
                           ncol     = ceiling(sqrt(length(all_strata))),
                           labeller = ggplot2::label_both)
+
+    if (isTRUE(spec$bar_display == "proportion"))
+      p <- p + ggplot2::scale_y_continuous(labels = scales::percent)
+
+    if (isTRUE(spec$show_data_labels)) {
+      if (isTRUE(spec$bar_display == "proportion")) {
+        p <- p + ggplot2::geom_text(
+          ggplot2::aes(label = scales::percent(.data$y_val, accuracy = 0.1)),
+          position = ggplot2::position_dodge(width = 0.9), vjust = -0.3, size = 3
+        )
+      } else {
+        p <- p + ggplot2::geom_text(
+          ggplot2::aes(label = .data$y_val),
+          position = ggplot2::position_dodge(width = 0.9), vjust = -0.3, size = 3
+        )
+      }
+    }
   } else {
     df_counts <- dplyr::count(dataset, .data[[col_a]], .data[[col_b]])
 
@@ -438,6 +455,23 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
       ggplot2::geom_col(position = "dodge", colour = "#555555", linewidth = 0.3) +
       ggplot2::scale_fill_brewer(palette = palette, name = col_b) +
       ggplot2::labs(x = col_a, y = y_label)
+
+    if (isTRUE(spec$bar_display == "proportion"))
+      p <- p + ggplot2::scale_y_continuous(labels = scales::percent)
+
+    if (isTRUE(spec$show_data_labels)) {
+      if (isTRUE(spec$bar_display == "proportion")) {
+        p <- p + ggplot2::geom_text(
+          ggplot2::aes(label = scales::percent(.data$y_val, accuracy = 0.1)),
+          position = ggplot2::position_dodge(width = 0.9), vjust = -0.3, size = 3
+        )
+      } else {
+        p <- p + ggplot2::geom_text(
+          ggplot2::aes(label = .data$y_val),
+          position = ggplot2::position_dodge(width = 0.9), vjust = -0.3, size = 3
+        )
+      }
+    }
   }
 
   p
@@ -487,6 +521,31 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
     ncol_wrap <- ceiling(sqrt(n_strata))
     p <- p + ggplot2::facet_wrap(as.formula(paste("~", stratify)), scales = "fixed",
                                   ncol = ncol_wrap, labeller = ggplot2::label_both)
+  }
+
+  # Data labels: median and IQR per group, shown as text above the median marker.
+  if (isTRUE(spec$show_data_labels)) {
+    grp_var <- if (!is.null(stratify)) c(col_a, stratify) else col_a
+    label_df <- df |>
+      dplyr::group_by(dplyr::across(dplyr::all_of(grp_var))) |>
+      dplyr::summarise(
+        ._med = median(.data[[col_b]], na.rm = TRUE),
+        ._iqr = IQR(.data[[col_b]], na.rm = TRUE),
+        ._ymax = quantile(.data[[col_b]], 0.75, na.rm = TRUE),
+        .groups = "drop"
+      ) |>
+      dplyr::mutate(
+        ._label = paste0(
+          "Md ", round(.data$._med, 1),
+          "\nIQR ", round(.data$._iqr, 1)
+        )
+      )
+    p <- p + ggplot2::geom_text(
+      data        = label_df,
+      ggplot2::aes(x = .data[[col_a]], y = .data$._ymax, label = .data$._label),
+      vjust       = -0.4, size = 3, colour = "grey20", lineheight = 0.85,
+      inherit.aes = FALSE
+    )
   }
 
   p

@@ -15,6 +15,8 @@ params:
   dataset_summary_df: NULL
   report_type: "all_vars"
   linked_var_anchors: NULL
+  include_dataset_summary: TRUE
+  tableone_ft: NULL
 ---
 
 ```{css, echo=FALSE}
@@ -110,14 +112,26 @@ make_anchor <- function(x) {
   paste0("sec-", x)
 }
 
-report_type        <- params$report_type
-linked_var_anchors <- params$linked_var_anchors   # named vector: var_name -> "#sec-..."
+report_type             <- params$report_type
+linked_var_anchors      <- params$linked_var_anchors      # named vector: var_name -> "#sec-..."
+include_dataset_summary <- isTRUE(params$include_dataset_summary)
+tableone_ft             <- params$tableone_ft
 ```
 
-## Dataset Summary
+```{r tableone, results='asis'}
+if (!is.null(tableone_ft)) {
+  cat("## Table 1\n\n")
+  print(flextable::htmltools_value(tableone_ft))
+  cat('\n\n<hr class="section-rule">\n\n')
+}
+```
+
+```{r dataset-summary-heading, results='asis'}
+if (include_dataset_summary) cat("## Dataset Summary\n\n")
+```
 
 ```{r dataset-summary, results='asis'}
-if (!is.null(params$dataset_summary_df)) {
+if (include_dataset_summary && !is.null(params$dataset_summary_df)) {
   df      <- params$dataset_summary_df
   linked  <- linked_var_anchors   # named: var -> anchor_id
 
@@ -159,10 +173,9 @@ if (!is.null(params$dataset_summary_df)) {
     cat('</tr>\n')
   }
   cat('</tbody></table></div>\n')
+  cat('\n---\n\n')
 }
 ```
-
----
 
 ```{r sections, results='asis'}
 for (sec in params$sections) {

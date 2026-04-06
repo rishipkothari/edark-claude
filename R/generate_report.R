@@ -167,6 +167,184 @@
 
 
 # ---------------------------------------------------------------------------
+# Table One
+# ---------------------------------------------------------------------------
+
+#' Build a Table One data frame (one row per variable; factor vars multi-row).
+#'
+#' For numeric variables: "mean (SD)" in the Overall and per-stratum columns
+#' with a Kruskal-Wallis p-value (omitted when not stratified).
+#' For factor variables: N (%) per level with a chi-square / Fisher's p-value.
+#'
+#' @param dataset A data.frame.
+#' @param column_types Named character vector from detect_column_types().
+#' @param variables Character vector of variable names to include.
+#' @param stratify_by Column name to stratify by, or NULL.
+#' @return A data.frame suitable for .style_tableone_ft().
+#' @noRd
+.build_tableone_df <- function(dataset, column_types, variables, stratify_by) {
+  has_strat  <- !is.null(stratify_by) && nzchar(stratify_by) &&
+                stratify_by %in% names(dataset)
+  strata     <- if (has_strat) levels(factor(dataset[[stratify_by]])) else character(0)
+  n_overall  <- nrow(dataset)
+  n_strata   <- if (has_strat) vapply(strata, function(s)
+    sum(!is.na(dataset[[stratify_by]]) & dataset[[stratify_by]] == s, na.rm = TRUE),
+    integer(1)) else integer(0)
+
+  # Build dynamic column names
+  overall_col <- paste0("Overall (N=", n_overall, ")")
+  strat_cols  <- if (has_strat)
+    paste0(strata, " (N=", n_strata, ")") else character(0)
+  p_col       <- "p-value"
+
+  # Helper: format mean (SD)
+  fmt_mean_sd <- function(x) {
+    vals <- x[!is.na(x)]
+    if (length(vals) == 0) return(NA_character_)
+    paste0(round(mean(vals), 1), " (", round(sd(vals), 1), ")")
+  }
+
+  all_cols <- c("Variable", overall_col, strat_cols, if (has_strat) p_col)
+
+  rows <- lapply(variables, function(var) {
+    if (!var %in% names(column_types)) return(NULL)
+    vtype <- column_types[[var]]
+    x     <- dataset[[var]]
+
+    if (vtype == "numeric") {
+      # One row: "var, mean (SD)"
+      row <- setNames(
+        as.list(rep(NA_character_, length(all_cols))),
+        all_cols
+      )
+      row[["Variable"]]   <- paste0(var, ", mean (SD)")
+      row[[overall_col]]  <- fmt_mean_sd(x)
+      if (has_strat) {
+        for (i in seq_along(strata)) {
+          idx          <- !is.na(dataset[[stratify_by]]) & dataset[[stratify_by]] == strata[i]
+          row[[strat_cols[i]]] <- fmt_mean_sd(x[idx])
+        }
+        # Kruskal-Wallis p
+        grps <- split(x[!is.na(x)], droplevels(factor(
+          dataset[[stratify_by]][!is.na(x)],
+          levels = strata
+        )))
+        grps <- grps[lengths(grps) > 0]
+        row[[p_col]] <- tryCatch({
+          if (length(grps) >= 2) {
+            kt <- kruskal.test(x ~ factor(dataset[[stratify_by]], levels = strata),
+                               data = dataset)
+            formatC(kt$p.value, format = "g", digits = 3)
+          } else NA_character_
+        }, error = function(e) NA_character_)
+      }
+      list(as.data.frame(row, stringsAsFactors = FALSE))
+
+    } else if (vtype == "factor") {
+      lvls <- if (is.factor(x)) levels(x) else
+        sort(unique(as.character(x[!is.na(x)])))
+      n_valid_overall <- sum(!is.na(x))
+
+      # Chi-square / Fisher's p
+      p_val <- if (has_strat) {
+        tryCatch({
+          tbl    <- table(factor(x, levels = lvls),
+                          factor(dataset[[stratify_by]], levels = strata))
+          chi_ct <- suppressWarnings(chisq.test(tbl))
+          if (any(chi_ct$expected < 5)) {
+            fp <- fisher.test(tbl, simulate.p.value = TRUE, B = 2000)$p.value
+            formatC(fp, format = "g", digits = 3)
+          } else {
+            formatC(chi_ct$p.value, format = "g", digits = 3)
+          }
+        }, error = function(e) NA_character_)
+      } else NA_character_
+
+      # Header row (variable name + N overall + N per stratum + p)
+      hdr <- setNames(as.list(rep(NA_character_, length(all_cols))), all_cols)
+      hdr[["Variable"]]  <- var
+      hdr[[overall_col]] <- paste0("N=", n_valid_overall)
+      if (has_strat) {
+        for (i in seq_along(strata)) {
+          idx <- !is.na(dataset[[stratify_by]]) & dataset[[stratify_by]] == strata[i]
+          hdr[[strat_cols[i]]] <- paste0("N=", sum(!is.na(x[idx])))
+        }
+        hdr[[p_col]] <- p_val
+      }
+
+      # Level rows (indented with two spaces)
+      level_rows <- lapply(lvls, function(lv) {
+        row <- setNames(as.list(rep(NA_character_, length(all_cols))), all_cols)
+        row[["Variable"]] <- paste0("  ", lv)
+        n_lv <- sum(!is.na(x) & as.character(x) == lv)
+        pct  <- if (n_valid_overall > 0) round(100 * n_lv / n_valid_overall, 1) else 0
+        row[[overall_col]] <- paste0(n_lv, " (", pct, "%)")
+        if (has_strat) {
+          for (i in seq_along(strata)) {
+            idx      <- !is.na(dataset[[stratify_by]]) & dataset[[stratify_by]] == strata[i]
+            x_s      <- x[idx]
+            n_valid_s <- sum(!is.na(x_s))
+            n_lv_s   <- sum(!is.na(x_s) & as.character(x_s) == lv)
+            pct_s    <- if (n_valid_s > 0) round(100 * n_lv_s / n_valid_s, 1) else 0
+            row[[strat_cols[i]]] <- paste0(n_lv_s, " (", pct_s, "%)")
+          }
+          row[[p_col]] <- NA_character_
+        }
+        as.data.frame(row, stringsAsFactors = FALSE)
+      })
+
+      c(list(as.data.frame(hdr, stringsAsFactors = FALSE)), level_rows)
+    } else {
+      NULL
+    }
+  })
+
+  rows <- unlist(rows, recursive = FALSE)
+  rows <- rows[!vapply(rows, is.null, logical(1))]
+  if (length(rows) == 0) return(data.frame())
+  do.call(rbind, rows)
+}
+
+
+#' Style a Table One data frame as a flextable
+#' @noRd
+.style_tableone_ft <- function(df, has_strat = FALSE) {
+  if (nrow(df) == 0 || ncol(df) == 0) return(flextable::flextable(data.frame()))
+
+  # Bold header rows (non-indented Variable rows that are not numeric stats)
+  is_header_row <- !grepl("^  ", df[["Variable"]]) & !grepl(", mean \\(SD\\)$", df[["Variable"]])
+  # Indent level rows
+  df_disp <- df
+  df_disp[["Variable"]] <- trimws(df_disp[["Variable"]])  # display trim (indentation via padding)
+
+  ft <- flextable::flextable(df_disp)
+  ft <- flextable::font(ft, fontname = "Arial", part = "all")
+  ft <- flextable::fontsize(ft, size = 8,  part = "body")
+  ft <- flextable::fontsize(ft, size = 9,  part = "header")
+  ft <- flextable::bold(ft, part = "header")
+  ft <- flextable::bold(ft, i = which(is_header_row), part = "body")
+  ft <- flextable::padding(ft,
+    i    = which(grepl("^  ", df[["Variable"]])),
+    j    = "Variable",
+    padding.left = 16,
+    part = "body"
+  )
+  ft <- flextable::bg(ft, i = seq(1, nrow(df_disp), by = 2), bg = "#F7F7F7", part = "body")
+  ft <- flextable::border_remove(ft)
+  ft <- flextable::hline_top(ft,    part = "header", border = officer::fp_border(width = 1.2))
+  ft <- flextable::hline(ft,        part = "header", border = officer::fp_border(width = 0.6))
+  ft <- flextable::hline_bottom(ft, part = "body",   border = officer::fp_border(width = 1.2))
+  ft <- flextable::align(ft, part = "header", align = "center")
+  ft <- flextable::align(ft, j = "Variable", align = "left",   part = "body")
+  ft <- flextable::align(ft, j = setdiff(names(df_disp), "Variable"),
+                         align = "center", part = "body")
+  ft <- flextable::width(ft, j = "Variable", width = 2.0)
+  ft <- flextable::set_table_properties(ft, layout = "autofit", align = "center")
+  ft
+}
+
+
+# ---------------------------------------------------------------------------
 # Per-section table helpers
 # ---------------------------------------------------------------------------
 
@@ -613,16 +791,27 @@
 
 
 .assemble_pptx <- function(sections, dataset_summary_df, output_path,
-                             progress_fn = NULL) {
+                             progress_fn = NULL,
+                             include_dataset_summary = TRUE,
+                             tableone_ft = NULL) {
   prs <- officer::read_pptx(
     system.file("templates/ppt_16x9_blank_template.pptx", package = "edark")
   )
 
-  # ── Dataset summary slide ────────────────────────────────────────────────
-  prs <- officer::add_slide(prs, layout = "Blank", master = "Office Theme")
-  prs <- .pptx_title(prs, "Dataset Summary")
-  ds_ft <- .style_dataset_summary_ft(dataset_summary_df)
-  prs   <- .pptx_table(prs, ds_ft)
+  # ── Optional: Table One slide ────────────────────────────────────────────
+  if (!is.null(tableone_ft)) {
+    prs <- officer::add_slide(prs, layout = "Blank", master = "Office Theme")
+    prs <- .pptx_title(prs, "Table 1")
+    prs <- .pptx_table(prs, tableone_ft)
+  }
+
+  # ── Optional: Dataset summary slide ─────────────────────────────────────
+  if (isTRUE(include_dataset_summary)) {
+    prs <- officer::add_slide(prs, layout = "Blank", master = "Office Theme")
+    prs <- .pptx_title(prs, "Dataset Summary")
+    ds_ft <- .style_dataset_summary_ft(dataset_summary_df)
+    prs   <- .pptx_table(prs, ds_ft)
+  }
 
   # ── Per-section: plot slide + table slide ────────────────────────────────
   n <- length(sections)
@@ -652,14 +841,25 @@
 
 
 .assemble_docx <- function(sections, dataset_summary_df, output_path,
-                             progress_fn = NULL) {
+                             progress_fn = NULL,
+                             include_dataset_summary = TRUE,
+                             tableone_ft = NULL) {
   doc <- officer::read_docx()
 
-  # ── Dataset summary page ─────────────────────────────────────────────────
-  doc <- officer::body_add_par(doc, "Dataset Summary", style = "heading 1")
-  ds_ft <- .style_dataset_summary_ft(dataset_summary_df)
-  doc   <- flextable::body_add_flextable(doc, ds_ft)
-  doc   <- officer::body_add_break(doc)
+  # ── Optional: Table One page ─────────────────────────────────────────────
+  if (!is.null(tableone_ft)) {
+    doc <- officer::body_add_par(doc, "Table 1", style = "heading 1")
+    doc <- flextable::body_add_flextable(doc, tableone_ft)
+    doc <- officer::body_add_break(doc)
+  }
+
+  # ── Optional: Dataset summary page ──────────────────────────────────────
+  if (isTRUE(include_dataset_summary)) {
+    doc <- officer::body_add_par(doc, "Dataset Summary", style = "heading 1")
+    ds_ft <- .style_dataset_summary_ft(dataset_summary_df)
+    doc   <- flextable::body_add_flextable(doc, ds_ft)
+    doc   <- officer::body_add_break(doc)
+  }
 
   # ── Per-section: plot page + table page ──────────────────────────────────
   n <- length(sections)
@@ -699,7 +899,9 @@
 
 .assemble_html <- function(sections, dataset_summary_df, output_path,
                              report_type = "all_vars",
-                             linked_var_anchors = NULL) {
+                             linked_var_anchors = NULL,
+                             include_dataset_summary = TRUE,
+                             tableone_ft = NULL) {
   template_path <- system.file("report_template.Rmd", package = "edark")
 
   rmarkdown::render(
@@ -708,10 +910,12 @@
     output_dir        = dirname(normalizePath(output_path, mustWork = FALSE)),
     intermediates_dir = tempdir(),
     params            = list(
-      sections           = sections,
-      dataset_summary_df = dataset_summary_df,
-      report_type        = report_type,
-      linked_var_anchors = linked_var_anchors
+      sections                = sections,
+      dataset_summary_df      = dataset_summary_df,
+      report_type             = report_type,
+      linked_var_anchors      = linked_var_anchors,
+      include_dataset_summary = include_dataset_summary,
+      tableone_ft             = tableone_ft
     ),
     quiet             = TRUE,
     envir             = new.env(parent = globalenv())
@@ -750,12 +954,14 @@ generate_report <- function(dataset,
                              column_types,
                              report_type,
                              variables,
-                             primary_variable  = NULL,
-                             primary_role      = "exposure",
-                             stratify_variable = NULL,
+                             primary_variable        = NULL,
+                             primary_role            = "exposure",
+                             stratify_variable       = NULL,
                              format,
                              output_path,
-                             progress_fn = NULL) {
+                             progress_fn             = NULL,
+                             include_dataset_summary = TRUE,
+                             include_tableone        = FALSE) {
   stopifnot(report_type %in% c("all_vars", "primary_vs_others"))
   stopifnot(format %in% c("pptx", "docx", "html"))
   stopifnot(is.data.frame(dataset), length(variables) >= 1)
@@ -763,6 +969,22 @@ generate_report <- function(dataset,
   # Build dataset-level summary once (numeric + factor only)
   if (!is.null(progress_fn)) progress_fn(0, "Building dataset summary...")
   dataset_summary_df <- .build_dataset_summary(dataset, column_types)
+
+  # Build Table One if requested (only meaningful for all_vars / descriptive mode)
+  tableone_ft <- if (isTRUE(include_tableone) && report_type == "all_vars") {
+    strat <- if (!is.null(stratify_variable) && nzchar(stratify_variable))
+      stratify_variable else NULL
+    to_vars <- variables[variables %in% names(column_types) &
+                           column_types[variables] %in% c("numeric", "factor")]
+    if (!is.null(strat)) to_vars <- setdiff(to_vars, strat)
+    to_df <- tryCatch(
+      .build_tableone_df(dataset, column_types, to_vars, strat),
+      error = function(e) NULL
+    )
+    if (!is.null(to_df) && nrow(to_df) > 0)
+      .style_tableone_ft(to_df, has_strat = !is.null(strat))
+    else NULL
+  } else NULL
 
   sections <- if (report_type == "all_vars") {
     .build_all_vars_sections(dataset, column_types, variables, stratify_variable,
@@ -808,11 +1030,17 @@ generate_report <- function(dataset,
   if (!is.null(progress_fn)) progress_fn(0.95, "Assembling output...")
 
   switch(format,
-    pptx = .assemble_pptx(sections, dataset_summary_df, output_path, progress_fn),
-    docx = .assemble_docx(sections, dataset_summary_df, output_path, progress_fn),
+    pptx = .assemble_pptx(sections, dataset_summary_df, output_path, progress_fn,
+                          include_dataset_summary = include_dataset_summary,
+                          tableone_ft             = tableone_ft),
+    docx = .assemble_docx(sections, dataset_summary_df, output_path, progress_fn,
+                          include_dataset_summary = include_dataset_summary,
+                          tableone_ft             = tableone_ft),
     html = .assemble_html(sections, dataset_summary_df, output_path,
-                          report_type        = report_type,
-                          linked_var_anchors = linked_var_anchors)
+                          report_type             = report_type,
+                          linked_var_anchors      = linked_var_anchors,
+                          include_dataset_summary = include_dataset_summary,
+                          tableone_ft             = tableone_ft)
   )
 
   invisible(output_path)

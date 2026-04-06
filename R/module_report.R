@@ -86,6 +86,17 @@ report_ui <- function(id) {
             class = "btn-outline-secondary w-100 mt-1"
           ),
 
+          # ── Report contents ────────────────────────────────────────────────
+          shiny::tags$p(class = "fw-semibold mb-1 mt-2",
+                        shiny::icon("table"), " Report Contents"),
+          shiny::checkboxInput(ns("include_dataset_summary"),
+                               "Dataset Summary", value = TRUE),
+          shiny::conditionalPanel(
+            condition = paste0("input['", ns("report_type"), "'] == 'all_vars'"),
+            shiny::checkboxInput(ns("include_tableone"),
+                                 "Table One", value = FALSE)
+          ),
+
           # ── Output format ──────────────────────────────────────────────────
           shiny::tags$p(class = "fw-semibold mb-1 mt-2",
                         shiny::icon("download"), " Output Format"),
@@ -452,20 +463,23 @@ report_server <- function(id, shared_state) {
             value   = 0,
             {
               generate_report(
-                dataset           = shared_state$dataset_working,
-                column_types      = shared_state$column_types,
-                report_type       = input$report_type,
-                variables         = vars,
-                primary_variable  = if (input$report_type == "primary_vs_others")
-                                       input$primary_variable else NULL,
-                primary_role      = input$primary_role %||% "exposure",
-                stratify_variable = {
+                dataset                 = shared_state$dataset_working,
+                column_types            = shared_state$column_types,
+                report_type             = input$report_type,
+                variables               = vars,
+                primary_variable        = if (input$report_type == "primary_vs_others")
+                                             input$primary_variable else NULL,
+                primary_role            = input$primary_role %||% "exposure",
+                stratify_variable       = {
                   sv <- input$stratify_variable
                   if (is.null(sv) || !nzchar(sv)) NULL else sv
                 },
-                format      = input$output_format,
-                output_path = file,
-                progress_fn = function(frac, detail) {
+                format                  = input$output_format,
+                output_path             = file,
+                include_dataset_summary = isTRUE(input$include_dataset_summary),
+                include_tableone        = isTRUE(input$include_tableone) &&
+                                            input$report_type == "all_vars",
+                progress_fn             = function(frac, detail) {
                   shiny::setProgress(value = frac, detail = detail)
                 }
               )
