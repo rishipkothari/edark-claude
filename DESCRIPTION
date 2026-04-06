@@ -44,7 +44,8 @@ Imports:
     officer,
     rvg,
     rmarkdown,
-    knitr
+    knitr,
+    base64enc
 Suggests:
     testthat (>= 3.0.0),
     shinytest2

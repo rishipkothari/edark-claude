@@ -45,14 +45,7 @@ trend_controls_ui <- function(id) {
         shiny::tags$p(class = "fw-semibold mb-1",
                       shiny::icon("chart-line"), " Trend Variable"),
         shiny::uiOutput(ns("trend_var_picker")),
-        shinyWidgets::radioGroupButtons(
-          ns("bar_display"),
-          label    = "Trend display:",
-          choices  = c("Count" = "count", "Proportion" = "proportion"),
-          selected = "count",
-          size     = "sm",
-          width    = "100%"
-        ),
+        shiny::uiOutput(ns("bar_display_ui")),
         shiny::uiOutput(ns("stat_picker_ui")),
 
 
@@ -183,6 +176,28 @@ trend_controls_server <- function(id, shared_state) {
       )
     })
 
+    # Factor statistic picker + impute zero checkbox — only shown when trend variable is a factor
+    output$bar_display_ui <- shiny::renderUI({
+      tv    <- input$trend_variable
+      types <- shared_state$column_types
+      if (is.null(tv) || !tv %in% names(types) || types[[tv]] != "factor") return(NULL)
+      shiny::tagList(
+        shinyWidgets::radioGroupButtons(
+          ns("bar_display"),
+          label    = "Factor statistic:",
+          choices  = c("Count" = "count", "Proportion" = "proportion"),
+          selected = if (!is.null(input$bar_display)) input$bar_display else "count",
+          size     = "sm",
+          width    = "100%"
+        ),
+        shiny::checkboxInput(
+          ns("trend_impute_zero"),
+          label = "Impute 0 for missing timepoint data",
+          value = if (!is.null(input$trend_impute_zero)) input$trend_impute_zero else TRUE
+        )
+      )
+    })
+
     output$zero_baseline_ui <- shiny::renderUI({
       shiny::checkboxInput(ns("trend_zero_baseline"),
                            "Include zero baseline (y-axis)",
@@ -232,6 +247,12 @@ trend_controls_server <- function(id, shared_state) {
       val <- isTRUE(input$trend_zero_baseline)
       if (!identical(shared_state$trend_zero_baseline, val))
         shared_state$trend_zero_baseline <- val
+    })
+
+    shiny::observeEvent(input$trend_impute_zero, {
+      val <- isTRUE(input$trend_impute_zero)
+      if (!identical(shared_state$trend_impute_zero, val))
+        shared_state$trend_impute_zero <- val
     })
 
     shiny::observeEvent(input$trend_stratify_variable, {

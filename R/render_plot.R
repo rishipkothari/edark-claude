@@ -199,6 +199,9 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
       ggplot2::labs(x = col_a, y = y_label) +
       ggplot2::theme(axis.text.x = ggplot2::element_text(size = 11))
 
+    if (isTRUE(spec$bar_display == "proportion"))
+      p <- p + ggplot2::scale_y_continuous(labels = scales::percent)
+
     if (spec$show_data_labels) {
       if (isTRUE(spec$bar_display == "proportion")) {
         p <- p + ggplot2::geom_text(
@@ -235,6 +238,9 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
       ggplot2::scale_fill_brewer(palette = palette, guide = "none") +
       ggplot2::labs(x = col_a, y = y_label) +
       ggplot2::theme(axis.text.x = ggplot2::element_text(size = 11))
+
+    if (isTRUE(spec$bar_display == "proportion"))
+      p <- p + ggplot2::scale_y_continuous(labels = scales::percent)
 
     if (spec$show_data_labels) {
       if (isTRUE(spec$bar_display == "proportion")) {
@@ -582,6 +588,13 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
   if (!is.null(stratify)) {
     df_agg <- dplyr::group_by(df, .data$._time, .data[[stratify]]) |>
       dplyr::summarise(._mean = mean(.data[[col_b]], na.rm = TRUE), .groups = "drop")
+
+    all_times  <- .trend_time_seq(min(df$._time), max(df$._time), resolution)
+    all_strata <- sort(unique(df[[stratify]]))
+    cg <- expand.grid(`._time` = all_times, s = all_strata, stringsAsFactors = FALSE)
+    names(cg) <- c("._time", stratify)
+    df_agg <- dplyr::left_join(cg, df_agg, by = c("._time", stratify))
+
     p <- ggplot2::ggplot(df_agg, ggplot2::aes(
       x      = .data$._time,
       y      = .data$._mean,
@@ -595,6 +608,10 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
   } else {
     df_agg <- dplyr::group_by(df, .data$._time) |>
       dplyr::summarise(._mean = mean(.data[[col_b]], na.rm = TRUE), .groups = "drop")
+
+    all_times <- .trend_time_seq(min(df$._time), max(df$._time), resolution)
+    df_agg <- dplyr::left_join(data.frame(`._time` = all_times), df_agg, by = "._time")
+
     p <- ggplot2::ggplot(df_agg, ggplot2::aes(x = .data$._time, y = .data$._mean)) +
       ggplot2::geom_line(colour = "#5b9bd5", linewidth = 0.9) +
       ggplot2::geom_point(colour = "#1f497d", size = 2)
@@ -623,10 +640,29 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
     # Include stratify in the count so the facet variable exists in df_agg
     df_agg <- dplyr::count(df, .data$._time, .data[[stratify]], .data[[col_b]])
 
+    if (isTRUE(spec$trend_impute_zero)) {
+      # Fill gaps: build complete time × stratum × level grid, fill missing n with 0
+      all_times   <- .trend_time_seq(min(df$._time), max(df$._time), resolution)
+      all_strata  <- levels(df[[stratify]])
+      if (is.null(all_strata)) all_strata <- unique(df[[stratify]])
+      all_levels  <- levels(df[[col_b]])
+      if (is.null(all_levels)) all_levels <- unique(df[[col_b]])
+      complete_grid <- expand.grid(
+        `._time`         = all_times,
+        stratum          = all_strata,
+        level            = all_levels,
+        stringsAsFactors = FALSE
+      )
+      names(complete_grid) <- c("._time", stratify, col_b)
+      df_agg <- dplyr::left_join(complete_grid, df_agg,
+                                 by = c("._time", stratify, col_b))
+      df_agg$n[is.na(df_agg$n)] <- 0L
+    }
+
     if (isTRUE(spec$bar_display == "proportion")) {
       df_agg <- df_agg |>
         dplyr::group_by(.data$._time, .data[[stratify]]) |>
-        dplyr::mutate(y_val = n / sum(n)) |>
+        dplyr::mutate(y_val = dplyr::if_else(sum(n) == 0L, 0, n / sum(n))) |>
         dplyr::ungroup()
       y_label <- "Proportion"
     } else {
@@ -650,10 +686,25 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
   } else {
     df_agg <- dplyr::count(df, .data$._time, .data[[col_b]])
 
+    if (isTRUE(spec$trend_impute_zero)) {
+      # Fill gaps: build complete time × level grid, fill missing n with 0
+      all_times  <- .trend_time_seq(min(df$._time), max(df$._time), resolution)
+      all_levels <- levels(df[[col_b]])
+      if (is.null(all_levels)) all_levels <- unique(df[[col_b]])
+      complete_grid <- expand.grid(
+        `._time` = all_times,
+        level    = all_levels,
+        stringsAsFactors = FALSE
+      )
+      names(complete_grid) <- c("._time", col_b)
+      df_agg <- dplyr::left_join(complete_grid, df_agg, by = c("._time", col_b))
+      df_agg$n[is.na(df_agg$n)] <- 0L
+    }
+
     if (isTRUE(spec$bar_display == "proportion")) {
       df_agg <- df_agg |>
         dplyr::group_by(.data$._time) |>
-        dplyr::mutate(y_val = n / sum(n)) |>
+        dplyr::mutate(y_val = dplyr::if_else(sum(n) == 0L, 0, n / sum(n))) |>
         dplyr::ungroup()
       y_label <- "Proportion"
     } else {
@@ -673,7 +724,9 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
   }
 
   if (isTRUE(spec$bar_display == "proportion")) {
-    p <- p + ggplot2::expand_limits(y = c(0, 1))
+    p <- p +
+      ggplot2::scale_y_continuous(labels = scales::percent) +
+      ggplot2::expand_limits(y = c(0, 1))
   } else if (isTRUE(spec$trend_zero_baseline)) {
     p <- p + ggplot2::expand_limits(y = 0)
   }
@@ -734,6 +787,13 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
       dplyr::group_modify(~ .agg(.x)) |>
       dplyr::ungroup()
 
+    # Complete time × stratum grid so all periods appear on x-axis (NA = no data)
+    all_times  <- .trend_time_seq(min(df$._time), max(df$._time), resolution)
+    all_strata <- sort(unique(df[[stratify]]))
+    cg <- expand.grid(`._time` = all_times, s = all_strata, stringsAsFactors = FALSE)
+    names(cg) <- c("._time", stratify)
+    df_agg <- dplyr::left_join(cg, df_agg, by = c("._time", stratify))
+
     p <- ggplot2::ggplot(df_agg, ggplot2::aes(
       x      = .data$._time,
       y      = .data$._y,
@@ -757,6 +817,10 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
     df_agg <- dplyr::group_by(df, .data$._time) |>
       dplyr::group_modify(~ .agg(.x)) |>
       dplyr::ungroup()
+
+    # Complete time sequence so all periods appear on x-axis (NA = no data)
+    all_times <- .trend_time_seq(min(df$._time), max(df$._time), resolution)
+    df_agg <- dplyr::left_join(data.frame(`._time` = all_times), df_agg, by = "._time")
 
     p <- ggplot2::ggplot(df_agg, ggplot2::aes(x = .data$._time, y = .data$._y))
 
@@ -799,6 +863,20 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
 # ── Shared utilities ──────────────────────────────────────────────────────────
 
 # Returns the appropriate lubridate floor function for a trend resolution string.
+# Generate a complete sequence of floored time values from min_t to max_t.
+.trend_time_seq <- function(min_t, max_t, resolution) {
+  by_unit <- switch(resolution,
+    Hour    = "hour",
+    Day     = "day",
+    Week    = "week",
+    Month   = "month",
+    Quarter = "3 months",
+    Year    = "year",
+    stop("Unknown trend_resolution: ", resolution, call. = FALSE)
+  )
+  seq(min_t, max_t, by = by_unit)
+}
+
 .trend_floor_fn <- function(resolution) {
   switch(resolution,
     Hour    = function(x) lubridate::floor_date(x, "hour"),

@@ -158,6 +158,7 @@ build_trend_plot_spec <- function(shared_state) {
     show_legend         = shiny::isolate(shared_state$show_legend),
     legend_position     = shiny::isolate(shared_state$legend_position),
     ggplot_theme        = shiny::isolate(shared_state$ggplot_theme),
-    bar_display         = shiny::isolate(shared_state$bar_display)
+    bar_display         = shiny::isolate(shared_state$bar_display),
+    trend_impute_zero   = isTRUE(shiny::isolate(shared_state$trend_impute_zero))
   )
 }

@@ -88,7 +88,7 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
         sidebar = bslib::sidebar(
           width = 320,
           bslib::navset_pill(
-            bslib::nav_panel("Analyse", explore_controls_ui("explore_controls")),
+            bslib::nav_panel("Analyze", explore_controls_ui("explore_controls")),
             bslib::nav_panel("Trend",   trend_controls_ui("trend_controls"))
           )
         ),
@@ -124,7 +124,7 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       column_transform_specs  = list(),
       has_pending_changes     = FALSE,
 
-      # Explore stage — Analyse tab
+      # Explore stage — Analyze tab
       primary_variable        = NULL,
       primary_variable_role   = "exposure",
       secondary_variable      = NULL,
@@ -137,6 +137,7 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       trend_resolution         = "Month",
       trend_stratify_variable  = NULL,
       trend_zero_baseline      = TRUE,
+      trend_impute_zero        = TRUE,
 
       # Plot state
       plot_specification      = NULL,
@@ -152,7 +153,12 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       legend_position         = "right",
 
       # Plot options (captured on plot button click, not reactive)
-      bar_display             = "count"
+      bar_display             = "count",
+
+      # Custom report
+      custom_report_items     = list(),   # list of item objects added from Explore tab
+      requested_tab           = NULL,     # cross-tab navigation signal
+      requested_report_subtab = NULL      # navigate to report pill (full_report / custom_report)
     )
 
     # ── Prepare tab navigation guard ──────────────────────────────────────────
@@ -191,6 +197,20 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       }
       last_prepare_tab(input$prepare_tabs)
     }, ignoreInit = TRUE)
+
+    # ── Cross-tab navigation (requested by modules via shared_state$requested_tab) ─
+    shiny::observeEvent(shared_state$requested_tab, {
+      req(!is.null(shared_state$requested_tab))
+      bslib::nav_select("main_navbar", shared_state$requested_tab)
+      shared_state$requested_tab <- NULL
+    }, ignoreNULL = TRUE, ignoreInit = TRUE)
+
+    # ── Session cleanup: remove thumbnail temp files on exit ──────────────────
+    session$onSessionEnded(function() {
+      paths <- vapply(shiny::isolate(shared_state$custom_report_items),
+                      `[[`, character(1), "thumb_path")
+      unlink(paths[file.exists(paths)])
+    })
 
     # Wire all modules — each is a sibling, none calls another's server.
     column_manager_server("column_manager",         shared_state)

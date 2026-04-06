@@ -45,8 +45,8 @@ R/
 │
 ├── module_explore_controls.R   Explore › Analyze tab sidebar — variable pickers, Describe/Correlate buttons
 ├── module_trend_controls.R     Explore › Trend tab sidebar — timestamp/resolution/variable/stat pickers
-├── module_explore_output.R     Explore main panel — plot output + summary reactable (shared by both tabs)
-├── module_report.R             Report tab — type selector, variable modal, download handler
+├── module_explore_output.R     Explore main panel — plot output + summary reactable + "Add to Custom Report" / "View Report" buttons
+├── module_report.R             Report tab — Full Report pill (type selector, variable modal, download) + Custom Report pill (gallery, reorder, download)
 │
 ├── data.R                      Roxygen docs for built-in liver_tx dataset
 └── data/liver_tx.rda           120-row synthetic liver transplant dataset (default for edark())
@@ -122,7 +122,9 @@ Numeric stat options (stored in `shared_state$trend_summary_stat`):
 
 **Zero baseline** (`shared_state$trend_zero_baseline`): checkbox in the trend sidebar, reactive like aesthetics (re-renders without re-clicking Plot Trend). Defaults to TRUE when no trend variable is selected (count mode), FALSE for numeric/factor variables. Applied via `expand_limits(y = 0)` in all three trend plot functions.
 
-Trend tab has its own shared_state fields: `trend_timestamp_variable`, `trend_variable`, `trend_summary_stat`, `trend_resolution`, `trend_stratify_variable`, `trend_zero_baseline`. These are separate from the Analyze tab fields (`primary_variable`, `stratify_variable`, etc.).
+**Impute zero for missing timepoints** (`shared_state$trend_impute_zero`): checkbox shown only when the trend variable is a factor (rendered inside `bar_display_ui`). **Not** reactive — takes effect on the next Plot Trend click. When TRUE, builds a complete time × level (× stratum) grid via `expand.grid` + `left_join` and fills missing `n` with `0L`. When the stat is proportion and all levels at a timepoint are zero (`sum(n) == 0`), proportion is set to 0 (not NaN) via `dplyr::if_else`. Defaults to TRUE.
+
+Trend tab has its own shared_state fields: `trend_timestamp_variable`, `trend_variable`, `trend_summary_stat`, `trend_resolution`, `trend_stratify_variable`, `trend_zero_baseline`, `trend_impute_zero`. These are separate from the Analyze tab fields (`primary_variable`, `stratify_variable`, etc.).
 
 ### Plot types reference
 
@@ -209,12 +211,26 @@ Cut-point labels from `.make_range_labels()`: e.g. `c(25, 40)` → `c("< 25", "2
 ## Report stage
 
 ### Report types
+The Report tab has two pill tabs: **Full Report** and **Custom Report**.
+
+**Full Report** — auto-generated from the working dataset:
+
 | UI label | `report_type` value | Behaviour |
 |---|---|---|
 | **Describe Variables** | `"all_vars"` | One section per numeric/factor variable. Univariate plot + summary table. Optional stratify adds per-stratum columns. |
 | **Correlation** | `"primary_vs_others"` | One bivariate section per secondary variable. Single global stratify applies to all. |
 
-Datetime columns are excluded from both report types.
+Datetime columns are excluded from both Full Report types.
+
+**Custom Report** — user-curated from the Explore tab:
+- "Add to Custom Report" button (top-right of plot panel) appends the current plot spec + PNG thumbnail to `shared_state$custom_report_items`.
+- "View Report" button navigates to the Report tab via `shared_state$requested_tab` (observed in `edark.R`, calls `bslib::nav_select()`).
+- Custom Report pill shows a thumbnail gallery with up/down reorder arrows and remove buttons.
+- Preview panel in the main area shows a thumbnail grid of queued items.
+- `generate_custom_report()` in `generate_report.R` is the Shiny-free entry point; reuses all three existing assemblers (`.assemble_pptx()`, `.assemble_docx()`, `.assemble_html()`).
+- Trend plot items: plot only, no table (consistent with Full Report behaviour).
+- If a column referenced in a custom item was removed after adding, `.build_custom_report_sections()` traps the error per-item and renders a placeholder rather than aborting.
+- PNG thumbnails are saved to `tempdir()` and cleaned up via `session$onSessionEnded` in `edark.R`.
 
 ### Output formats
 All formats open with a **Dataset Summary** (one row per numeric/factor variable), then plot + table per section. Plot and table are **never on the same slide/page**.
@@ -241,8 +257,11 @@ All formats open with a **Dataset Summary** (one row per numeric/factor variable
 `.make_html_anchor(x)` → `"sec-"` + lowercased, non-alphanumeric replaced with `-`. Same logic as `make_anchor()` in `report_template.Rmd`. For `primary_vs_others`, anchor is keyed on the secondary variable name (not the full title) so summary table links resolve correctly.
 
 ### Architecture notes
-- `generate_report()` is Shiny-free (takes plain R args, no `shared_state`). Works from both `downloadHandler` and `edark_report()`.
+- `generate_report()` and `generate_custom_report()` are both Shiny-free (take plain R args, no `shared_state`). Work from both `downloadHandler` and programmatic API.
 - Progress: optional `progress_fn(fraction, detail)` callback. `module_report.R` wraps in `withProgress`/`setProgress` which flush via the progress protocol during synchronous execution.
+- `custom_report_items` list structure: `list(id, plot_spec, thumb_path, title, added_at)`. `plot_spec` is a snapshot at add-time (aesthetics frozen); dataset is re-rendered from current `dataset_working` at generation time.
+- Dynamic observers for gallery up/down/remove use the same lazy-registration + `local({})` closure pattern as `module_row_filter.R`. `registered_item_ids` reactiveVal prevents double-registration.
+- Stale-data guard: clicking Apply or Reset in `module_prepare_confirm.R` when `custom_report_items` is non-empty shows a modal asking the user to confirm before proceeding.
 
 ### Programmatic API
 ```r
@@ -262,11 +281,8 @@ edark_report(liver_tx, report_type = "primary_vs_others",
 #### High magnitude change
 - Integrate studybuddy — use working dataset for direct model creation and publication-quality outputs
 - Word report: reference `.docx` template with defined heading styles
-- Custom report generation ("add this graph/table" button)
-    - Also some thoughts on the custom report. I'd love to show a preview, like a PowerPoint slide view, that could just indicate what the plots look like before they come out into the report. That would also be the basis for adding or removing plots from the custom report on the fly.
-    - The problem is how the data would be stored in the meantime. If I wanted previews, would we be saving image previews somewhere as well as plot parameters to feed into the generate report function? The other way to do it would be simply to create a list of report objects without the ability to preview. We would still need the ability to add or remove on the fly, so that would probably look like a table or list with a text description of what each plot would be. The controls for that would be on the plot UI over in the corner, within the Add Plot button, and then a link to the report tab to modify the contents of the custom report. 
 - a question to investigate: how does plot theming work if edark_report is called from outside GUI? is there a plot spec variable that contains plot aesthetic data? if so, what happens when func is called without this being present in a reactive variable? is there a check for a default plot spec? i suppose all aspects of external function calls should inspect for reactive variables that are used that are not initialized within the function in a safety check, but this is far down the road -- not critical functionality
-- save individual plot to file (same area/panel as custom report generation)
+- save individual plot to file — "Save Plot" button placeholder already in the UI row above the plot panel (not yet wired)
 
 #### Mid magnitude change
 - Statistical tests in Explore › Analyze tab for bivariate plots — numeric × factor → Kruskal-Wallis; factor × factor → chi-square/Fisher's. (Reports already have these via the table helpers; Explore summary panel does not.)
@@ -281,6 +297,6 @@ edark_report(liver_tx, report_type = "primary_vs_others",
 - Dataset export: save working dataset to RDS, save original dataset and variable transform spec to RDS (or similar), save transformed dataset to CSV
 - `shinytest2` module tests + `testthat` unit tests
 - Async report generation (currently synchronous; cancel not feasible without `future`/`promises`)
-- Rename "Bar display" / "Trend display" label to "Factor statistic" on both the Analyze tab (`module_explore_controls.R`) and the Trend tab (`module_trend_controls.R`) — the `radioGroupButtons` label argument
-- Tab label "Analyse" → "Analyze" in the UI (wherever the pill tab is rendered in `edark.R` or the UI scaffold)
-- **Bug — `trend_factor` gaps**: when trending a factor variable, time periods with no observations produce gaps in the run chart rather than explicit zero lines. Fix: after `dplyr::count()`, build a complete time × level grid (same `expand.grid` + `left_join` pattern used in `.plot_bar_count()` stratified path) and fill missing `n` with `0L` before computing proportions or plotting.
+- **Bug — center tables in PPT + HTML reports**: `flextable::set_table_properties(align = "center")` is set in both `.style_dataset_summary_ft()` and `.style_section_ft()` in `generate_report.R` but tables still appear left-aligned in PPT and HTML output. DOCX may work. Investigate `officer` slide content alignment for PPT and the Rmd template's table rendering for HTML.
+- prepare - auto apply when navigating to different tab does not trigger the same custom report data invalidation guard that apply button does; also, if user clicks cancel, the staged changes on the current screen should probably revert to the last applied version; this might require storing 3 distinct states - "original", clean, no mods (easy), last apply (regardless of mechanism), and current staged (which might be reverted to last applied if a user attempts to apply with a custom report in place, decides not to accept changes, and clicking cancel "undoes staging changes" 
+- include tableone option in full report tab; if stratified, 3 columns, 1 for overall, and 2 for stratified with p-value for difference between strata

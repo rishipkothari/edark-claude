@@ -24,6 +24,17 @@ explore_output_ui <- function(id) {
     # Stale-data notice (hidden until needed)
     shiny::uiOutput(ns("refresh_notice")),
 
+    # Action button row (right-justified, above plot card)
+    shiny::div(
+      class = "d-flex justify-content-end align-items-center gap-2 mb-2",
+      shiny::actionButton(
+        ns("add_to_custom_btn"), "Add to Custom Report",
+        icon  = shiny::icon("plus"),
+        class = "btn-sm btn-outline-primary"
+      ),
+      shiny::uiOutput(ns("view_report_btn_ui"))
+    ),
+
     # Plot area
     bslib::card(
       bslib::card_body(
@@ -148,6 +159,71 @@ explore_output_server <- function(id, shared_state) {
         highlight  = TRUE,
         pagination = FALSE
       )
+    })
+
+
+    # ── Custom report buttons ─────────────────────────────────────────────────
+
+    # "View Report" button — rendered dynamically so its badge stays live
+    output$view_report_btn_ui <- shiny::renderUI({
+      n     <- length(shared_state$custom_report_items)
+      label <- if (n > 0)
+        shiny::tagList("View Report",
+                       shiny::tags$span(class = "badge bg-primary ms-1", n))
+      else "View Report"
+      shiny::actionButton(
+        ns("view_report_btn"), label = label,
+        icon  = shiny::icon("file-export"),
+        class = "btn-sm btn-outline-secondary"
+      )
+    })
+
+    # Add current plot to the custom report
+    shiny::observeEvent(input$add_to_custom_btn, {
+      spec <- shiny::isolate(shared_state$plot_specification)
+      gg   <- shiny::isolate(shared_state$active_plot)
+
+      if (is.null(spec) || is.null(gg)) {
+        shiny::showNotification("No plot to add. Run a plot first.", type = "warning")
+        return()
+      }
+
+      # Save thumbnail PNG (active_plot is always the patchwork, safe for ggsave)
+      thumb_path <- tempfile(pattern = "edark_thumb_", fileext = ".png")
+      ggplot2::ggsave(thumb_path, plot = gg, width = 4, height = 3,
+                      units = "in", dpi = 96)
+
+      # Build human-readable title from spec
+      title <- spec$column_a
+      if (!is.null(spec$column_b))    title <- paste0(title, " \u00d7 ", spec$column_b)
+      if (!is.null(spec$stratify_by) && nzchar(spec$stratify_by))
+        title <- paste0(title, " \u00b7 by ", spec$stratify_by)
+
+      new_item <- list(
+        id         = paste0("item_", as.numeric(Sys.time()), "_", sample.int(1e6, 1)),
+        plot_spec  = spec,
+        thumb_path = thumb_path,
+        title      = title,
+        added_at   = Sys.time()
+      )
+
+      shared_state$custom_report_items <- c(
+        shiny::isolate(shared_state$custom_report_items),
+        list(new_item)
+      )
+
+      n <- length(shared_state$custom_report_items)
+      shiny::showNotification(
+        paste0("\u2713 Added (", n, " item", if (n != 1) "s" else "", " in custom report)"),
+        type = "message", duration = 3
+      )
+    })
+
+    # Navigate to Report tab → Custom Report pill
+    shiny::observeEvent(input$view_report_btn, {
+      shared_state$requested_report_subtab <- "custom_report"
+      if (!identical(shared_state$requested_tab, "report"))
+        shared_state$requested_tab <- "report"
     })
   })
 }

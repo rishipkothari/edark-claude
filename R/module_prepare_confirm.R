@@ -111,6 +111,63 @@ prepare_confirm_server <- function(id, shared_state) {
     })
 
 
+    # ── Shared apply helper ───────────────────────────────────────────────────
+    # Extracted so both Apply and its confirm-modal path share one implementation.
+    do_apply <- function() {
+      df <- tryCatch(
+        apply_prepare_pipeline(shared_state),
+        error = function(e) {
+          shiny::showNotification(
+            paste("Error during Apply:", conditionMessage(e)),
+            type = "error", duration = 8
+          )
+          NULL
+        }
+      )
+      if (is.null(df)) return()
+      shared_state$dataset_working       <- df
+      shared_state$column_types          <- detect_column_types(df)
+      shared_state$has_pending_changes   <- FALSE
+      shared_state$explore_needs_refresh <- TRUE
+      shiny::showNotification(
+        paste0("Applied! ",
+               format(nrow(df), big.mark = ","), " rows \u00d7 ", ncol(df), " columns."),
+        type = "message", duration = 4
+      )
+    }
+
+    # Shared reset helper — same reason as above.
+    do_reset <- function() {
+      orig <- shared_state$dataset_original
+      shared_state$included_columns       <- names(orig)
+      shared_state$column_type_overrides  <- list()
+      shared_state$column_transform_specs <- list()
+      shared_state$row_filter_specs       <- list()
+      shared_state$dataset_working        <- orig
+      shared_state$column_types           <- shared_state$original_column_types
+      shared_state$has_pending_changes    <- FALSE
+      shiny::showNotification("Reset to original dataset.", type = "message", duration = 3)
+    }
+
+    # Show a confirmation modal when custom report items exist.
+    .custom_items_guard <- function(action_label, confirm_btn_id) {
+      n_items <- length(shiny::isolate(shared_state$custom_report_items))
+      if (n_items == 0) return(FALSE)  # no guard needed
+      shiny::showModal(shiny::modalDialog(
+        title = "Custom Report May Be Affected",
+        paste0(
+          "You have ", n_items, " item(s) in your custom report. ",
+          "Dataset changes may invalidate those plots. Proceed anyway?"
+        ),
+        footer = shiny::tagList(
+          shiny::modalButton("Cancel"),
+          shiny::actionButton(ns(confirm_btn_id), action_label, class = "btn-warning")
+        ),
+        easyClose = TRUE
+      ))
+      TRUE  # guard was triggered
+    }
+
     # ── Apply button ──────────────────────────────────────────────────────────
     shiny::observeEvent(input$apply_btn, {
       # Validate transforms first
@@ -126,51 +183,29 @@ prepare_confirm_server <- function(id, shared_state) {
         return()
       }
 
-      df <- tryCatch(
-        apply_prepare_pipeline(shared_state),
-        error = function(e) {
-          shiny::showNotification(
-            paste("Error during Apply:", conditionMessage(e)),
-            type = "error", duration = 8
-          )
-          NULL
-        }
-      )
+      # Warn if custom report items exist
+      if (.custom_items_guard("Apply Anyway", "confirm_apply_btn")) return()
 
-      if (is.null(df)) return()
-
-      shared_state$dataset_working        <- df
-      shared_state$column_types           <- detect_column_types(df)
-      shared_state$has_pending_changes    <- FALSE
-      shared_state$explore_needs_refresh  <- TRUE
-
-      shiny::showNotification(
-        paste0(
-          "Applied! ",
-          format(nrow(df), big.mark = ","), " rows \u00d7 ", ncol(df), " columns."
-        ),
-        type     = "message",
-        duration = 4
-      )
+      do_apply()
     })
+
+    shiny::observeEvent(input$confirm_apply_btn, {
+      shiny::removeModal()
+      do_apply()
+    }, ignoreInit = TRUE)
 
 
     # ── Reset button ──────────────────────────────────────────────────────────
     shiny::observeEvent(input$reset_btn, {
-      orig <- shared_state$dataset_original
-      shared_state$included_columns       <- names(orig)
-      shared_state$column_type_overrides  <- list()
-      shared_state$column_transform_specs <- list()
-      shared_state$row_filter_specs       <- list()
-      shared_state$dataset_working        <- orig
-      shared_state$column_types           <- shared_state$original_column_types
-      shared_state$has_pending_changes    <- FALSE
-
-      shiny::showNotification(
-        "Reset to original dataset.",
-        type = "message", duration = 3
-      )
+      # Warn if custom report items exist
+      if (.custom_items_guard("Reset Anyway", "confirm_reset_btn")) return()
+      do_reset()
     })
+
+    shiny::observeEvent(input$confirm_reset_btn, {
+      shiny::removeModal()
+      do_reset()
+    }, ignoreInit = TRUE)
   })
 }
 

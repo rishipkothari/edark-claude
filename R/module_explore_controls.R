@@ -36,14 +36,7 @@ explore_controls_ui <- function(id) {
           size     = "sm",
           width    = "100%"
         ),
-        shinyWidgets::radioGroupButtons(
-          ns("bar_display"),
-          label    = "Bar display:",
-          choices  = c("Count" = "count", "Proportion" = "proportion"),
-          selected = "count",
-          size     = "sm",
-          width    = "100%"
-        ),
+        shiny::uiOutput(ns("bar_display_ui")),
         shiny::br(),
         shiny::actionButton(
           ns("describe_btn"),
@@ -168,6 +161,21 @@ explore_controls_server <- function(id, shared_state) {
       )
     })
 
+
+    # Factor statistic picker — only shown when primary variable is a factor
+    output$bar_display_ui <- shiny::renderUI({
+      pv    <- input$primary_variable
+      types <- shared_state$column_types
+      if (is.null(pv) || !pv %in% names(types) || types[[pv]] != "factor") return(NULL)
+      shinyWidgets::radioGroupButtons(
+        ns("bar_display"),
+        label    = "Factor statistic:",
+        choices  = c("Count" = "count", "Proportion" = "proportion"),
+        selected = if (!is.null(input$bar_display)) input$bar_display else "count",
+        size     = "sm",
+        width    = "100%"
+      )
+    })
 
     # ── Write control inputs into shared_state ────────────────────────────────
     # These fire on change so that aesthetics updates re-render the plot cheaply.

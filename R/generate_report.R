@@ -161,7 +161,7 @@
   ft <- flextable::width(ft, j = "Skewness",   width = 0.6)
   ft <- flextable::width(ft, j = "Kurtosis",   width = 0.6)
   ft <- flextable::width(ft, j = "Top_values", width = 2.0)
-  ft <- flextable::set_table_properties(ft, layout = "fixed")
+  ft <- flextable::set_table_properties(ft, layout = "fixed", align = "center")
   ft
 }
 
@@ -411,7 +411,7 @@
   ft <- flextable::hline_top(ft,    part = "header", border = officer::fp_border(width = 1.2))
   ft <- flextable::hline(ft,        part = "header", border = officer::fp_border(width = 0.6))
   ft <- flextable::hline_bottom(ft, part = "body",   border = officer::fp_border(width = 1.2))
-  ft <- flextable::set_table_properties(ft, layout = "autofit")
+  ft <- flextable::set_table_properties(ft, layout = "autofit", align = "center")
   ft
 }
 
@@ -813,6 +813,139 @@ generate_report <- function(dataset,
     html = .assemble_html(sections, dataset_summary_df, output_path,
                           report_type        = report_type,
                           linked_var_anchors = linked_var_anchors)
+  )
+
+  invisible(output_path)
+}
+
+
+# ── Custom report helpers ─────────────────────────────────────────────────────
+
+# Build a warning placeholder plot for items whose columns are no longer valid.
+.custom_item_error_plot <- function(title, msg) {
+  ggplot2::ggplot() +
+    ggplot2::annotate("text", x = 0.5, y = 0.5,
+                      label = paste0("Could not render: ", title, "\n", msg),
+                      hjust = 0.5, vjust = 0.5, colour = "grey40", size = 4) +
+    ggplot2::theme_void()
+}
+
+# Map each custom report item's plot spec to a section object, re-rendering
+# using the current working dataset. Returns a list of section objects
+# {title, anchor, plot_obj, summary_ft} — the same format used by the full report
+# assemblers. Items that fail to render produce a warning placeholder rather
+# than aborting the entire report.
+.build_custom_report_sections <- function(items, dataset, column_types,
+                                           progress_fn = NULL) {
+  n        <- length(items)
+  sections <- vector("list", n)
+
+  trend_types <- c("trend_count", "trend_numeric", "trend_proportion", "trend_factor")
+
+  for (i in seq_along(items)) {
+    item  <- items[[i]]
+    spec  <- item$plot_spec
+    title <- item$title
+
+    if (!is.null(progress_fn))
+      progress_fn(i / n, paste0("Item ", i, " of ", n, ": ", title))
+
+    # Re-render plot from spec + current dataset; trap errors per-item
+    plot_obj <- tryCatch(
+      render_plot(spec, dataset, split_panels = TRUE),
+      error = function(e) .custom_item_error_plot(title, conditionMessage(e))
+    )
+
+    col_a      <- spec$column_a
+    col_b      <- spec$column_b
+    strat      <- if (!is.null(spec$stratify_by) && nzchar(spec$stratify_by))
+                    spec$stratify_by else NULL
+    col_a_type <- if (!is.null(col_a) && col_a %in% names(column_types))
+                    column_types[[col_a]] else NULL
+    col_b_type <- if (!is.null(col_b) && col_b %in% names(column_types))
+                    column_types[[col_b]] else NULL
+
+    is_trend <- !is.null(spec$plot_type) && spec$plot_type %in% trend_types
+
+    summary_ft <- if (is_trend) {
+      NULL  # trend plots: plot only, no table (consistent with existing report behaviour)
+    } else if (!is.null(col_b) && !is.null(col_a_type) && !is.null(col_b_type)) {
+      summary_df <- tryCatch({
+        if (col_a_type == "numeric" && col_b_type == "numeric") {
+          .build_bivariate_num_num_table(dataset, col_a, col_b, strat)
+        } else if (col_a_type == "factor" && col_b_type == "numeric") {
+          # spec normalises violin_jitter so factor is always col_a
+          .build_bivariate_num_fac_table(dataset, col_b, col_a, strat)
+        } else if (col_a_type == "factor" && col_b_type == "factor") {
+          .build_bivariate_fac_fac_table(dataset, col_a, col_b, strat)
+        } else NULL
+      }, error = function(e) NULL)
+      if (!is.null(summary_df)) .style_section_ft(summary_df) else NULL
+    } else if (!is.null(col_a) && !is.null(col_a_type)) {
+      summary_df <- tryCatch({
+        if (col_a_type == "numeric") {
+          .build_univariate_numeric_table(dataset, col_a, strat)
+        } else if (col_a_type == "factor") {
+          .build_univariate_factor_table(dataset, col_a, strat)
+        } else NULL
+      }, error = function(e) NULL)
+      if (!is.null(summary_df)) .style_section_ft(summary_df) else NULL
+    } else {
+      NULL
+    }
+
+    sections[[i]] <- list(
+      title      = title,
+      anchor     = .make_html_anchor(paste0("custom-", i, "-", item$id)),
+      plot_obj   = plot_obj,
+      summary_ft = summary_ft
+    )
+  }
+
+  sections
+}
+
+
+#' Generate a custom report from user-curated plot items
+#'
+#' Shiny-free entry point for custom report generation. Takes a list of items
+#' collected via the EDARK Explore tab and assembles them into a report.
+#'
+#' @param items List of custom report item objects as stored in
+#'   `shared_state$custom_report_items`. Each must have `id`, `plot_spec`,
+#'   `thumb_path`, and `title` fields.
+#' @param dataset The working data frame to use for re-rendering plots and
+#'   building summary tables.
+#' @param column_types Named character vector mapping column names to types
+#'   (`"numeric"`, `"factor"`, `"datetime"`, `"character"`).
+#' @param format Output format: `"pptx"`, `"docx"`, or `"html"`.
+#' @param output_path File path for the generated report.
+#' @param progress_fn Optional callback `function(fraction, detail)` for
+#'   progress reporting (e.g. Shiny's `setProgress`).
+#'
+#' @return `output_path`, invisibly.
+#' @export
+generate_custom_report <- function(items, dataset, column_types, format,
+                                    output_path, progress_fn = NULL) {
+  stopifnot(is.list(items), length(items) >= 1)
+  stopifnot(format %in% c("pptx", "docx", "html"))
+  stopifnot(is.data.frame(dataset))
+
+  if (!is.null(progress_fn)) progress_fn(0, "Building dataset summary...")
+  dataset_summary_df <- .build_dataset_summary(dataset, column_types)
+
+  sections <- .build_custom_report_sections(items, dataset, column_types, progress_fn)
+
+  if (length(sections) == 0)
+    stop("No sections could be built from the custom report items.")
+
+  if (!is.null(progress_fn)) progress_fn(0.95, "Assembling output...")
+
+  switch(format,
+    pptx = .assemble_pptx(sections, dataset_summary_df, output_path, progress_fn),
+    docx = .assemble_docx(sections, dataset_summary_df, output_path, progress_fn),
+    html = .assemble_html(sections, dataset_summary_df, output_path,
+                          report_type = "custom", linked_var_anchors = NULL)
   )
 
   invisible(output_path)
