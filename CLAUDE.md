@@ -263,6 +263,8 @@ edark_report(liver_tx, report_type = "primary_vs_others",
 - Integrate studybuddy — use working dataset for direct model creation and publication-quality outputs
 - Word report: reference `.docx` template with defined heading styles
 - Custom report generation ("add this graph/table" button)
+    - Also some thoughts on the custom report. I'd love to show a preview, like a PowerPoint slide view, that could just indicate what the plots look like before they come out into the report. That would also be the basis for adding or removing plots from the custom report on the fly.
+    - The problem is how the data would be stored in the meantime. If I wanted previews, would we be saving image previews somewhere as well as plot parameters to feed into the generate report function? The other way to do it would be simply to create a list of report objects without the ability to preview. We would still need the ability to add or remove on the fly, so that would probably look like a table or list with a text description of what each plot would be. The controls for that would be on the plot UI over in the corner, within the Add Plot button, and then a link to the report tab to modify the contents of the custom report. 
 
 #### Mid magnitude change
 - Statistical tests in Explore › Analyse tab for bivariate plots — numeric × factor → Kruskal-Wallis; factor × factor → chi-square/Fisher's. (Reports already have these via the table helpers; Explore summary panel does not.)
@@ -278,3 +280,7 @@ edark_report(liver_tx, report_type = "primary_vs_others",
 - `shinytest2` module tests + `testthat` unit tests
 - Async report generation (currently synchronous; cancel not feasible without `future`/`promises`)
 - Expanded aesthetic options
+    - Solicit ideas for theming, not only colors for the UI but also additional packages with UI paradigms or visual styles, maybe the potential for something like a Windows 95 theme. 
+    - consider things like hrbr_themes, looking for additional styles that are clean and professional
+    - outlines on bar charts for bars
+    - drop downs in aesthetic for preconfigured themes
