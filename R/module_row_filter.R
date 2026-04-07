@@ -193,6 +193,19 @@ row_filter_server <- function(id, shared_state) {
       }
     })
 
+    # When a column is excluded, remove its filter spec reactively so the UI
+    # stays in sync and the warnings panel reflects the current state.
+    shiny::observeEvent(shared_state$included_columns, {
+      included <- shared_state$included_columns
+      specs    <- shared_state$row_filter_specs
+      stale    <- setdiff(names(specs), included)
+      if (length(stale) > 0) {
+        for (col in stale) specs[[col]] <- NULL
+        shared_state$row_filter_specs    <- specs
+        shared_state$has_pending_changes <- TRUE
+      }
+    }, ignoreInit = TRUE)
+
     # When row_filter_specs is cleared (Apply or Reset), purge the cache so
     # the same column can be re-registered with fresh observers next time.
     shiny::observeEvent(shared_state$row_filter_specs, {

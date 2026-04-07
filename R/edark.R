@@ -51,7 +51,7 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
         sidebar = bslib::sidebar(
           title    = "Apply",
           position = "right",
-          width    = 220,
+          width    = 350,
           prepare_confirm_ui("prepare_confirm")
         ),
         bslib::navset_card_tab(
@@ -178,6 +178,8 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
 
     # Shared helper: run the pipeline and commit to shared_state.
     .do_nav_apply <- function() {
+      # Prune filter specs invalidated by staged transforms or column exclusion.
+      .prune_conflicting_filter_specs(shared_state)
       df <- tryCatch(
         apply_prepare_pipeline(shared_state),
         error = function(e) {

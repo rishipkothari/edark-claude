@@ -296,33 +296,13 @@ edark_report(liver_tx, report_type = "primary_vs_others",
 - Alternative plot type options per variable combination (heat map, balloon plot, etc.)
 - Report contents options: Dataset Summary checkbox + Table One checkbox (all_vars mode only) are wired. Still TODO: correlation matrix option.
 - add univariate table to correlation report (selects logistic vs linear regression vs anova to correlate) but this is also presented in a descriptive table 1 if stratified for exposure or outcome right? whats the difference between the univariate assocations in both of these tables that i know are routinely calculated for different reasons? what am i missing?
+- transform --> row filter --> transform does not show warning on stage
 
 #### Small magnitude change
 - Correlation matrix for variable selection
 - `shinytest2` module tests + `testthat` unit tests
 - Async report generation (currently synchronous; cancel not feasible without `future`/`promises`)
 - **Bug — center tables in PPT + HTML reports**: `flextable::set_table_properties(align = "center")` is set in both `.style_dataset_summary_ft()` and `.style_section_ft()` in `generate_report.R` but tables still appear left-aligned in PPT and HTML output. DOCX may work. Investigate `officer` slide content alignment for PPT and the Rmd template's table rendering for HTML.
-- Apply panel in prepare tab mods;
-    - 0. make the panel wider to accomodate a bit more text
-    - 1. section header: dimensions, with the table icon: below it, add 3 row x col indicators; "Original", "Current", "Pending"; if no changes pending, pending is same as current
-    - 1.5 warnings section, keep a section header with the exlamation triangle icon; title "Warning(s):"
-        - warnings will display below this
-    - 2. move "up to date"/"pending changes" box above apply changes, make it taller and the font larger, same dimensions as apply changes button
-    - 3. then comes unnmodified apply changes button
-    - 4. then comes Reset to original button
-- let's tighten up the warning system
-    - in the warning(s) section, group all warnings
-        - "these variables have current row filters in place; modifications will remove those row filters:" or something like this
-        - "these variable transforms need attention:"
-            - <<var(s)>>: no cutpoints specified
-            - <<var(s)>>: cutpoints do not discriminate/out of range <-- this check needs to be added
-    - if we add any additional warnings, we should group them like this
-- module_prepare_confirm.R - "reset to original" button --> calls do_reset(), which resets dataset and resets transform spec; but UI elements are all still in their most recent state -- this should probably reset all UI elements also from their staged or applied state to original/vanilla
-- so in general, we need to work on validation between tabs columns, transforms, and row filters; both spec variables and UI elements need to be changed when any changes are made here
-    - if a column is removed, ensure that any transforms for that column are reset in the transform spec etc; ensure that any row filters for that variable are removed 
-    - if a transform is enacted, an existing row filter might become invalid; lets handle this cool calm and collected. 
-        - 1. display a warning in the warnings section, "Transform on <<var>> invalidates row filter. Row filter will be removed on apply".
-        - if applied (either explicit or moving tabs), row filter for that variable is removed
 - "plot theme" should be reactive
 - show data labels - for geom violins (numeric vs factor or vice versa) show it at the top of the graph; "Median: ##" next line "25%-75%: ##-##"
 - for reports - aesthetics should show up, want to be able to select theme, show data labels, show legends, position legends etc. may make senes to reuse the same UI box since all options are valid
