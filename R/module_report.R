@@ -40,9 +40,32 @@ report_ui <- function(id) {
 
       bslib::layout_sidebar(
         sidebar = bslib::sidebar(
-          width = 300,
+          width = 380,
+
+          # ── Generate ──────────────────────────────────────────────────────
+          shiny::downloadButton(
+            ns("download_btn"),
+            label = "Generate & Download",
+            class = "btn-primary w-75"
+          ),
+
+          # ── Output format ──────────────────────────────────────────────────
+          shiny::tags$p(class = "fw-semibold mb-1 mt-2",
+                        shiny::icon("download"), " Output Format"),
+          shinyWidgets::radioGroupButtons(
+            ns("output_format"),
+            label    = NULL,
+            choices  = c("PowerPoint" = "pptx",
+                         "Word"       = "docx",
+                         "HTML"       = "html"),
+            selected = "pptx",
+            size     = "sm",
+            width    = "100%"
+          ),
 
           # ── Report type ────────────────────────────────────────────────────
+          shiny::tags$p(class = "fw-semibold mb-1 mt-2",
+                        shiny::icon("crosshairs"), " Report Type"),
           shinyWidgets::radioGroupButtons(
             ns("report_type"),
             label    = NULL,
@@ -62,22 +85,17 @@ report_ui <- function(id) {
             shinyWidgets::radioGroupButtons(
               ns("primary_role"),
               label    = "Role:",
-              choices  = c("Exposure (X-axis)" = "exposure",
-                           "Outcome (Y-axis)"  = "outcome"),
+              choices  = c("Exposure (X)" = "exposure",
+                           "Outcome (Y)"  = "outcome"),
               selected = "exposure",
               size     = "sm",
               width    = "100%"
             )
           ),
 
-          # ── Stratify By ────────────────────────────────────────────────────
-          shiny::tags$p(class = "fw-semibold mb-1 mt-2",
-                        shiny::icon("layer-group"), " Stratify By"),
-          shiny::uiOutput(ns("stratify_picker")),
-
           # ── Variable selection ─────────────────────────────────────────────
           shiny::tags$p(class = "fw-semibold mb-1 mt-2",
-                        shiny::icon("list-check"), " Variables"),
+          shiny::icon("list-check"), " Variables"),
           shiny::uiOutput(ns("var_selection_summary")),
           shiny::actionButton(
             ns("open_var_modal"),
@@ -85,6 +103,11 @@ report_ui <- function(id) {
             icon  = shiny::icon("sliders"),
             class = "btn-outline-secondary w-100 mt-1"
           ),
+          
+          # ── Options ────────────────────────────────────────────────────
+          shiny::tags$p(class = "fw-semibold mb-1 mt-2",
+                        shiny::icon("layer-group"), " Options"),
+          shiny::uiOutput(ns("stratify_picker")),
 
           # ── Report contents ────────────────────────────────────────────────
           shiny::tags$p(class = "fw-semibold mb-1 mt-2",
@@ -138,28 +161,6 @@ report_ui <- function(id) {
             )
           ),
 
-          # ── Output format ──────────────────────────────────────────────────
-          shiny::tags$p(class = "fw-semibold mb-1 mt-2",
-                        shiny::icon("download"), " Output Format"),
-          shinyWidgets::radioGroupButtons(
-            ns("output_format"),
-            label    = NULL,
-            choices  = c("PowerPoint" = "pptx",
-                         "Word"       = "docx",
-                         "HTML"       = "html"),
-            selected = "pptx",
-            size     = "sm",
-            width    = "100%"
-          ),
-
-          shiny::br(),
-
-          # ── Generate ──────────────────────────────────────────────────────
-          shiny::downloadButton(
-            ns("download_btn"),
-            label = "Generate & Download",
-            class = "btn-primary w-100"
-          )
         ),
 
         # Main panel
@@ -180,7 +181,7 @@ report_ui <- function(id) {
 
       bslib::layout_sidebar(
         sidebar = bslib::sidebar(
-          width = 320,
+          width = 380,
 
           # ── Item gallery ───────────────────────────────────────────────────
           bslib::card(
@@ -250,8 +251,6 @@ report_ui <- function(id) {
             )
           ),
 
-          shiny::br(),
-
           # ── Generate ──────────────────────────────────────────────────────
           shiny::downloadButton(
             ns("custom_download_btn"),
@@ -315,7 +314,7 @@ report_server <- function(id, shared_state) {
       eligible <- names(types)[types %in% c("numeric", "factor")]
       shinyWidgets::pickerInput(
         ns("primary_variable"),
-        label   = "Primary variable:",
+        # label   = "Primary variable:",
         choices = eligible,
         options = shinyWidgets::pickerOptions(liveSearch = TRUE, container = "body")
       )

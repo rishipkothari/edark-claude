@@ -23,45 +23,49 @@ explore_controls_ui <- function(id) {
     bslib::card(
       bslib::card_body(
 
-        # ── Primary variable ──────────────────────────────────────────────────
+        # ── Variable selection ──────────────────────────────────────────────────
         shiny::tags$p(class = "fw-semibold mb-1",
                       shiny::icon("crosshairs"), " Primary Variable"),
         shiny::uiOutput(ns("primary_var_picker")),
+        # Role selector: Exposure (X) vs. Outcome (Y). This is used to determine which variable gets mapped to aesthetics in bivariate plots, and also informs the plot description.
         shinyWidgets::radioGroupButtons(
           ns("primary_role"),
           label    = "Role:",
-          choices  = c("Exposure (X-axis)" = "exposure",
-                       "Outcome (Y-axis)"  = "outcome"),
+          choices  = c("Exposure (X)" = "exposure",
+                       "Outcome (Y)"  = "outcome"),
           selected = "exposure",
           size     = "sm",
           width    = "100%"
         ),
+        shiny::tags$p(class = "fw-semibold mb-1",
+                      shiny::icon("arrow-right-arrow-left"), " Correlate With"),
+        shiny::uiOutput(ns("secondary_var_picker")),
+        # When primary variable is a factor, show option to display counts vs. proportions
         shiny::uiOutput(ns("bar_display_ui")),
-        shiny::br(),
+        # ── Action buttons ───────────────────────────────────────────────────────
+        shiny::tags$p(class = "fw-semibold mb-1",
+                      shiny::icon("chart-line"), " Actions"),
         shiny::actionButton(
           ns("describe_btn"),
           label = "Describe",
           icon  = shiny::icon("chart-bar"),
-          class = "btn-primary w-100"
+          class = "btn-primary w-75",
         ),
-
-
-        # ── Stratification ────────────────────────────────────────────────────
-        shiny::tags$p(class = "fw-semibold mb-1",
-                      shiny::icon("layer-group"), " Stratify By"),
-        shiny::uiOutput(ns("stratify_picker")),
-
-
-        # ── Bivariate ─────────────────────────────────────────────────────────
-        shiny::tags$p(class = "fw-semibold mb-1",
-                      shiny::icon("arrow-right-arrow-left"), " Correlate With"),
-        shiny::uiOutput(ns("secondary_var_picker")),
         shiny::actionButton(
           ns("plot_btn"),
           label = "Plot Correlation",
           icon  = shiny::icon("chart-line"),
-          class = "btn-outline-primary w-100"
-        )
+          class = "btn-primary w-75",
+        ),
+
+
+        # ── Options ────────────────────────────────────────────────────
+        
+        shiny::tags$p(class = "fw-semibold mb-1",
+                      shiny::icon("layer-group"), " Options"),
+        # shiny::tags$p(class = "fw-semibold mb-1",
+        #               shiny::icon("layer-group"), " Stratify By"),
+        shiny::uiOutput(ns("stratify_picker"))
 
       )
     ),
@@ -129,7 +133,7 @@ explore_controls_server <- function(id, shared_state) {
     output$primary_var_picker <- shiny::renderUI({
       shinyWidgets::pickerInput(
         ns("primary_variable"),
-        label   = "Primary variable:",
+        # label   = "Primary variable:",
         choices = eligible_cols(),
         options = shinyWidgets::pickerOptions(liveSearch = TRUE, container = "body")
       )
@@ -143,7 +147,7 @@ explore_controls_server <- function(id, shared_state) {
       cols_with_none <- c("None" = "", factor_cols)
       shinyWidgets::pickerInput(
         ns("stratify_variable"),
-        label   = "Stratification variable (optional):",
+        label   = "Stratify by",
         choices = cols_with_none,
         options = shinyWidgets::pickerOptions(liveSearch = TRUE, container = "body")
       )
@@ -155,7 +159,7 @@ explore_controls_server <- function(id, shared_state) {
       choices  <- setdiff(eligible_cols(), primary)
       shinyWidgets::pickerInput(
         ns("secondary_variable"),
-        label   = "Secondary variable:",
+        # label   = "Secondary variable:",
         choices = choices,
         options = shinyWidgets::pickerOptions(liveSearch = TRUE, container = "body")
       )

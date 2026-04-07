@@ -49,9 +49,9 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       title = shiny::tagList(shiny::icon("sliders"), " 1 \u00b7 Prepare"),
       bslib::layout_sidebar(
         sidebar = bslib::sidebar(
-          title    = "Apply",
-          position = "right",
-          width    = 350,
+          # title    = "Apply",
+          position = "left",
+          width    = 400,
           prepare_confirm_ui("prepare_confirm")
         ),
         bslib::navset_card_tab(

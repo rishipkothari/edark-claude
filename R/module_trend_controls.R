@@ -35,7 +35,7 @@ trend_controls_ui <- function(id) {
                       shiny::icon("sliders"), " Resolution"),
         shiny::selectInput(
           ns("trend_resolution"),
-          label    = NULL,
+          label    = NULL, 
           choices  = c("Hour", "Day", "Week", "Month", "Quarter", "Year"),
           selected = "Month"
         ),
@@ -49,13 +49,10 @@ trend_controls_ui <- function(id) {
         shiny::uiOutput(ns("stat_picker_ui")),
 
 
-        # ── Stratify By ─────────────────────────────────────────────────────
+        # ── Options ─────────────────────────────────────────────────────
         shiny::tags$p(class = "fw-semibold mb-1",
-                      shiny::icon("layer-group"), " Stratify By"),
+                      shiny::icon("layer-group"), " Options"),
         shiny::uiOutput(ns("stratify_picker")),
-
-
-        # ── Zero baseline ────────────────────────────────────────────────────
         shiny::uiOutput(ns("zero_baseline_ui"))
 
       )
@@ -130,7 +127,7 @@ trend_controls_server <- function(id, shared_state) {
       cols <- datetime_cols()
       shinyWidgets::pickerInput(
         ns("trend_timestamp_variable"),
-        label   = "Timestamp column:",
+        # label   = "Timestamp column:",
         choices = cols,
         options = shinyWidgets::pickerOptions(
           liveSearch  = TRUE,
@@ -143,7 +140,7 @@ trend_controls_server <- function(id, shared_state) {
     output$trend_var_picker <- shiny::renderUI({
       shinyWidgets::pickerInput(
         ns("trend_variable"),
-        label   = "Trend variable:",
+        # label   = "Trend variable:",
         choices = eligible_trend_cols(),
         options = shinyWidgets::pickerOptions(liveSearch = TRUE, container = "body")
       )
@@ -210,7 +207,7 @@ trend_controls_server <- function(id, shared_state) {
       cols_with_none <- c("None" = "", factor_cols)
       shinyWidgets::pickerInput(
         ns("trend_stratify_variable"),
-        label   = "Stratify by (optional):",
+        label   = "Stratify by",
         choices = cols_with_none,
         options = shinyWidgets::pickerOptions(liveSearch = TRUE, container = "body")
       )
