@@ -112,12 +112,13 @@ transform_variables_server <- function(id, shared_state) {
           shiny::tags$td(class = "py-1 align-top text-end pe-3 text-muted small",
             format(n_unique, big.mark = ",")),
           shiny::tags$td(class = "py-1 align-top",
-            shiny::selectInput(
+            shinyWidgets::pickerInput(
               ns(paste0("type_", col)),
               label    = NULL,
               choices  = .transform_choices,
               selected = selected,
-              width    = "100%"
+              width    = "100%",
+              options  = shinyWidgets::pickerOptions(container = "body")
             )
           ),
           shiny::tags$td(class = "py-1 align-top",
@@ -349,7 +350,7 @@ transform_variables_server <- function(id, shared_state) {
       specs <- shiny::isolate(shared_state$column_transform_specs)
       lapply(cols, function(col) {
         method <- if (!is.null(specs[[col]])) specs[[col]]$method else "none"
-        shiny::updateSelectInput(session, paste0("type_", col), selected = method)
+        shinyWidgets::updatePickerInput(session, paste0("type_", col), selected = method)
       })
     }, ignoreInit = TRUE)
 

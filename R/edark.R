@@ -42,6 +42,50 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       bootswatch = "flatly",
       primary    = "#2c7be5"
     ),
+    header = shiny::tags$head(shiny::tags$style(shiny::HTML("
+      /* ── EDARK custom properties ── change values here, nowhere else ────── */
+      :root {
+        --edark-picker-bg: #ffffff;
+      }
+
+      /* sidebar nav-pill tabs */
+      .sidebar .nav-pills .nav-link {
+        padding-left: 0.6rem;
+        padding-right: 0.6rem;
+        border-radius: 20px;
+        font-size: 0.95rem;
+        font-weight: 500;
+      }
+      .sidebar .nav-pills .nav-link:not(.active) {
+        background-color: #eef1f5;
+        color: #495057;
+        border: 1px solid #dee2e6;
+      }
+      .sidebar .nav-pills .nav-link:not(.active):hover {
+        background-color: #e2e6ea;
+        color: #343a40;
+      }
+
+      /* gap below tab bar, then leading whitespace inside each tab content */
+      .sidebar .nav-pills {
+        margin-bottom: 0.75rem;
+      }
+      .sidebar .tab-content > .tab-pane {
+        padding-top: 0.75rem;
+      }
+
+      /* pickerInput button background */
+      .bootstrap-select > .btn {
+        background-color: var(--edark-picker-bg) !important;
+        border-color: #ced4da !important;
+      }
+      .bootstrap-select > .btn:hover,
+      .bootstrap-select > .btn:focus,
+      .bootstrap-select.show > .btn {
+        background-color: var(--edark-picker-bg) !important;
+        border-color: #86b7fe !important;
+      }
+    "))),
 
     # ── Tab 1: Prepare ───────────────────────────────────────────────────────
     bslib::nav_panel(
@@ -89,7 +133,7 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
           width = 400,
           bslib::navset_pill(
             bslib::nav_panel("Describe",     describe_controls_ui("describe_controls")),
-            bslib::nav_panel("Relationship", relationship_controls_ui("relationship_controls")),
+            bslib::nav_panel("Correlate", relationship_controls_ui("relationship_controls")),
             bslib::nav_panel("Trend",        trend_controls_ui("trend_controls"))
           )
         ),

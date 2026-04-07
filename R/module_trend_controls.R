@@ -27,7 +27,7 @@ trend_controls_ui <- function(id) {
 
     # ── Resolution ────────────────────────────────────────────────────────────
     shiny::tags$p("Resolution", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
-    shiny::selectInput(
+    shinyWidgets::pickerInput(
       ns("trend_resolution"),
       label    = NULL,
       choices  = c("Hour", "Day", "Week", "Month", "Quarter", "Year"),
@@ -143,7 +143,7 @@ trend_controls_server <- function(id, shared_state) {
       types <- shared_state$column_types
       if (!tv %in% names(types) || types[[tv]] != "numeric") return(NULL)
 
-      shiny::selectInput(
+      shinyWidgets::pickerInput(
         ns("trend_summary_stat"),
         label   = "Summary statistic:",
         choices = c(
@@ -158,7 +158,8 @@ trend_controls_server <- function(id, shared_state) {
           "Max"                 = "max",
           "Min"                 = "min"
         ),
-        selected = shiny::isolate(shared_state$trend_summary_stat)
+        selected = shiny::isolate(shared_state$trend_summary_stat),
+        options  = shinyWidgets::pickerOptions(container = "body")
       )
     })
 
