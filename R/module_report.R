@@ -97,6 +97,47 @@ report_ui <- function(id) {
                                  "Table One", value = FALSE)
           ),
 
+          # ── Plot aesthetics ────────────────────────────────────────────────
+          bslib::accordion(
+            open = FALSE,
+            bslib::accordion_panel(
+              "Plot Aesthetics",
+              icon = shiny::icon("palette"),
+              shinyWidgets::pickerInput(
+                ns("ggplot_theme"),
+                label    = "Plot theme:",
+                choices  = c(
+                  "Minimal"         = "minimal",
+                  "Ipsum"           = "ipsum",
+                  "Ipsum RC"        = "ipsum_rc",
+                  "Publication"     = "publication",
+                  "Cowplot"         = "cowplot",
+                  "Economist"       = "economist",
+                  "FiveThirtyEight" = "fivethirtyeight",
+                  "Tufte"           = "tufte",
+                  "Modern"          = "modern"
+                ),
+                selected = "minimal"
+              ),
+              shinyWidgets::pickerInput(
+                ns("color_palette"),
+                label    = "Colour palette:",
+                choices  = c("Set2", "Set1", "Dark2", "Paired", "Accent",
+                             "Blues", "Greens", "Reds", "Purples"),
+                selected = "Set2"
+              ),
+              shiny::checkboxInput(ns("show_data_labels"), "Show data labels", value = FALSE),
+              shiny::checkboxInput(ns("show_legend"),      "Show legend",      value = TRUE),
+              shinyWidgets::radioGroupButtons(
+                ns("legend_position"),
+                label    = "Legend position:",
+                choices  = c("right", "left", "top", "bottom"),
+                selected = "top",
+                size     = "sm"
+              )
+            )
+          ),
+
           # ── Output format ──────────────────────────────────────────────────
           shiny::tags$p(class = "fw-semibold mb-1 mt-2",
                         shiny::icon("download"), " Output Format"),
@@ -150,6 +191,47 @@ report_ui <- function(id) {
           ),
 
           shiny::br(),
+
+          # ── Plot aesthetics ────────────────────────────────────────────────
+          bslib::accordion(
+            open = FALSE,
+            bslib::accordion_panel(
+              "Plot Aesthetics",
+              icon = shiny::icon("palette"),
+              shinyWidgets::pickerInput(
+                ns("custom_ggplot_theme"),
+                label    = "Plot theme:",
+                choices  = c(
+                  "Minimal"         = "minimal",
+                  "Ipsum"           = "ipsum",
+                  "Ipsum RC"        = "ipsum_rc",
+                  "Publication"     = "publication",
+                  "Cowplot"         = "cowplot",
+                  "Economist"       = "economist",
+                  "FiveThirtyEight" = "fivethirtyeight",
+                  "Tufte"           = "tufte",
+                  "Modern"          = "modern"
+                ),
+                selected = "minimal"
+              ),
+              shinyWidgets::pickerInput(
+                ns("custom_color_palette"),
+                label    = "Colour palette:",
+                choices  = c("Set2", "Set1", "Dark2", "Paired", "Accent",
+                             "Blues", "Greens", "Reds", "Purples"),
+                selected = "Set2"
+              ),
+              shiny::checkboxInput(ns("custom_show_data_labels"), "Show data labels", value = FALSE),
+              shiny::checkboxInput(ns("custom_show_legend"),      "Show legend",      value = TRUE),
+              shinyWidgets::radioGroupButtons(
+                ns("custom_legend_position"),
+                label    = "Legend position:",
+                choices  = c("right", "left", "top", "bottom"),
+                selected = "top",
+                size     = "sm"
+              )
+            )
+          ),
 
           # ── Output format ──────────────────────────────────────────────────
           bslib::card(
@@ -479,6 +561,11 @@ report_server <- function(id, shared_state) {
                 include_dataset_summary = isTRUE(input$include_dataset_summary),
                 include_tableone        = isTRUE(input$include_tableone) &&
                                             input$report_type == "all_vars",
+                ggplot_theme            = input$ggplot_theme      %||% "minimal",
+                color_palette           = input$color_palette     %||% "Set2",
+                show_data_labels        = isTRUE(input$show_data_labels),
+                show_legend             = isTRUE(input$show_legend),
+                legend_position         = input$legend_position   %||% "top",
                 progress_fn             = function(frac, detail) {
                   shiny::setProgress(value = frac, detail = detail)
                 }
@@ -680,12 +767,17 @@ report_server <- function(id, shared_state) {
             value   = 0,
             {
               generate_custom_report(
-                items        = items,
-                dataset      = shared_state$dataset_working,
-                column_types = shared_state$column_types,
-                format       = input$custom_output_format,
-                output_path  = file,
-                progress_fn  = function(frac, detail) {
+                items            = items,
+                dataset          = shared_state$dataset_working,
+                column_types     = shared_state$column_types,
+                format           = input$custom_output_format,
+                output_path      = file,
+                ggplot_theme     = input$custom_ggplot_theme     %||% "minimal",
+                color_palette    = input$custom_color_palette    %||% "Set2",
+                show_data_labels = isTRUE(input$custom_show_data_labels),
+                show_legend      = isTRUE(input$custom_show_legend),
+                legend_position  = input$custom_legend_position  %||% "top",
+                progress_fn      = function(frac, detail) {
                   shiny::setProgress(value = frac, detail = detail)
                 }
               )

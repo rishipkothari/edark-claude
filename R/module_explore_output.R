@@ -27,6 +27,16 @@ explore_output_ui <- function(id) {
     # Action button row (right-justified, above plot card)
     shiny::div(
       class = "d-flex justify-content-end align-items-center gap-2 mb-2",
+      shiny::downloadButton(
+        ns("save_plot_btn"), "Save Plot",
+        icon  = shiny::icon("download"),
+        class = "btn-sm btn-outline-primary"
+      ),
+      shiny::actionButton(
+        ns("copy_plot_btn"), "Copy to Clipboard",
+        icon  = shiny::icon("copy"),
+        class = "btn-sm btn-outline-primary"
+      ),
       shiny::actionButton(
         ns("add_to_custom_btn"), "Add to Custom Report",
         icon  = shiny::icon("plus"),
@@ -34,6 +44,26 @@ explore_output_ui <- function(id) {
       ),
       shiny::uiOutput(ns("view_report_btn_ui"))
     ),
+
+    # JS for copy-to-clipboard: reads the rendered plot <img> and writes to clipboard
+    shiny::tags$script(shiny::HTML(paste0(
+      "$(document).on('click', '#", ns("copy_plot_btn"), "', function() {",
+      "  var imgEl = document.querySelector('#", ns("main_plot"), " img');",
+      "  if (!imgEl) { alert('No plot to copy. Run a plot first.'); return; }",
+      "  fetch(imgEl.src)",
+      "    .then(function(r) { return r.blob(); })",
+      "    .then(function(blob) {",
+      "      return navigator.clipboard.write([new ClipboardItem({'image/png': blob})]);",
+      "    })",
+      "    .then(function() {",
+      "      var btn = document.querySelector('#", ns("copy_plot_btn"), "');",
+      "      var orig = btn.innerHTML;",
+      "      btn.innerHTML = '<i class=\"fa fa-check\"></i> Copied!';",
+      "      setTimeout(function() { btn.innerHTML = orig; }, 1800);",
+      "    })",
+      "    .catch(function(e) { alert('Clipboard write failed: ' + e.message); });",
+      "});"
+    ))),
 
     # Plot area
     bslib::card(
@@ -88,6 +118,7 @@ explore_output_server <- function(id, shared_state) {
       # palette/legend changes re-render without requiring a button re-click.
       # Do NOT use isolate() here: it can return a stale value when this reactive
       # re-runs due to an aesthetic change.
+      ggplot_theme        <- shared_state$ggplot_theme
       color_palette       <- shared_state$color_palette
       show_data_labels    <- shared_state$show_data_labels
       show_legend         <- shared_state$show_legend
@@ -95,6 +126,7 @@ explore_output_server <- function(id, shared_state) {
       trend_zero_baseline <- shared_state$trend_zero_baseline
 
       spec_with_aesthetics <- modifyList(spec, list(
+        ggplot_theme        = ggplot_theme,
         color_palette       = color_palette,
         show_data_labels    = show_data_labels,
         show_legend         = show_legend,
@@ -162,6 +194,22 @@ explore_output_server <- function(id, shared_state) {
     })
 
 
+    # ── Save Plot download ────────────────────────────────────────────────────
+    output$save_plot_btn <- shiny::downloadHandler(
+      filename = function() {
+        spec <- shiny::isolate(shared_state$plot_specification)
+        stem <- if (!is.null(spec$column_a)) spec$column_a else "plot"
+        if (!is.null(spec$column_b)) stem <- paste0(stem, "_x_", spec$column_b)
+        paste0("edark_", stem, "_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png")
+      },
+      content = function(file) {
+        gg <- shiny::isolate(shared_state$active_plot)
+        if (is.null(gg)) stop("No plot to save. Run a plot first.")
+        ggplot2::ggsave(file, plot = gg, width = 16, height = 9,
+                        units = "in", dpi = 150)
+      }
+    )
+
     # ── Custom report buttons ─────────────────────────────────────────────────
 
     # "View Report" button — rendered dynamically so its badge stays live
@@ -174,7 +222,7 @@ explore_output_server <- function(id, shared_state) {
       shiny::actionButton(
         ns("view_report_btn"), label = label,
         icon  = shiny::icon("file-export"),
-        class = "btn-sm btn-outline-secondary"
+        class = "btn-sm btn-outline-primary"
       )
     })
 

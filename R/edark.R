@@ -86,7 +86,7 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       title = shiny::tagList(shiny::icon("magnifying-glass-chart"), " 2 \u00b7 Explore"),
       bslib::layout_sidebar(
         sidebar = bslib::sidebar(
-          width = 320,
+          width = 400,
           bslib::navset_pill(
             bslib::nav_panel("Analyze", explore_controls_ui("explore_controls")),
             bslib::nav_panel("Trend",   trend_controls_ui("trend_controls"))
