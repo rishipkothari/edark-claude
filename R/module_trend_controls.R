@@ -21,46 +21,35 @@ trend_controls_ui <- function(id) {
 
   shiny::tagList(
 
-    bslib::card(
-      bslib::card_body(
+    # ── Timestamp ─────────────────────────────────────────────────────────────
+    shiny::tags$p("Timestamp", class = "text-muted small text-uppercase fw-semibold mt-0 mb-1"),
+    shiny::uiOutput(ns("timestamp_picker")),
 
-        # ── Timestamp ───────────────────────────────────────────────────────
-        shiny::tags$p(class = "fw-semibold mb-1",
-                      shiny::icon("clock"), " Timestamp"),
-        shiny::uiOutput(ns("timestamp_picker")),
-
-
-        # ── Resolution ──────────────────────────────────────────────────────
-        shiny::tags$p(class = "fw-semibold mb-1",
-                      shiny::icon("sliders"), " Resolution"),
-        shiny::selectInput(
-          ns("trend_resolution"),
-          label    = NULL, 
-          choices  = c("Hour", "Day", "Week", "Month", "Quarter", "Year"),
-          selected = "Month"
-        ),
-
-
-        # ── Trend variable + stat picker ─────────────────────────────────────
-        shiny::tags$p(class = "fw-semibold mb-1",
-                      shiny::icon("chart-line"), " Trend Variable"),
-        shiny::uiOutput(ns("trend_var_picker")),
-        shiny::uiOutput(ns("bar_display_ui")),
-        shiny::uiOutput(ns("stat_picker_ui")),
-
-
-        # ── Options ─────────────────────────────────────────────────────
-        shiny::tags$p(class = "fw-semibold mb-1",
-                      shiny::icon("layer-group"), " Options"),
-        shiny::uiOutput(ns("stratify_picker")),
-        shiny::uiOutput(ns("zero_baseline_ui"))
-
-      )
+    # ── Resolution ────────────────────────────────────────────────────────────
+    shiny::tags$p("Resolution", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+    shiny::selectInput(
+      ns("trend_resolution"),
+      label    = NULL,
+      choices  = c("Hour", "Day", "Week", "Month", "Quarter", "Year"),
+      selected = "Month"
     ),
 
-    # ── Plot button ─────────────────────────────────────────────────────────
-    bslib::input_task_button(ns("plot_trend"), "Plot Trend",
-                             icon = shiny::icon("chart-line")),
+    # ── Trend variable + stat picker ──────────────────────────────────────────
+    shiny::tags$p("Trend Variable", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+    shiny::uiOutput(ns("trend_var_picker")),
+    shiny::uiOutput(ns("bar_display_ui")),
+    shiny::uiOutput(ns("stat_picker_ui")),
+
+    # ── Options ───────────────────────────────────────────────────────────────
+    shiny::tags$p("Options", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+    shiny::uiOutput(ns("stratify_picker")),
+    shiny::uiOutput(ns("zero_baseline_ui")),
+
+    # ── Plot button ───────────────────────────────────────────────────────────
+    shiny::tags$div(class = "mt-3",
+      bslib::input_task_button(ns("plot_trend"), "Plot Trend",
+                               icon = shiny::icon("chart-line"))
+    ),
 
     # ── Aesthetics ───────────────────────────────────────────────────────────
     bslib::accordion(

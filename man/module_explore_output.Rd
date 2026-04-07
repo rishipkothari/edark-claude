@@ -17,9 +17,9 @@ explore_output_server(id, shared_state)
 }
 \description{
 Main panel for the Explore stage. Observes \code{shared_state$plot_specification}
-and renders the plot (via \code{plotly::ggplotly()}) and the variable summary
-table (via \code{reactable}). Also shows a "dataset has changed — re-run"
-notice when \code{shared_state$explore_needs_refresh} is TRUE.
+and renders the plot and the variable summary table (via \code{reactable}). Also
+shows a "dataset has changed — re-run" notice when
+\code{shared_state$explore_needs_refresh} is TRUE.
 }
 \details{
 Aesthetic changes (palette, labels, legend) re-render the plot without

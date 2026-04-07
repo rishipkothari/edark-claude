@@ -88,8 +88,9 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
         sidebar = bslib::sidebar(
           width = 400,
           bslib::navset_pill(
-            bslib::nav_panel("Analyze", explore_controls_ui("explore_controls")),
-            bslib::nav_panel("Trend",   trend_controls_ui("trend_controls"))
+            bslib::nav_panel("Describe",     describe_controls_ui("describe_controls")),
+            bslib::nav_panel("Relationship", relationship_controls_ui("relationship_controls")),
+            bslib::nav_panel("Trend",        trend_controls_ui("trend_controls"))
           )
         ),
         explore_output_ui("explore_output")
@@ -274,8 +275,9 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
     row_filter_server("row_filter",                 shared_state)
     data_preview_server("data_preview",             shared_state)
     prepare_confirm_server("prepare_confirm",       shared_state)
-    explore_controls_server("explore_controls", shared_state)
-    trend_controls_server("trend_controls",   shared_state)
+    describe_controls_server("describe_controls",         shared_state)
+    relationship_controls_server("relationship_controls", shared_state)
+    trend_controls_server("trend_controls",               shared_state)
     explore_output_server("explore_output",   shared_state)
     report_server("report",                   shared_state)
   }

@@ -50,8 +50,7 @@ report_ui <- function(id) {
           ),
 
           # ── Output format ──────────────────────────────────────────────────
-          shiny::tags$p(class = "fw-semibold mb-1 mt-2",
-                        shiny::icon("download"), " Output Format"),
+          shiny::tags$p("Output Format", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
           shinyWidgets::radioGroupButtons(
             ns("output_format"),
             label    = NULL,
@@ -64,8 +63,7 @@ report_ui <- function(id) {
           ),
 
           # ── Report type ────────────────────────────────────────────────────
-          shiny::tags$p(class = "fw-semibold mb-1 mt-2",
-                        shiny::icon("crosshairs"), " Report Type"),
+          shiny::tags$p("Report Type", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
           shinyWidgets::radioGroupButtons(
             ns("report_type"),
             label    = NULL,
@@ -79,8 +77,7 @@ report_ui <- function(id) {
           # ── Primary variable (Correlation only) ────────────────────────────
           shiny::conditionalPanel(
             condition = paste0("input['", ns("report_type"), "'] == 'primary_vs_others'"),
-            shiny::tags$p(class = "fw-semibold mb-1 mt-2",
-                          shiny::icon("crosshairs"), " Primary Variable"),
+            shiny::tags$p("Primary Variable", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
             shiny::uiOutput(ns("primary_var_picker")),
             shinyWidgets::radioGroupButtons(
               ns("primary_role"),
@@ -94,8 +91,7 @@ report_ui <- function(id) {
           ),
 
           # ── Variable selection ─────────────────────────────────────────────
-          shiny::tags$p(class = "fw-semibold mb-1 mt-2",
-          shiny::icon("list-check"), " Variables"),
+          shiny::tags$p("Variables", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
           shiny::uiOutput(ns("var_selection_summary")),
           shiny::actionButton(
             ns("open_var_modal"),
@@ -105,13 +101,11 @@ report_ui <- function(id) {
           ),
           
           # ── Options ────────────────────────────────────────────────────
-          shiny::tags$p(class = "fw-semibold mb-1 mt-2",
-                        shiny::icon("layer-group"), " Options"),
+          shiny::tags$p("Options", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
           shiny::uiOutput(ns("stratify_picker")),
 
           # ── Report contents ────────────────────────────────────────────────
-          shiny::tags$p(class = "fw-semibold mb-1 mt-2",
-                        shiny::icon("table"), " Report Contents"),
+          shiny::tags$p("Report Contents", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
           shiny::checkboxInput(ns("include_dataset_summary"),
                                "Dataset Summary", value = TRUE),
           shiny::conditionalPanel(

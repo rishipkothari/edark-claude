@@ -16,9 +16,6 @@ column_manager_server(id, shared_state)
 \item{shared_state}{A Shiny \code{reactiveValues} object.}
 }
 \description{
-Compact table showing all columns with Include and Transform checkboxes.
-Checking "Transform" stages an auto-factor transform spec for that column.
-Transform configurations (method, cutpoints, labels, preview) appear in an
-accordion below the table. No type-override controls — use the Transform
-checkbox to recode a numeric column as a factor.
+Compact table showing all columns with an Include checkbox per column.
+Transform staging and configuration is handled entirely in the Transforms tab.
 }

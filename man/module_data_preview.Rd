@@ -16,8 +16,7 @@ data_preview_server(id, shared_state)
 \item{shared_state}{A Shiny \code{reactiveValues} object.}
 }
 \description{
-Two sub-tabs: Original dataset and Working dataset as interactive reactable
-tables. Each column header shows the column name and its type below it.
-Transformed columns are tinted amber. Originally-numeric columns retain
-right-alignment even after being recoded as factors.
+Two nav panels: Original dataset and Working dataset. Each panel has two
+sub-tabs: Data (interactive reactable) and Summary (EDA summary table).
+Transformed columns are tinted amber in the Working data view.
 }

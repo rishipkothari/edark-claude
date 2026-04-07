@@ -16,9 +16,9 @@ prepare_confirm_server(id, shared_state)
 \item{shared_state}{A Shiny \code{reactiveValues} object.}
 }
 \description{
-Displays a count of pending (unapplied) changes and a preview of the
-resulting dataset dimensions. When the user clicks "Apply & Proceed", runs
-the full prepare pipeline atomically and navigates to the Explore tab.
+Displays dataset dimensions (original / current / pending), grouped warnings,
+and a pending-changes status badge. When the user clicks "Apply Changes",
+runs the full prepare pipeline atomically.
 }
 \details{
 The pipeline order (from PRD §4.5):
