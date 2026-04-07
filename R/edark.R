@@ -217,14 +217,14 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
             title = "Custom Report May Be Affected",
             paste0(
               "You have ", n_items, " item(s) in your custom report. ",
-              "Dataset changes may invalidate those plots. Proceed anyway?"
+              "Dataset changes will clear custom report items. Would you like to proceed?"
             ),
             footer = shiny::tagList(
               shiny::actionButton("cancel_nav_apply_btn",
-                                  "Cancel & Revert Changes",
+                                  "Go Back & Revert Changes",
                                   class = "btn-outline-secondary"),
               shiny::actionButton("confirm_nav_apply_btn",
-                                  "Apply Anyway",
+                                  "Apply and Clear Custom Report",
                                   class = "btn-warning")
             ),
             easyClose = FALSE

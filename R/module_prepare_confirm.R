@@ -160,11 +160,11 @@ prepare_confirm_server <- function(id, shared_state) {
       shiny::showModal(shiny::modalDialog(
         title = "Custom Report May Be Affected",
         paste0(
-          "You have ", n_items, " item(s) in your custom report. ",
-          "Dataset changes may invalidate those plots. Proceed anyway?"
+            "You have ", n_items, " item(s) in your custom report. ",
+            "Dataset changes will clear custom report items. Would you like to proceed?"
         ),
         footer = shiny::tagList(
-          shiny::actionButton(ns(cancel_btn_id), "Cancel & Revert Changes",
+          shiny::actionButton(ns(cancel_btn_id), "Go Back & Revert Changes",
                               class = "btn-outline-secondary"),
           shiny::actionButton(ns(confirm_btn_id), action_label, class = "btn-warning")
         ),
@@ -189,7 +189,7 @@ prepare_confirm_server <- function(id, shared_state) {
       }
 
       # Warn if custom report items exist
-      if (.custom_items_guard("Apply Anyway", "confirm_apply_btn", "cancel_apply_btn")) return()
+      if (.custom_items_guard("Apply and Clear Custom Report", "confirm_apply_btn", "cancel_apply_btn")) return()
 
       do_apply()
     })
@@ -208,7 +208,7 @@ prepare_confirm_server <- function(id, shared_state) {
     # ── Reset button ──────────────────────────────────────────────────────────
     shiny::observeEvent(input$reset_btn, {
       # Warn if custom report items exist
-      if (.custom_items_guard("Reset Anyway", "confirm_reset_btn", "cancel_reset_btn")) return()
+      if (.custom_items_guard("Reset and Clear Custom Report", "confirm_reset_btn", "cancel_reset_btn")) return()
       do_reset()
     })
 
