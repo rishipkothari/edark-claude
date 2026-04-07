@@ -284,22 +284,21 @@ edark_report(liver_tx, report_type = "primary_vs_others",
 ## What's not built yet
 
 #### High magnitude change
-- Integrate studybuddy — use working dataset for direct model creation and publication-quality outputs
+- explore tab -- subtabs describe/correlate/trend
+- Alternative plot type options per variable combination (heat map, balloon plot, etc.)
 - Word report: reference `.docx` template with defined heading styles
+- Integrate studybuddy — use working dataset for direct model creation and publication-quality outputs
 - a question to investigate: how does plot theming work if edark_report is called from outside GUI? is there a plot spec variable that contains plot aesthetic data? if so, what happens when func is called without this being present in a reactive variable? is there a check for a default plot spec? i suppose all aspects of external function calls should inspect for reactive variables that are used that are not initialized within the function in a safety check, but this is far down the road -- not critical functionality
 
 #### Mid magnitude change
-- `show_data_labels` not yet wired for `scatter_loess`. Currently wired for `bar_count`, `bar_grouped` (count+proportion labels with dodge), `violin_jitter` (Median + 25%-75% range above violin).
 - Dataset export: save working dataset to RDS, save original dataset and variable transform spec to RDS (or similar), save transformed dataset to CSV
 - Statistical tests in Explore › Analyze tab for bivariate plots — numeric × factor → Kruskal-Wallis; factor × factor → chi-square/Fisher's. (Reports already have these via the table helpers; Explore summary panel does not.)
-- Alternative plot type options per variable combination (heat map, balloon plot, etc.)
-- Report contents options: Dataset Summary checkbox + Table One checkbox (all_vars mode only) are wired. Still TODO: correlation matrix option.
 - add univariate table to correlation report (selects logistic vs linear regression vs anova to correlate) but this is also presented in a descriptive table 1 if stratified for exposure or outcome right? whats the difference between the univariate assocations in both of these tables that i know are routinely calculated for different reasons? what am i missing?
 - transform --> row filter --> transform does not show warning on stage
 - warnings section in apply pane - mimic "stratify by" section header in report:full report pane
+- Async report generation (currently synchronous; cancel not feasible without `future`/`promises`)
 
 #### Small magnitude change
-- Correlation matrix for variable selection
+- Report contents options Still TODO: correlation matrix option.
 - `shinytest2` module tests + `testthat` unit tests
-- Async report generation (currently synchronous; cancel not feasible without `future`/`promises`)
 - **Bug — center tables in PPT + HTML reports**: `flextable::set_table_properties(align = "center")` is set in both `.style_dataset_summary_ft()` and `.style_section_ft()` in `generate_report.R` but tables still appear left-aligned in PPT and HTML output. DOCX may work. Investigate `officer` slide content alignment for PPT and the Rmd template's table rendering for HTML.
