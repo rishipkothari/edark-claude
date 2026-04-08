@@ -57,6 +57,9 @@ inst/
     └── ppt_16x9_blank_template.pptx   Bundled slide template for PPT output
 ```
 
+### UI princples.md 
+- available in .claude folder to guide UI development so it's not reinventing the wheel every time, for internal consistency
+
 ---
 
 ## Architecture rules (do not violate)
