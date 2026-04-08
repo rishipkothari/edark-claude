@@ -43,7 +43,7 @@ R/
 ├── module_prepare_confirm.R    Apply Changes sidebar — pipeline, validation, navigation
 ├── module_data_preview.R       Prepare › Data Preview tab — original + working reactables + summary sub-tabs
 │
-├── module_explore_controls.R   Explore › Analyze tab sidebar — variable pickers, Describe/Correlate buttons
+├── module_explore_controls.R   Explore › Describe + Relationship tab sidebars — describe_controls_ui/server + relationship_controls_ui/server
 ├── module_trend_controls.R     Explore › Trend tab sidebar — timestamp/resolution/variable/stat pickers
 ├── module_explore_output.R     Explore main panel — plot output + summary reactable + "Add to Custom Report" / "View Report" buttons
 ├── module_report.R             Report tab — Full Report pill (type selector, variable modal, download) + Custom Report pill (gallery, reorder, download)
@@ -90,10 +90,16 @@ inst/
 
 ## Explore stage
 
-The Explore sidebar has two pill tabs — **Analyze** and **Trend** — sharing the same output panel (`module_explore_output.R`). Both tabs write to `shared_state$plot_specification`; clicking a plot button overwrites it.
+The Explore sidebar has three pill tabs — **Describe**, **Relationship**, and **Trend** — sharing the same output panel (`module_explore_output.R`). All three tabs write to `shared_state$plot_specification`; clicking a plot button overwrites it.
 
-### Analyze tab (module_explore_controls.R)
-Eligible columns: numeric + factor only (datetime excluded from pickers here).
+Sidebar styling convention: flat sections (no `card()` wrapper), section headers use `tags$p("LABEL", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1")`, one `btn-primary w-100` CTA per tab, no icons in headers.
+
+### Describe tab (module_explore_controls.R — describe_controls_ui/server)
+Eligible columns: numeric + factor only (datetime excluded from pickers here). Provides: primary variable picker, optional stratify, conditional factor statistic picker (count/proportion). One CTA: **Describe** → `build_univariate_plot_spec()`.
+
+### Relationship tab (module_explore_controls.R — relationship_controls_ui/server)
+
+Eligible columns: numeric + factor only. Provides: primary variable picker + role (Exposure/Outcome), secondary variable picker, conditional factor statistic picker, optional stratify. One CTA: **Plot Relationship** → `build_bivariate_plot_spec()`.
 
 Stratify picker: factor columns only; excludes the current primary variable.
 
@@ -127,7 +133,7 @@ Numeric stat options (stored in `shared_state$trend_summary_stat`):
 
 **Impute zero for missing timepoints** (`shared_state$trend_impute_zero`): checkbox shown only when the trend variable is a factor (rendered inside `bar_display_ui`). **Not** reactive — takes effect on the next Plot Trend click. When TRUE, builds a complete time × level (× stratum) grid via `expand.grid` + `left_join` and fills missing `n` with `0L`. When the stat is proportion and all levels at a timepoint are zero (`sum(n) == 0`), proportion is set to 0 (not NaN) via `dplyr::if_else`. Defaults to TRUE.
 
-Trend tab has its own shared_state fields: `trend_timestamp_variable`, `trend_variable`, `trend_summary_stat`, `trend_resolution`, `trend_stratify_variable`, `trend_zero_baseline`, `trend_impute_zero`. These are separate from the Analyze tab fields (`primary_variable`, `stratify_variable`, etc.).
+Trend tab has its own shared_state fields: `trend_timestamp_variable`, `trend_variable`, `trend_summary_stat`, `trend_resolution`, `trend_stratify_variable`, `trend_zero_baseline`, `trend_impute_zero`. These are separate from the Describe/Relationship tab fields (`primary_variable`, `stratify_variable`, etc.).
 
 ### Plot types reference
 
@@ -287,21 +293,21 @@ edark_report(liver_tx, report_type = "primary_vs_others",
 ## What's not built yet
 
 #### High magnitude change
-- Integrate studybuddy — use working dataset for direct model creation and publication-quality outputs
+- explore tab -- subtabs describe/correlate/trend
+- Alternative plot type options per variable combination (heat map, balloon plot, etc.)
 - Word report: reference `.docx` template with defined heading styles
+- Integrate studybuddy — use working dataset for direct model creation and publication-quality outputs
 - a question to investigate: how does plot theming work if edark_report is called from outside GUI? is there a plot spec variable that contains plot aesthetic data? if so, what happens when func is called without this being present in a reactive variable? is there a check for a default plot spec? i suppose all aspects of external function calls should inspect for reactive variables that are used that are not initialized within the function in a safety check, but this is far down the road -- not critical functionality
-- save individual plot to file — "Save Plot" button placeholder already in the UI row above the plot panel (not yet wired)
 
 #### Mid magnitude change
-- `show_data_labels` not yet wired for `scatter_loess`. Currently wired for `bar_count`, `bar_grouped` (count+proportion labels with dodge), `violin_jitter` (median+IQR per group).
 - Dataset export: save working dataset to RDS, save original dataset and variable transform spec to RDS (or similar), save transformed dataset to CSV
-- Statistical tests in Explore › Analyze tab for bivariate plots — numeric × factor → Kruskal-Wallis; factor × factor → chi-square/Fisher's. (Reports already have these via the table helpers; Explore summary panel does not.)
-- Alternative plot type options per variable combination (heat map, balloon plot, etc.)
-- Report contents options: Dataset Summary checkbox + Table One checkbox (all_vars mode only) are wired. Still TODO: correlation matrix option.
+- Statistical tests in Explore › Relationship tab for bivariate plots — numeric × factor → Kruskal-Wallis; factor × factor → chi-square/Fisher's. (Reports already have these via the table helpers; Explore summary panel does not.)
 - add univariate table to correlation report (selects logistic vs linear regression vs anova to correlate) but this is also presented in a descriptive table 1 if stratified for exposure or outcome right? whats the difference between the univariate assocations in both of these tables that i know are routinely calculated for different reasons? what am i missing?
+- transform --> row filter --> transform does not show warning on stage
+- warnings section in apply pane - mimic "stratify by" section header in report:full report pane
+- Async report generation (currently synchronous; cancel not feasible without `future`/`promises`)
 
 #### Small magnitude change
-- Correlation matrix for variable selection
+- Report contents options Still TODO: correlation matrix option.
 - `shinytest2` module tests + `testthat` unit tests
-- Async report generation (currently synchronous; cancel not feasible without `future`/`promises`)
 - **Bug — center tables in PPT + HTML reports**: `flextable::set_table_properties(align = "center")` is set in both `.style_dataset_summary_ft()` and `.style_section_ft()` in `generate_report.R` but tables still appear left-aligned in PPT and HTML output. DOCX may work. Investigate `officer` slide content alignment for PPT and the Rmd template's table rendering for HTML.

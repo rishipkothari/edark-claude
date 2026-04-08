@@ -523,27 +523,28 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
                                   ncol = ncol_wrap, labeller = ggplot2::label_both)
   }
 
-  # Data labels: median and IQR per group, shown as text above the median marker.
+  # Data labels: median and Q1–Q3 per group, shown as text above the violin.
   if (isTRUE(spec$show_data_labels)) {
     grp_var <- if (!is.null(stratify)) c(col_a, stratify) else col_a
     label_df <- df |>
       dplyr::group_by(dplyr::across(dplyr::all_of(grp_var))) |>
       dplyr::summarise(
-        ._med = median(.data[[col_b]], na.rm = TRUE),
-        ._iqr = IQR(.data[[col_b]], na.rm = TRUE),
-        ._ymax = quantile(.data[[col_b]], 0.75, na.rm = TRUE),
+        ._med  = median(.data[[col_b]], na.rm = TRUE),
+        ._q25  = quantile(.data[[col_b]], 0.25, na.rm = TRUE),
+        ._q75  = quantile(.data[[col_b]], 0.75, na.rm = TRUE),
+        ._ymax = max(.data[[col_b]], na.rm = TRUE),
         .groups = "drop"
       ) |>
       dplyr::mutate(
         ._label = paste0(
-          "Md ", round(.data$._med, 1),
-          "\nIQR ", round(.data$._iqr, 1)
+          "Median: ", round(.data$._med, 1),
+          "\n25%-75%: ", round(.data$._q25, 1), "\u2013", round(.data$._q75, 1)
         )
       )
     p <- p + ggplot2::geom_text(
       data        = label_df,
       ggplot2::aes(x = .data[[col_a]], y = .data$._ymax, label = .data$._label),
-      vjust       = -0.4, size = 3, colour = "grey20", lineheight = 0.85,
+      vjust       = -0.4, size = 5, colour = "black", lineheight = 1,
       inherit.aes = FALSE
     )
   }

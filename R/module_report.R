@@ -40,9 +40,30 @@ report_ui <- function(id) {
 
       bslib::layout_sidebar(
         sidebar = bslib::sidebar(
-          width = 300,
+          width = 380,
+
+          # ── Generate ──────────────────────────────────────────────────────
+          shiny::downloadButton(
+            ns("download_btn"),
+            label = "Generate & Download",
+            class = "btn-primary w-75"
+          ),
+
+          # ── Output format ──────────────────────────────────────────────────
+          shiny::tags$p("Output Format", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+          shinyWidgets::radioGroupButtons(
+            ns("output_format"),
+            label    = NULL,
+            choices  = c("PowerPoint" = "pptx",
+                         "Word"       = "docx",
+                         "HTML"       = "html"),
+            selected = "pptx",
+            size     = "sm",
+            width    = "100%"
+          ),
 
           # ── Report type ────────────────────────────────────────────────────
+          shiny::tags$p("Report Type", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
           shinyWidgets::radioGroupButtons(
             ns("report_type"),
             label    = NULL,
@@ -56,28 +77,21 @@ report_ui <- function(id) {
           # ── Primary variable (Correlation only) ────────────────────────────
           shiny::conditionalPanel(
             condition = paste0("input['", ns("report_type"), "'] == 'primary_vs_others'"),
-            shiny::tags$p(class = "fw-semibold mb-1 mt-2",
-                          shiny::icon("crosshairs"), " Primary Variable"),
+            shiny::tags$p("Primary Variable", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
             shiny::uiOutput(ns("primary_var_picker")),
             shinyWidgets::radioGroupButtons(
               ns("primary_role"),
               label    = "Role:",
-              choices  = c("Exposure (X-axis)" = "exposure",
-                           "Outcome (Y-axis)"  = "outcome"),
+              choices  = c("Exposure (X)" = "exposure",
+                           "Outcome (Y)"  = "outcome"),
               selected = "exposure",
               size     = "sm",
               width    = "100%"
             )
           ),
 
-          # ── Stratify By ────────────────────────────────────────────────────
-          shiny::tags$p(class = "fw-semibold mb-1 mt-2",
-                        shiny::icon("layer-group"), " Stratify By"),
-          shiny::uiOutput(ns("stratify_picker")),
-
           # ── Variable selection ─────────────────────────────────────────────
-          shiny::tags$p(class = "fw-semibold mb-1 mt-2",
-                        shiny::icon("list-check"), " Variables"),
+          shiny::tags$p("Variables", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
           shiny::uiOutput(ns("var_selection_summary")),
           shiny::actionButton(
             ns("open_var_modal"),
@@ -85,10 +99,13 @@ report_ui <- function(id) {
             icon  = shiny::icon("sliders"),
             class = "btn-outline-secondary w-100 mt-1"
           ),
+          
+          # ── Options ────────────────────────────────────────────────────
+          shiny::tags$p("Options", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+          shiny::uiOutput(ns("stratify_picker")),
 
           # ── Report contents ────────────────────────────────────────────────
-          shiny::tags$p(class = "fw-semibold mb-1 mt-2",
-                        shiny::icon("table"), " Report Contents"),
+          shiny::tags$p("Report Contents", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
           shiny::checkboxInput(ns("include_dataset_summary"),
                                "Dataset Summary", value = TRUE),
           shiny::conditionalPanel(
@@ -97,28 +114,47 @@ report_ui <- function(id) {
                                  "Table One", value = FALSE)
           ),
 
-          # ── Output format ──────────────────────────────────────────────────
-          shiny::tags$p(class = "fw-semibold mb-1 mt-2",
-                        shiny::icon("download"), " Output Format"),
-          shinyWidgets::radioGroupButtons(
-            ns("output_format"),
-            label    = NULL,
-            choices  = c("PowerPoint" = "pptx",
-                         "Word"       = "docx",
-                         "HTML"       = "html"),
-            selected = "pptx",
-            size     = "sm",
-            width    = "100%"
+          # ── Plot aesthetics ────────────────────────────────────────────────
+          bslib::accordion(
+            open = FALSE,
+            bslib::accordion_panel(
+              "Plot Aesthetics",
+              icon = shiny::icon("palette"),
+              shinyWidgets::pickerInput(
+                ns("ggplot_theme"),
+                label    = "Plot theme:",
+                choices  = c(
+                  "Minimal"         = "minimal",
+                  "Ipsum"           = "ipsum",
+                  "Ipsum RC"        = "ipsum_rc",
+                  "Publication"     = "publication",
+                  "Cowplot"         = "cowplot",
+                  "Economist"       = "economist",
+                  "FiveThirtyEight" = "fivethirtyeight",
+                  "Tufte"           = "tufte",
+                  "Modern"          = "modern"
+                ),
+                selected = "minimal"
+              ),
+              shinyWidgets::pickerInput(
+                ns("color_palette"),
+                label    = "Colour palette:",
+                choices  = c("Set2", "Set1", "Dark2", "Paired", "Accent",
+                             "Blues", "Greens", "Reds", "Purples"),
+                selected = "Set2"
+              ),
+              shiny::checkboxInput(ns("show_data_labels"), "Show data labels", value = FALSE),
+              shiny::checkboxInput(ns("show_legend"),      "Show legend",      value = TRUE),
+              shinyWidgets::radioGroupButtons(
+                ns("legend_position"),
+                label    = "Legend position:",
+                choices  = c("right", "left", "top", "bottom"),
+                selected = "top",
+                size     = "sm"
+              )
+            )
           ),
 
-          shiny::br(),
-
-          # ── Generate ──────────────────────────────────────────────────────
-          shiny::downloadButton(
-            ns("download_btn"),
-            label = "Generate & Download",
-            class = "btn-primary w-100"
-          )
         ),
 
         # Main panel
@@ -139,7 +175,7 @@ report_ui <- function(id) {
 
       bslib::layout_sidebar(
         sidebar = bslib::sidebar(
-          width = 320,
+          width = 380,
 
           # ── Item gallery ───────────────────────────────────────────────────
           bslib::card(
@@ -150,6 +186,47 @@ report_ui <- function(id) {
           ),
 
           shiny::br(),
+
+          # ── Plot aesthetics ────────────────────────────────────────────────
+          bslib::accordion(
+            open = FALSE,
+            bslib::accordion_panel(
+              "Plot Aesthetics",
+              icon = shiny::icon("palette"),
+              shinyWidgets::pickerInput(
+                ns("custom_ggplot_theme"),
+                label    = "Plot theme:",
+                choices  = c(
+                  "Minimal"         = "minimal",
+                  "Ipsum"           = "ipsum",
+                  "Ipsum RC"        = "ipsum_rc",
+                  "Publication"     = "publication",
+                  "Cowplot"         = "cowplot",
+                  "Economist"       = "economist",
+                  "FiveThirtyEight" = "fivethirtyeight",
+                  "Tufte"           = "tufte",
+                  "Modern"          = "modern"
+                ),
+                selected = "minimal"
+              ),
+              shinyWidgets::pickerInput(
+                ns("custom_color_palette"),
+                label    = "Colour palette:",
+                choices  = c("Set2", "Set1", "Dark2", "Paired", "Accent",
+                             "Blues", "Greens", "Reds", "Purples"),
+                selected = "Set2"
+              ),
+              shiny::checkboxInput(ns("custom_show_data_labels"), "Show data labels", value = FALSE),
+              shiny::checkboxInput(ns("custom_show_legend"),      "Show legend",      value = TRUE),
+              shinyWidgets::radioGroupButtons(
+                ns("custom_legend_position"),
+                label    = "Legend position:",
+                choices  = c("right", "left", "top", "bottom"),
+                selected = "top",
+                size     = "sm"
+              )
+            )
+          ),
 
           # ── Output format ──────────────────────────────────────────────────
           bslib::card(
@@ -167,8 +244,6 @@ report_ui <- function(id) {
               )
             )
           ),
-
-          shiny::br(),
 
           # ── Generate ──────────────────────────────────────────────────────
           shiny::downloadButton(
@@ -233,7 +308,7 @@ report_server <- function(id, shared_state) {
       eligible <- names(types)[types %in% c("numeric", "factor")]
       shinyWidgets::pickerInput(
         ns("primary_variable"),
-        label   = "Primary variable:",
+        # label   = "Primary variable:",
         choices = eligible,
         options = shinyWidgets::pickerOptions(liveSearch = TRUE, container = "body")
       )
@@ -479,6 +554,11 @@ report_server <- function(id, shared_state) {
                 include_dataset_summary = isTRUE(input$include_dataset_summary),
                 include_tableone        = isTRUE(input$include_tableone) &&
                                             input$report_type == "all_vars",
+                ggplot_theme            = input$ggplot_theme      %||% "minimal",
+                color_palette           = input$color_palette     %||% "Set2",
+                show_data_labels        = isTRUE(input$show_data_labels),
+                show_legend             = isTRUE(input$show_legend),
+                legend_position         = input$legend_position   %||% "top",
                 progress_fn             = function(frac, detail) {
                   shiny::setProgress(value = frac, detail = detail)
                 }
@@ -680,12 +760,17 @@ report_server <- function(id, shared_state) {
             value   = 0,
             {
               generate_custom_report(
-                items        = items,
-                dataset      = shared_state$dataset_working,
-                column_types = shared_state$column_types,
-                format       = input$custom_output_format,
-                output_path  = file,
-                progress_fn  = function(frac, detail) {
+                items            = items,
+                dataset          = shared_state$dataset_working,
+                column_types     = shared_state$column_types,
+                format           = input$custom_output_format,
+                output_path      = file,
+                ggplot_theme     = input$custom_ggplot_theme     %||% "minimal",
+                color_palette    = input$custom_color_palette    %||% "Set2",
+                show_data_labels = isTRUE(input$custom_show_data_labels),
+                show_legend      = isTRUE(input$custom_show_legend),
+                legend_position  = input$custom_legend_position  %||% "top",
+                progress_fn      = function(frac, detail) {
                   shiny::setProgress(value = frac, detail = detail)
                 }
               )

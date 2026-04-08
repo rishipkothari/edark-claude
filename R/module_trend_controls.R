@@ -21,49 +21,35 @@ trend_controls_ui <- function(id) {
 
   shiny::tagList(
 
-    bslib::card(
-      bslib::card_body(
+    # ── Timestamp ─────────────────────────────────────────────────────────────
+    shiny::tags$p("Timestamp", class = "text-muted small text-uppercase fw-semibold mt-0 mb-1"),
+    shiny::uiOutput(ns("timestamp_picker")),
 
-        # ── Timestamp ───────────────────────────────────────────────────────
-        shiny::tags$p(class = "fw-semibold mb-1",
-                      shiny::icon("clock"), " Timestamp"),
-        shiny::uiOutput(ns("timestamp_picker")),
-
-
-        # ── Resolution ──────────────────────────────────────────────────────
-        shiny::tags$p(class = "fw-semibold mb-1",
-                      shiny::icon("sliders"), " Resolution"),
-        shiny::selectInput(
-          ns("trend_resolution"),
-          label    = NULL,
-          choices  = c("Hour", "Day", "Week", "Month", "Quarter", "Year"),
-          selected = "Month"
-        ),
-
-
-        # ── Trend variable + stat picker ─────────────────────────────────────
-        shiny::tags$p(class = "fw-semibold mb-1",
-                      shiny::icon("chart-line"), " Trend Variable"),
-        shiny::uiOutput(ns("trend_var_picker")),
-        shiny::uiOutput(ns("bar_display_ui")),
-        shiny::uiOutput(ns("stat_picker_ui")),
-
-
-        # ── Stratify By ─────────────────────────────────────────────────────
-        shiny::tags$p(class = "fw-semibold mb-1",
-                      shiny::icon("layer-group"), " Stratify By"),
-        shiny::uiOutput(ns("stratify_picker")),
-
-
-        # ── Zero baseline ────────────────────────────────────────────────────
-        shiny::uiOutput(ns("zero_baseline_ui"))
-
-      )
+    # ── Resolution ────────────────────────────────────────────────────────────
+    shiny::tags$p("Resolution", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+    shinyWidgets::pickerInput(
+      ns("trend_resolution"),
+      label    = NULL,
+      choices  = c("Hour", "Day", "Week", "Month", "Quarter", "Year"),
+      selected = "Month"
     ),
 
-    # ── Plot button ─────────────────────────────────────────────────────────
-    bslib::input_task_button(ns("plot_trend"), "Plot Trend",
-                             icon = shiny::icon("chart-line")),
+    # ── Trend variable + stat picker ──────────────────────────────────────────
+    shiny::tags$p("Trend Variable", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+    shiny::uiOutput(ns("trend_var_picker")),
+    shiny::uiOutput(ns("bar_display_ui")),
+    shiny::uiOutput(ns("stat_picker_ui")),
+
+    # ── Options ───────────────────────────────────────────────────────────────
+    shiny::tags$p("Options", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+    shiny::uiOutput(ns("stratify_picker")),
+    shiny::uiOutput(ns("zero_baseline_ui")),
+
+    # ── Plot button ───────────────────────────────────────────────────────────
+    shiny::tags$div(class = "mt-3",
+      bslib::input_task_button(ns("plot_trend"), "Plot Trend",
+                               icon = shiny::icon("chart-line"))
+    ),
 
     # ── Aesthetics ───────────────────────────────────────────────────────────
     bslib::accordion(
@@ -130,7 +116,7 @@ trend_controls_server <- function(id, shared_state) {
       cols <- datetime_cols()
       shinyWidgets::pickerInput(
         ns("trend_timestamp_variable"),
-        label   = "Timestamp column:",
+        # label   = "Timestamp column:",
         choices = cols,
         options = shinyWidgets::pickerOptions(
           liveSearch  = TRUE,
@@ -143,7 +129,7 @@ trend_controls_server <- function(id, shared_state) {
     output$trend_var_picker <- shiny::renderUI({
       shinyWidgets::pickerInput(
         ns("trend_variable"),
-        label   = "Trend variable:",
+        # label   = "Trend variable:",
         choices = eligible_trend_cols(),
         options = shinyWidgets::pickerOptions(liveSearch = TRUE, container = "body")
       )
@@ -157,7 +143,7 @@ trend_controls_server <- function(id, shared_state) {
       types <- shared_state$column_types
       if (!tv %in% names(types) || types[[tv]] != "numeric") return(NULL)
 
-      shiny::selectInput(
+      shinyWidgets::pickerInput(
         ns("trend_summary_stat"),
         label   = "Summary statistic:",
         choices = c(
@@ -172,7 +158,8 @@ trend_controls_server <- function(id, shared_state) {
           "Max"                 = "max",
           "Min"                 = "min"
         ),
-        selected = shiny::isolate(shared_state$trend_summary_stat)
+        selected = shiny::isolate(shared_state$trend_summary_stat),
+        options  = shinyWidgets::pickerOptions(container = "body")
       )
     })
 
@@ -210,7 +197,7 @@ trend_controls_server <- function(id, shared_state) {
       cols_with_none <- c("None" = "", factor_cols)
       shinyWidgets::pickerInput(
         ns("trend_stratify_variable"),
-        label   = "Stratify by (optional):",
+        label   = "Stratify by",
         choices = cols_with_none,
         options = shinyWidgets::pickerOptions(liveSearch = TRUE, container = "body")
       )

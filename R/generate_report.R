@@ -599,7 +599,7 @@
 # ---------------------------------------------------------------------------
 
 .build_all_vars_sections <- function(dataset, column_types, variables, stratify_variable,
-                                      progress_fn = NULL) {
+                                      progress_fn = NULL, plot_aesthetics = list()) {
   # Only numeric and factor — datetime excluded
   variables <- variables[variables %in% names(column_types) &
                            column_types[variables] %in% c("numeric", "factor")]
@@ -619,7 +619,7 @@
                         stratify_variable %in% names(dataset))
       stratify_variable else NULL
 
-    spec <- list(
+    spec <- modifyList(list(
       plot_type        = route_plot_type(var_type, NULL),
       column_a         = var,
       column_b         = NULL,
@@ -630,7 +630,7 @@
       show_legend      = TRUE,
       legend_position  = "top",
       trend_resolution = "Month"
-    )
+    ), plot_aesthetics)
 
     plot_obj <- render_plot(spec, dataset, split_panels = TRUE)
 
@@ -657,7 +657,8 @@
                                                primary_variable,
                                                primary_role,
                                                stratify_variable,
-                                               progress_fn = NULL) {
+                                               progress_fn = NULL,
+                                               plot_aesthetics = list()) {
   # Only numeric and factor — datetime excluded from both primary and secondary
   valid_types <- c("numeric", "factor")
   if (!primary_variable %in% names(column_types) ||
@@ -706,7 +707,7 @@
                         stratify_variable %in% names(dataset))
       stratify_variable else NULL
 
-    spec <- list(
+    spec <- modifyList(list(
       plot_type        = route_plot_type(col_a_type, col_b_type),
       column_a         = col_a,
       column_b         = col_b,
@@ -717,7 +718,7 @@
       show_legend      = TRUE,
       legend_position  = "top",
       trend_resolution = "Month"
-    )
+    ), plot_aesthetics)
 
     plot_obj <- render_plot(spec, dataset, split_panels = TRUE)
 
@@ -961,7 +962,12 @@ generate_report <- function(dataset,
                              output_path,
                              progress_fn             = NULL,
                              include_dataset_summary = TRUE,
-                             include_tableone        = FALSE) {
+                             include_tableone        = FALSE,
+                             ggplot_theme            = "minimal",
+                             color_palette           = "Set2",
+                             show_data_labels        = FALSE,
+                             show_legend             = TRUE,
+                             legend_position         = "top") {
   stopifnot(report_type %in% c("all_vars", "primary_vs_others"))
   stopifnot(format %in% c("pptx", "docx", "html"))
   stopifnot(is.data.frame(dataset), length(variables) >= 1)
@@ -986,9 +992,17 @@ generate_report <- function(dataset,
     else NULL
   } else NULL
 
+  plot_aesthetics <- list(
+    ggplot_theme     = ggplot_theme,
+    color_palette    = color_palette,
+    show_data_labels = show_data_labels,
+    show_legend      = show_legend,
+    legend_position  = legend_position
+  )
+
   sections <- if (report_type == "all_vars") {
     .build_all_vars_sections(dataset, column_types, variables, stratify_variable,
-                              progress_fn = progress_fn)
+                              progress_fn = progress_fn, plot_aesthetics = plot_aesthetics)
   } else {
     if (is.null(primary_variable))
       stop("primary_variable must be specified for report_type = 'primary_vs_others'")
@@ -998,7 +1012,7 @@ generate_report <- function(dataset,
     .build_primary_vs_others_sections(
       dataset, column_types, secondary_vars,
       primary_variable, primary_role, stratify_variable,
-      progress_fn = progress_fn
+      progress_fn = progress_fn, plot_aesthetics = plot_aesthetics
     )
   }
 
@@ -1064,7 +1078,7 @@ generate_report <- function(dataset,
 # assemblers. Items that fail to render produce a warning placeholder rather
 # than aborting the entire report.
 .build_custom_report_sections <- function(items, dataset, column_types,
-                                           progress_fn = NULL) {
+                                           progress_fn = NULL, plot_aesthetics = list()) {
   n        <- length(items)
   sections <- vector("list", n)
 
@@ -1077,6 +1091,9 @@ generate_report <- function(dataset,
 
     if (!is.null(progress_fn))
       progress_fn(i / n, paste0("Item ", i, " of ", n, ": ", title))
+
+    # Apply report-level aesthetics over the frozen per-item spec
+    if (length(plot_aesthetics) > 0) spec <- modifyList(spec, plot_aesthetics)
 
     # Re-render plot from spec + current dataset; trap errors per-item
     plot_obj <- tryCatch(
@@ -1154,7 +1171,12 @@ generate_report <- function(dataset,
 #' @return `output_path`, invisibly.
 #' @export
 generate_custom_report <- function(items, dataset, column_types, format,
-                                    output_path, progress_fn = NULL) {
+                                    output_path, progress_fn = NULL,
+                                    ggplot_theme     = "minimal",
+                                    color_palette    = "Set2",
+                                    show_data_labels = FALSE,
+                                    show_legend      = TRUE,
+                                    legend_position  = "top") {
   stopifnot(is.list(items), length(items) >= 1)
   stopifnot(format %in% c("pptx", "docx", "html"))
   stopifnot(is.data.frame(dataset))
@@ -1162,7 +1184,16 @@ generate_custom_report <- function(items, dataset, column_types, format,
   if (!is.null(progress_fn)) progress_fn(0, "Building dataset summary...")
   dataset_summary_df <- .build_dataset_summary(dataset, column_types)
 
-  sections <- .build_custom_report_sections(items, dataset, column_types, progress_fn)
+  plot_aesthetics <- list(
+    ggplot_theme     = ggplot_theme,
+    color_palette    = color_palette,
+    show_data_labels = show_data_labels,
+    show_legend      = show_legend,
+    legend_position  = legend_position
+  )
+
+  sections <- .build_custom_report_sections(items, dataset, column_types, progress_fn,
+                                             plot_aesthetics = plot_aesthetics)
 
   if (length(sections) == 0)
     stop("No sections could be built from the custom report items.")

@@ -2,13 +2,19 @@
 % Please edit documentation in R/module_explore_controls.R
 \name{module_explore_controls}
 \alias{module_explore_controls}
-\alias{explore_controls_ui}
-\alias{explore_controls_server}
-\title{Explore Controls Module}
+\alias{describe_controls_ui}
+\alias{describe_controls_server}
+\alias{relationship_controls_ui}
+\alias{relationship_controls_server}
+\title{Explore Controls — Describe and Relationship Modules}
 \usage{
-explore_controls_ui(id)
+describe_controls_ui(id)
 
-explore_controls_server(id, shared_state)
+describe_controls_server(id, shared_state)
+
+relationship_controls_ui(id)
+
+relationship_controls_server(id, shared_state)
 }
 \arguments{
 \item{id}{Character. The module namespace ID.}
@@ -16,9 +22,9 @@ explore_controls_server(id, shared_state)
 \item{shared_state}{A Shiny \code{reactiveValues} object.}
 }
 \description{
-Sidebar panel for the Explore stage. Provides inputs to select the primary
-variable and its role, an optional stratification variable, an optional
-secondary variable, and plot aesthetic controls. Clicking "Describe"
-triggers a univariate plot; clicking "Plot Correlation" triggers a bivariate
-plot.
+Sidebar panels for the Explore stage.
+}
+\details{
+\code{describe_controls_ui/server}: Univariate variable description.
+\code{relationship_controls_ui/server}: Bivariate relationship / correlation.
 }

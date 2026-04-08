@@ -16,14 +16,20 @@ transform_variables_server(id, shared_state)
 \item{shared_state}{A Shiny \code{reactiveValues} object.}
 }
 \description{
-Displays an accordion of staged transforms, ordered by original column
-position. Each panel's cut-point UI renders independently so that toggling
-the method does not collapse the accordion panel.
+Flat table showing one row per included numeric column. A selectInput
+dropdown stages the transform type; inline config appears below the row
+when configuration is needed.
 }
 \details{
-Rules:
-\itemize{
-\item Columns with ≤ 20 unique values: Auto-factor or Cut-points available
-\item Columns with > 20 unique values: Cut-points only (method selector hidden)
-}
+Available transform types:
+none        — no transform (unstages any existing spec)
+auto        — auto-factor (all unique values become ordered factor levels)
+cutpoints   — cut-points → ordered factor (breakpoints required)
+log         — log transform (base: ln / log10 / log2)
+winsorize   — winsorize to percentile bounds
+round       — round to N decimal places
+standardize — z-score standardise (mean=0, sd=1)
+
+State persistence: column_transform_specs is NOT cleared on Apply. The table
+reflects the last-applied state when the user returns to this tab.
 }

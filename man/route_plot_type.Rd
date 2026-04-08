@@ -15,9 +15,9 @@ or \code{NULL} for univariate plots.}
 }
 \value{
 A single character string — one of:
-\code{"bar_count"}, \code{"histogram_density"}, \code{"trend_count"},
-\code{"bar_grouped"}, \code{"violin_box"}, \code{"scatter_lm"},
-\code{"trend_mean"}, \code{"trend_proportion"}.
+\code{"bar_count"}, \code{"histogram_density"},
+\code{"bar_grouped"}, \code{"violin_jitter"}, \code{"scatter_loess"},
+\code{"trend_mean"}, \code{"trend_factor"}.
 Returns \code{NULL} if the combination is not supported.
 }
 \description{

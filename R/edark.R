@@ -42,6 +42,50 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       bootswatch = "flatly",
       primary    = "#2c7be5"
     ),
+    header = shiny::tags$head(shiny::tags$style(shiny::HTML("
+      /* ── EDARK custom properties ── change values here, nowhere else ────── */
+      :root {
+        --edark-picker-bg: #ffffff;
+      }
+
+      /* sidebar nav-pill tabs */
+      .sidebar .nav-pills .nav-link {
+        padding-left: 0.6rem;
+        padding-right: 0.6rem;
+        border-radius: 20px;
+        font-size: 0.95rem;
+        font-weight: 500;
+      }
+      .sidebar .nav-pills .nav-link:not(.active) {
+        background-color: #eef1f5;
+        color: #495057;
+        border: 1px solid #dee2e6;
+      }
+      .sidebar .nav-pills .nav-link:not(.active):hover {
+        background-color: #e2e6ea;
+        color: #343a40;
+      }
+
+      /* gap below tab bar, then leading whitespace inside each tab content */
+      .sidebar .nav-pills {
+        margin-bottom: 0.75rem;
+      }
+      .sidebar .tab-content > .tab-pane {
+        padding-top: 0.75rem;
+      }
+
+      /* pickerInput button background */
+      .bootstrap-select > .btn {
+        background-color: var(--edark-picker-bg) !important;
+        border-color: #ced4da !important;
+      }
+      .bootstrap-select > .btn:hover,
+      .bootstrap-select > .btn:focus,
+      .bootstrap-select.show > .btn {
+        background-color: var(--edark-picker-bg) !important;
+        border-color: #86b7fe !important;
+      }
+    "))),
 
     # ── Tab 1: Prepare ───────────────────────────────────────────────────────
     bslib::nav_panel(
@@ -49,9 +93,9 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       title = shiny::tagList(shiny::icon("sliders"), " 1 \u00b7 Prepare"),
       bslib::layout_sidebar(
         sidebar = bslib::sidebar(
-          title    = "Apply",
-          position = "right",
-          width    = 220,
+          # title    = "Apply",
+          position = "left",
+          width    = 400,
           prepare_confirm_ui("prepare_confirm")
         ),
         bslib::navset_card_tab(
@@ -86,10 +130,11 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       title = shiny::tagList(shiny::icon("magnifying-glass-chart"), " 2 \u00b7 Explore"),
       bslib::layout_sidebar(
         sidebar = bslib::sidebar(
-          width = 320,
+          width = 400,
           bslib::navset_pill(
-            bslib::nav_panel("Analyze", explore_controls_ui("explore_controls")),
-            bslib::nav_panel("Trend",   trend_controls_ui("trend_controls"))
+            bslib::nav_panel("Describe",     describe_controls_ui("describe_controls")),
+            bslib::nav_panel("Correlate", relationship_controls_ui("relationship_controls")),
+            bslib::nav_panel("Trend",        trend_controls_ui("trend_controls"))
           )
         ),
         explore_output_ui("explore_output")
@@ -178,6 +223,8 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
 
     # Shared helper: run the pipeline and commit to shared_state.
     .do_nav_apply <- function() {
+      # Prune filter specs invalidated by staged transforms or column exclusion.
+      .prune_conflicting_filter_specs(shared_state)
       df <- tryCatch(
         apply_prepare_pipeline(shared_state),
         error = function(e) {
@@ -217,14 +264,14 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
             title = "Custom Report May Be Affected",
             paste0(
               "You have ", n_items, " item(s) in your custom report. ",
-              "Dataset changes may invalidate those plots. Proceed anyway?"
+              "Dataset changes will clear custom report items. Would you like to proceed?"
             ),
             footer = shiny::tagList(
               shiny::actionButton("cancel_nav_apply_btn",
-                                  "Cancel & Revert Changes",
+                                  "Go Back & Revert Changes",
                                   class = "btn-outline-secondary"),
               shiny::actionButton("confirm_nav_apply_btn",
-                                  "Apply Anyway",
+                                  "Apply and Clear Custom Report",
                                   class = "btn-warning")
             ),
             easyClose = FALSE
@@ -272,8 +319,9 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
     row_filter_server("row_filter",                 shared_state)
     data_preview_server("data_preview",             shared_state)
     prepare_confirm_server("prepare_confirm",       shared_state)
-    explore_controls_server("explore_controls", shared_state)
-    trend_controls_server("trend_controls",   shared_state)
+    describe_controls_server("describe_controls",         shared_state)
+    relationship_controls_server("relationship_controls", shared_state)
+    trend_controls_server("trend_controls",               shared_state)
     explore_output_server("explore_output",   shared_state)
     report_server("report",                   shared_state)
   }
