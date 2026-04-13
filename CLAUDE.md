@@ -308,6 +308,7 @@ edark_report(liver_tx, report_type = "primary_vs_others",
 - Async report generation (currently synchronous; cancel not feasible without `future`/`promises`)
 
 #### Small magnitude change
-- Report contents options Still TODO: correlation matrix option.
+- make progress bar in report situation not a toast but a blocking modal that doesn't allow the user to click anything else while it's running, no cancel or no close
+- Report contents options Still TODO: collinearity investigation option.
 - `shinytest2` module tests + `testthat` unit tests
 - **Bug — center tables in PPT + HTML reports**: `flextable::set_table_properties(align = "center")` is set in both `.style_dataset_summary_ft()` and `.style_section_ft()` in `generate_report.R` but tables still appear left-aligned in PPT and HTML output. DOCX may work. Investigate `officer` slide content alignment for PPT and the Rmd template's table rendering for HTML.
