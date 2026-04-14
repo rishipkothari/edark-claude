@@ -1,0 +1,129 @@
+things that dont trigger downstream UI and data erasures: table 1 mods, diagnostic adds/removals
+magrittr %>% use in code you generate, as well as r code generator within app
+
+Yes — the PRD needs to tell Claude Code what to add to the package's DESCRIPTION file under Imports:. This is a distinct concern from what the generated R script loads. The package dependencies are what EDARK itself needs to run. I'll add this to Section 11 (Implementation Architecture) as part of the package infrastructure setup phase. It's a natural fit there since that's the section Claude Code reads for implementation instructions.
+
+Summary of things that need to be addressed in other PRD sections:
+
+§3.5 / §3.8 — zip folder structure needs updating: reproducibility/ renamed (pending your decision on naming), methods/ folder added or methods.docx relocated, analysis package contains both .rds and .json for the spec
+§4.3 — add pacman to package dependencies (for generated code, not for the app itself — but worth noting)
+§6.10 — export checklist repopulates on Step 8 tab entry; analysis package exports as .edark file; methods paragraph is .docx not .txt
+§7.9 — R code generation scope expanded (all variable selection methods, all diagnostics, hardcoded formula)
+New content for §11 — package DESCRIPTION Imports list; code paradigms section (magrittr %>%, no base pipe); reference to claude.md
+PRD top-level — add code paradigms section or global mandates section
+
+§3.8 folder structure is superseded by §10.2 - remove from 3.8
+
+The generated R code is first displayed in Step 5's main panel (R Code Preview accordion). That means the generator runs at model specification time, not at export time. The generator spec belongs in Section 7 (Statistical Specification) where §7.9 already has the concept. I should expand §7.9 into the full generator specification with all the section-by-section assembly logic. Section 10 then just says "the R script is read from analysis_result and written to file" — same as how it handles tables and figures. No generation logic in Section 10.
+
+§3.5 — analysis_spec object:
+
+Remove decimal_places from model_design (removed from UI, hardcoded at 3)
+Add univariable_p_threshold = 0.2 to variable_selection_specification
+
+§3.6 — analysis_result object:
+
+Add variable_investigation list (univariable, stepwise, lasso slots) — currently not in the frozen spec
+Restructure result_plots$diagnostic_plots to include scale_location, predicted_probs explicitly
+Add generated_r_script field (character string cached from Step 5)
+Add methods_paragraph field (character string cached from Step 7)
+
+§3.8 — Zip folder structure:
+
+Mark as superseded by §10.2 or remove entirely and point to §10.2
+
+§4.2 — P-value and CI methods:
+
+Logistic regression: "profile likelihood by default" → "Wald-based via confint.default()"
+Logistic mixed model: "LRT via anova() for all fixed effects" → "Wald z-tests via summary()"
+Add note: LRT and profile likelihood deferred to v1.5 as advanced options
+Update implementation note: remove LRT fitting description (k+1 models)
+
+§4.3 — Package dependencies:
+
+Add: lmtest, pROC, detectseparation, pacman (for generated code)
+Remove: ResourceSelection
+
+§4.6 — Computational batching:
+
+Remove note about mixed models with LRT p-values being slow (no longer applies)
+
+§5.1 — Layout overview:
+
+Step 6 Diagnostics: change from layout_sidebar(position = "left") to layout_sidebar(position = "right") (main panel left with config categories + run button, sidebar right with at-a-glance summary)
+
+§5.3 Step 5 — Model Specification:
+
+Main panel changes from tabbed layout to stacked accordion layout (Model Summary, Preflight, Formula, Model Results, R Code Preview)
+Accordion state transitions specified per §8.4
+Remove decimal places selector from sidebar
+
+§5.3 Step 6 — Diagnostics:
+
+Add two-category sidebar config: Model Assumptions (checked by default) and Prediction Performance (unchecked, logistic only, labeled "supplementary")
+Remove Hosmer-Lemeshow from all diagnostic inventories
+Add separation detection to logistic model assumptions
+Specify marginal vs conditional predictions for mixed model prediction diagnostics
+
+§5.3 Step 7 — Results:
+
+Table footnotes: all references to LRT → Wald z-tests
+Logistic mixed model footnote: remove "P-values derived from likelihood ratio tests" → "P-values from Wald z-tests. Interpret with caution in small samples or with rare outcomes."
+Methods paragraph examples: update to reflect Wald everywhere
+
+§5.3 Step 8 — Export:
+
+Update folder structure to match §10.2 (manuscript-oriented: methods/results/diagnostics)
+Update preset bundle contents to reflect new structure
+Self-contained package as separate checkbox, output in root as .zip
+Report in root, not in report/ folder
+reproducibility/ → methods/
+Add "Self-contained analysis package for EDARK import" as distinct checkbox with description
+
+§6.7 Step 5 — Model Specification UI spec:
+
+Replace tabbed main panel with stacked accordion layout per §8.4
+Remove decimal places numericInput from sidebar
+Add verbose checkbox and Run Preflight button to preflight accordion
+
+§6.8 Step 6 — Diagnostics UI spec:
+
+Restructure sidebar into two categories with select/deselect all
+Remove Hosmer-Lemeshow
+Add detectseparation display for logistic models
+At-a-glance sidebar: sections conditional on what was computed; remove H-L; add separation status
+
+§6.9 Step 7 — Results UI spec:
+
+Update all table footnote text for Wald consistency
+
+§6.10 Step 8 — Export UI spec:
+
+Update checklist to reflect §10.2 folder structure
+Update preset bundle table
+Self-contained package checkbox with description
+Report format in root
+
+§7.9 — R Code Generation:
+
+Expand from concept to full generator specification (moved from §10)
+Add pacman::p_load() with binary options and RSPM/CRAN repos
+Add magrittr %>% throughout generated code
+Broader scope: all variable selection methods (commented if not run), all diagnostics for model type, hardcoded formula
+
+§8.4 — Step 5 layout:
+
+Already specified in Section 8 but needs to be reconciled with §5.3 Step 5 and §6.7 Step 5
+
+§12 — Deferral log:
+
+Add LRT p-values as v1.5 advanced option (already done in current §12)
+Add profile likelihood CIs as v1.5 advanced option (already done)
+Add prediction modeling infrastructure to v2 (already done)
+Add Hosmer-Lemeshow to permanently out of scope (already done)
+Add customizable report builder reminder (already done)
+Add elastic net (alpha parameter for LASSO) to v1.5
+
+New content needed:
+
+Code paradigms section at PRD top level: magrittr %>% exclusively, no base R pipe; reference to project CLAUDE.md; package DESCRIPTION Imports list for Claude Code
