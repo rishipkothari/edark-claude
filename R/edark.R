@@ -44,9 +44,6 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
     ),
     header = shiny::tags$head(shiny::tags$style(shiny::HTML("
       /* ── EDARK custom properties ── change values here, nowhere else ────── */
-      :root {
-        --edark-picker-bg: #ffffff;
-      }
 
       /* sidebar nav-pill tabs */
       .sidebar .nav-pills .nav-link {
@@ -57,13 +54,13 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
         font-weight: 500;
       }
       .sidebar .nav-pills .nav-link:not(.active) {
-        background-color: #eef1f5;
-        color: #495057;
-        border: 1px solid #dee2e6;
+        background-color: var(--bs-tertiary-bg);
+        color: var(--bs-secondary-color);
+        border: 1px solid var(--bs-border-color);
       }
       .sidebar .nav-pills .nav-link:not(.active):hover {
-        background-color: #e2e6ea;
-        color: #343a40;
+        background-color: var(--bs-secondary-bg);
+        color: var(--bs-body-color);
       }
 
       /* gap below tab bar, then leading whitespace inside each tab content */
@@ -76,15 +73,26 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
 
       /* pickerInput button background */
       .bootstrap-select > .btn {
-        background-color: var(--edark-picker-bg) !important;
-        border-color: #ced4da !important;
+        background-color: var(--bs-body-bg) !important;
+        border-color: var(--bs-border-color) !important;
       }
       .bootstrap-select > .btn:hover,
       .bootstrap-select > .btn:focus,
       .bootstrap-select.show > .btn {
-        background-color: var(--edark-picker-bg) !important;
+        background-color: var(--bs-body-bg) !important;
         border-color: #86b7fe !important;
       }
+
+      /* theme toggle button */
+      #theme_toggle {
+        background: none;
+        border: none;
+        color: rgba(255,255,255,0.75);
+        font-size: 1.1rem;
+        padding: 0.25rem 0.5rem;
+        line-height: 1;
+      }
+      #theme_toggle:hover { color: #ffffff; }
     "))),
 
     # ── Tab 1: Prepare ───────────────────────────────────────────────────────
@@ -158,6 +166,11 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       value = "analyze",
       title = shiny::tagList(shiny::icon("chart-simple"), " 3 \u00b7 Analyze"),
       analysis_main_ui("analysis_main")
+    ),
+
+    bslib::nav_spacer(),
+    bslib::nav_item(
+      shiny::actionButton("theme_toggle", label = tagList(span("Theme", class = "me-2"), icon("moon")))
     )
   )
 
@@ -315,6 +328,24 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       shiny::removeModal()
       .revert_to_last_applied(shared_state)
       bslib::nav_select("prepare_tabs", last_prepare_tab())
+    }, ignoreInit = TRUE)
+
+    # ── Light / dark theme toggle ─────────────────────────────────────────────
+    is_dark_theme <- shiny::reactiveVal(FALSE)
+
+    shiny::observeEvent(input$theme_toggle, {
+      dark <- !is_dark_theme()
+      is_dark_theme(dark)
+      session$setCurrentTheme(
+        bslib::bs_theme(
+          version    = 5,
+          bootswatch = if (dark) "darkly" else "flatly",
+          primary    = "#2c7be5"
+        )
+      )
+      shiny::updateActionButton(session, "theme_toggle",
+        label = tagList(span("Theme", class = "me-2"), icon(if (dark) "sun" else "moon"))
+      )
     }, ignoreInit = TRUE)
 
     # ── Cross-tab navigation (requested by modules via shared_state$requested_tab) ─
