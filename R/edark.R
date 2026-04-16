@@ -128,24 +128,36 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
     bslib::nav_panel(
       value = "explore",
       title = shiny::tagList(shiny::icon("magnifying-glass-chart"), " 2 \u00b7 Explore"),
-      bslib::layout_sidebar(
-        sidebar = bslib::sidebar(
-          width = 400,
-          bslib::navset_pill(
-            bslib::nav_panel("Describe",     describe_controls_ui("describe_controls")),
-            bslib::nav_panel("Correlate", relationship_controls_ui("relationship_controls")),
-            bslib::nav_panel("Trend",        trend_controls_ui("trend_controls"))
+      bslib::navset_tab(
+        id = "explore_tabs",
+        bslib::nav_panel(
+          value = "plot",
+          title = shiny::tagList(shiny::icon("chart-area"), " Plot"),
+          bslib::layout_sidebar(
+            sidebar = bslib::sidebar(
+              width = 400,
+              bslib::navset_pill(
+                bslib::nav_panel("Describe",  describe_controls_ui("describe_controls")),
+                bslib::nav_panel("Correlate", relationship_controls_ui("relationship_controls")),
+                bslib::nav_panel("Trend",     trend_controls_ui("trend_controls"))
+              )
+            ),
+            explore_output_ui("explore_output")
           )
         ),
-        explore_output_ui("explore_output")
+        bslib::nav_panel(
+          value = "report",
+          title = shiny::tagList(shiny::icon("file-export"), " Report"),
+          report_ui("report")
+        )
       )
     ),
 
-    # ── Tab 3: Report ───────────────────────────────────────────────────────
+    # ── Tab 3: Analyze ───────────────────────────────────────────────────────
     bslib::nav_panel(
-      value = "report",
-      title = shiny::tagList(shiny::icon("file-export"), " 3 \u00b7 Report"),
-      report_ui("report")
+      value = "analyze",
+      title = shiny::tagList(shiny::icon("chart-simple"), " 3 \u00b7 Analyze"),
+      analysis_main_ui("analysis_main")
     )
   )
 
@@ -212,7 +224,13 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
         column_transform_specs = list(),
         row_filter_specs       = list()
       ),
-      revert_trigger = 0L               # incremented by .revert_to_last_applied(); modules observe
+      revert_trigger = 0L,              # incremented by .revert_to_last_applied(); modules observe
+
+      # Analysis module fields — initialized as NULL; written to only by the
+      # analysis modules (see PRD §3.3). Never read or modified by Prepare/Explore.
+      analysis_data   = NULL,
+      analysis_spec   = NULL,
+      analysis_result = NULL
     )
 
     # ── Prepare tab navigation guard ──────────────────────────────────────────
@@ -302,7 +320,13 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
     # ── Cross-tab navigation (requested by modules via shared_state$requested_tab) ─
     shiny::observeEvent(shared_state$requested_tab, {
       req(!is.null(shared_state$requested_tab))
-      bslib::nav_select("main_navbar", shared_state$requested_tab)
+      tab <- shared_state$requested_tab
+      if (tab == "report") {
+        bslib::nav_select("main_navbar", "explore")
+        bslib::nav_select("explore_tabs", "report")
+      } else {
+        bslib::nav_select("main_navbar", tab)
+      }
       shared_state$requested_tab <- NULL
     }, ignoreNULL = TRUE, ignoreInit = TRUE)
 
@@ -324,6 +348,7 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
     trend_controls_server("trend_controls",               shared_state)
     explore_output_server("explore_output",   shared_state)
     report_server("report",                   shared_state)
+    analysis_main_server("analysis_main",     shared_state)
   }
 
   shiny::shinyApp(ui = ui, server = server)

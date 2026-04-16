@@ -48,6 +48,27 @@ R/
 ├── module_explore_output.R     Explore main panel — plot output + summary reactable + "Add to Custom Report" / "View Report" buttons
 ├── module_report.R             Report tab — Full Report pill (type selector, variable modal, download) + Custom Report pill (gallery, reorder, download)
 │
+├── module_analysis_main.R          Analyze tab — orchestrator; 8-step navset_pill + JS progress handler
+├── module_analysis_setup.R         Analyze › Step 1: Setup — dataset freeze, role assignment, study type (Phase 1)
+├── module_analysis_table1.R        Analyze › Step 2: Table 1 — gtsummary descriptive table (Phase 2)
+├── module_analysis_varinvestigation.R   Analyze › Step 3: Variable Investigation — univariable screen, collinearity, stepwise/LASSO (Phase 3)
+├── module_analysis_covariate_confirm.R  Analyze › Step 4: Covariate Confirmation — final covariate selection (Phase 4)
+├── module_analysis_modelspec.R     Analyze › Step 5: Model Specification — model fitting, preflight, R code preview (Phase 5)
+├── module_analysis_diagnostics.R   Analyze › Step 6: Diagnostics — residuals, influence, VIF, ROC (Phase 6)
+├── module_analysis_results.R       Analyze › Step 7: Results — tables, forest plot, methods paragraph (Phase 7)
+├── module_analysis_export.R        Analyze › Step 8: Export — zip assembly, preset selector, download (Phase 8)
+│
+├── analysis_utils.R                build_analysis_formula() / apply_reference_levels() / compute_complete_cases()
+├── service_analysis_pipeline.R     reset_analysis_pipeline(shared_state, from_step) — clears downstream state per PRD §8.6
+├── service_analysis_validation.R   validate_analysis(spec, data, tier, verbose) — all Tier 1 + Tier 2 preflight checks
+├── service_analysis_models.R       Model fitting engines: lm / glm / lmerTest::lmer / lme4::glmer (Phase 5)
+├── service_analysis_diagnostics.R  Post-fit diagnostic computation (Phase 6)
+├── service_analysis_tables.R       gtsummary table generation — Table 1, results, combined table (Phases 2, 7)
+├── service_analysis_plots.R        ggplot figure generation — forest plot, residuals, ROC, etc. (Phases 6, 7)
+├── service_analysis_variable_selection.R  Univariable screen / stepwise / LASSO (Phase 3)
+├── service_analysis_codegen.R      Reproducible R script generator (Phase 5)
+├── service_analysis_export.R       Export zip assembly pipeline (Phase 8)
+│
 ├── data.R                      Roxygen docs for built-in liver_tx dataset
 └── data/liver_tx.rda           120-row synthetic liver transplant dataset (default for edark())
 
@@ -68,6 +89,10 @@ inst/
 - ALL session state lives in a single `reactiveValues` object called `shared_state`, created inside `server()` in `edark.R`.
 - No `<<-`. No session-global variables. No module owns another module's state.
 - `shared_state$original_column_types` is set once at launch from `detect_column_types()` and **never overwritten**. After Apply, `shared_state$column_types` is updated from the working dataset — these two diverge intentionally (column manager shows Orig. vs Curr. type).
+- Three fields are reserved exclusively for the Analysis module — Prepare/Explore/Report never read or write them:
+  - `shared_state$analysis_data` — frozen `data.frame` with `.edark_row_id` appended; set on "Start Analysis" click
+  - `shared_state$analysis_spec` — named list: full declarative analysis specification (PRD §3.5)
+  - `shared_state$analysis_result` — named list: fitted objects, result tables, plots, summaries (PRD §3.6)
 
 ### Module convention
 - Every module is `foo_ui(id)` + `foo_server(id, shared_state)`.
@@ -272,7 +297,7 @@ All formats optionally open with a **Table One** and/or **Dataset Summary**, the
 
 ### Architecture notes
 - `generate_report()` and `generate_custom_report()` are both Shiny-free (take plain R args, no `shared_state`). Work from both `downloadHandler` and programmatic API.
-- Progress: optional `progress_fn(fraction, detail)` callback. `module_report.R` wraps in `withProgress`/`setProgress` which flush via the progress protocol during synchronous execution.
+- Progress: optional `progress_fn(fraction, detail)` callback. `module_report.R` shows a **blocking modal** (`showModal(easyClose = FALSE)`) with an animated Bootstrap progress bar and detail text. The JS custom message handler `edark_report_progress` (registered in `report_ui`) drives bar width and detail text via `session$sendCustomMessage`. `on.exit(shiny::removeModal(), add = TRUE)` ensures cleanup. The Analysis module uses the same pattern with handler name `edark_analysis_progress` (registered in `analysis_main_ui`).
 - `custom_report_items` list structure: `list(id, plot_spec, thumb_path, title, added_at)`. `plot_spec` is a snapshot at add-time (aesthetics frozen); dataset is re-rendered from current `dataset_working` at generation time.
 - Dynamic observers for gallery up/down/remove use the same lazy-registration + `local({})` closure pattern as `module_row_filter.R`. `registered_item_ids` reactiveVal prevents double-registration.
 - Stale-data guard: clicking Apply, Reset, or navigating Prepare sub-tabs (auto-apply) when `custom_report_items` is non-empty shows a modal. "Cancel & Revert Changes" calls `.revert_to_last_applied()` which restores `included_columns`, `column_type_overrides`, `column_transform_specs`, `row_filter_specs` from `shared_state$last_applied_specs` and increments `shared_state$revert_trigger`. Modules observe `revert_trigger` to sync their UIs (column_manager via `updateCheckboxInput`, transform_variables via `updateSelectInput`, row_filter by clearing `registered_cols`). `last_applied_specs` is snapshotted after every successful Apply or Reset via `.snapshot_last_applied_specs()`.
@@ -290,25 +315,99 @@ edark_report(liver_tx, report_type = "primary_vs_others",
 
 ---
 
+## Analysis stage
+
+Tab 4 (`4 · Analyze`) — an 8-step guided workflow for fitting and reporting statistical models. Full spec: `PRD/EDARK_Analysis_Module_PRD.md`. Build sequence: `PRD/EDARK_Analysis_Build_Plan.md`.
+
+### Current state
+Phase 0 complete: infrastructure scaffold, utility functions, full validator, pipeline reset, and placeholder stubs for all 8 steps. Steps 1–8 are placeholder cards pending Phases 1–8.
+
+### Pipe mandate
+**Use `magrittr` `%>%` exclusively throughout all analysis module code and generated R scripts. Never use the base R pipe `|>`.**
+
+### Architecture overview
+- **Consumer only**: the Analysis module reads `shared_state$dataset_working` and `shared_state$column_types` at freeze time. It never writes back to any Prepare or Explore field.
+- **Spec-driven**: `analysis_spec` is the single source of truth for model fitting, code generation, and export. Every user decision is encoded in the spec before execution.
+- **Result-cached**: `analysis_result` stores all fitted objects, tables, and plots. Export reads from cache — no recomputation.
+- **Dataset frozen**: clicking "Start Analysis" copies `dataset_working` → `analysis_data` with `.edark_row_id` appended. A mismatch banner detects upstream Prepare changes and prompts restart.
+
+### Utility functions (`analysis_utils.R`)
+- `build_analysis_formula(spec)` — assembles formula from `variable_roles`; appends `(1 | subject_id)` or `(1 + slope | subject_id)` for mixed models
+- `apply_reference_levels(data, reference_levels)` — calls `stats::relevel()` per spec before any model fit
+- `compute_complete_cases(data, variables)` — returns `list(data, n_excluded)`; always uses `na.action = na.omit` logic
+
+### Validator (`service_analysis_validation.R`)
+`validate_analysis(spec, data, tier = "full", verbose = FALSE)` — pure function, no Shiny.
+
+Returns `list(validity_flag, messages, display_messages)` where `validity_flag` is `"valid"` / `"warnings"` / `"invalid"`.
+
+**Tier 1** (core data validity — runs before any analysis operation): `PF_NO_OUTCOME`, `PF_ZERO_COMPLETE`, `PF_OUTCOME_NO_VARIANCE_BINARY`, `PF_OUTCOME_NO_VARIANCE_CONTINUOUS`, `PF_FACTOR_SINGLE_LEVEL`.
+
+**Tier 2** (model specification — adds to Tier 1, runs before multivariable model): errors: `PF_NO_PREDICTORS`, `PF_OUTCOME_MODEL_MISMATCH`, `PF_MIXED_NO_SUBJECT`, `PF_MIXED_SINGLE_CLUSTER`; warnings: `PF_LOW_EPV_10`, `PF_LOW_EPV_5`, `PF_MISSING_ANY/GT20/GT50`, `PF_RARE_FACTOR_LEVEL`, `PF_HIGH_CORRELATION`, `PF_FEW_CLUSTERS`, `PF_UNBALANCED_CLUSTERS`, `PF_RARE_OUTCOME`, `PF_EXPOSURE_NOT_IN_MODEL`; notes (verbose only): `PF_SINGLE_COVARIATE`, `PF_SAMPLE_SUMMARY`, `PF_MODEL_SUMMARY`, `PF_DATA_STRUCTURE`, `PF_REFERENCE_LEVELS`.
+
+### Pipeline reset (`service_analysis_pipeline.R`)
+`reset_analysis_pipeline(shared_state, from_step)` — called by modules after user confirms a destructive upstream change. Never shows its own modal.
+
+| `from_step` | Clears |
+|---|---|
+| `1` | Entire `analysis_result`; resets `variable_selection_specification` and `model_design` in spec; resets `final_model_covariates` to `candidate_covariates` |
+| `4` or `5` | Fitted model, run status, result tables/plots, inference summary, generated script from `analysis_result`; step 5 also resets `model_design` in spec |
+
+### Model types and `model_type` values
+| UI label | `model_type` value | Outcome type | Subject ID required |
+|---|---|---|---|
+| Linear regression | `"linear"` | continuous | No |
+| Logistic regression | `"logistic"` | binary factor (2 levels) | No |
+| Linear mixed model | `"linear_mixed"` | continuous | Yes |
+| Logistic mixed model | `"logistic_mixed"` | binary factor (2 levels) | Yes |
+
+All CIs are Wald-based (`confint.default()`). All p-values are model-native (t-tests for lm, Wald z for glm/glmer, Satterthwaite df for lmerTest::lmer).
+
+### Study type derivation (Step 1)
+Derived from role assignments; displayed as a persistent badge:
+
+| Exposure assigned | Outcome assigned | `study_type` value |
+|---|---|---|
+| Yes | Yes | `"exposure_outcome"` |
+| No | Yes | `"risk_factor"` |
+| Yes | No | `"descriptive_exposure"` |
+| No | No | `"descriptive"` |
+
+### Blocking modal pattern (Analysis module)
+Same structure as `module_report.R`. JS handler `edark_analysis_progress` is registered in `analysis_main_ui`. In each step module's run button handler:
+```r
+shiny::showModal(shiny::modalDialog(
+  title = shiny::tagList(spinner, "Running..."),
+  progress_bar_div,   # id = "edark_analysis_progress_bar"
+  detail_p,           # id = "edark_analysis_progress_detail"
+  footer = NULL, easyClose = FALSE
+))
+on.exit(shiny::removeModal(), add = TRUE)
+# ... long computation ...
+session$sendCustomMessage("edark_analysis_progress", list(frac = 0.5, detail = "Fitting model..."))
+```
+
+---
+
 ## What's not built yet
 
+#### In progress
+- **Analysis module** (Phases 1–9): Steps 1–8 are placeholder stubs. Infrastructure (Phase 0) is complete. See `PRD/EDARK_Analysis_Build_Plan.md` for phase definitions and acceptance criteria.
+
 #### High magnitude change
-- explore tab -- subtabs describe/correlate/trend
 - Alternative plot type options per variable combination (heat map, balloon plot, etc.)
 - Word report: reference `.docx` template with defined heading styles
 - Integrate studybuddy — use working dataset for direct model creation and publication-quality outputs
-- a question to investigate: how does plot theming work if edark_report is called from outside GUI? is there a plot spec variable that contains plot aesthetic data? if so, what happens when func is called without this being present in a reactive variable? is there a check for a default plot spec? i suppose all aspects of external function calls should inspect for reactive variables that are used that are not initialized within the function in a safety check, but this is far down the road -- not critical functionality
+- Tab re-ordering: once Analysis is complete, the intended nav order is Prepare → Explore → Analyze, with the current Report tab nested within Explore (Describe / Correlate / Trend / Report pills). Tab 4 `Analyze` is currently appended after Report and will move in a later integration step.
 
 #### Mid magnitude change
 - Dataset export: save working dataset to RDS, save original dataset and variable transform spec to RDS (or similar), save transformed dataset to CSV
 - Statistical tests in Explore › Relationship tab for bivariate plots — numeric × factor → Kruskal-Wallis; factor × factor → chi-square/Fisher's. (Reports already have these via the table helpers; Explore summary panel does not.)
-- add univariate table to correlation report (selects logistic vs linear regression vs anova to correlate) but this is also presented in a descriptive table 1 if stratified for exposure or outcome right? whats the difference between the univariate assocations in both of these tables that i know are routinely calculated for different reasons? what am i missing?
-- transform --> row filter --> transform does not show warning on stage
-- warnings section in apply pane - mimic "stratify by" section header in report:full report pane
+- transform → row filter → transform does not show warning on stage
+- warnings section in apply pane — mimic "stratify by" section header in report:full report pane
 - Async report generation (currently synchronous; cancel not feasible without `future`/`promises`)
 
 #### Small magnitude change
-- make progress bar in report situation not a toast but a blocking modal that doesn't allow the user to click anything else while it's running, no cancel or no close
-- Report contents options Still TODO: collinearity investigation option.
+- Report contents options still TODO: collinearity investigation option.
 - `shinytest2` module tests + `testthat` unit tests
 - **Bug — center tables in PPT + HTML reports**: `flextable::set_table_properties(align = "center")` is set in both `.style_dataset_summary_ft()` and `.style_section_ft()` in `generate_report.R` but tables still appear left-aligned in PPT and HTML output. DOCX may work. Investigate `officer` slide content alignment for PPT and the Rmd template's table rendering for HTML.

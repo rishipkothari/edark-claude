@@ -44,7 +44,26 @@ Imports:
     rvg,
     rmarkdown,
     knitr,
-    base64enc
+    base64enc,
+    DT,
+    lme4,
+    lmerTest,
+    glmnet,
+    broom,
+    broom.mixed,
+    parameters,
+    performance,
+    insight,
+    correlation,
+    lmtest,
+    pROC,
+    detectseparation,
+    haven,
+    writexl,
+    jsonlite,
+    zip,
+    digest,
+    magrittr
 Suggests:
     testthat (>= 3.0.0),
     shinytest2
