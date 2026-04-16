@@ -98,8 +98,6 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
 
   base_theme <- switch(spec$ggplot_theme %||% "minimal",
     minimal         = ggplot2::theme_minimal(base_size = 13),
-    ipsum           = hrbrthemes::theme_ipsum(base_size = 13),
-    ipsum_rc        = hrbrthemes::theme_ipsum_rc(base_size = 13),
     publication     = ggpubr::theme_pubr(base_size = 13),
     cowplot         = cowplot::theme_cowplot(font_size = 13),
     economist       = ggthemes::theme_economist(base.size = 13),

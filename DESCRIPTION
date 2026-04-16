@@ -31,7 +31,6 @@ Imports:
     ggplot2,
     scales,
     ggpubr,
-    hrbrthemes,
     ggthemes,
     cowplot,
     see,

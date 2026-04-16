@@ -24,8 +24,6 @@ NULL
         label    = "Plot theme:",
         choices  = c(
           "Minimal"          = "minimal",
-          "Ipsum"            = "ipsum",
-          "Ipsum RC"         = "ipsum_rc",
           "Publication"      = "publication",
           "Cowplot"          = "cowplot",
           "Economist"        = "economist",

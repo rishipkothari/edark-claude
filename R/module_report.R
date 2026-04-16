@@ -30,6 +30,20 @@ NULL
 report_ui <- function(id) {
   ns <- shiny::NS(id)
 
+  shiny::tagList(
+    # JS handler — updates the detail text inside the blocking progress modal
+    shiny::tags$script(shiny::HTML(
+      "Shiny.addCustomMessageHandler('edark_report_progress', function(msg) {",
+      "  var bar = document.getElementById('edark_progress_bar');",
+      "  if (bar) {",
+      "    bar.style.width = (msg.frac * 100) + '%';",
+      "    bar.setAttribute('aria-valuenow', Math.round(msg.frac * 100));",
+      "  }",
+      "  var txt = document.getElementById('edark_progress_detail');",
+      "  if (txt) txt.textContent = msg.detail;",
+      "});"
+    )),
+
   bslib::navset_pill(
     id = ns("report_mode_tabs"),
 
@@ -125,8 +139,6 @@ report_ui <- function(id) {
                 label    = "Plot theme:",
                 choices  = c(
                   "Minimal"         = "minimal",
-                  "Ipsum"           = "ipsum",
-                  "Ipsum RC"        = "ipsum_rc",
                   "Publication"     = "publication",
                   "Cowplot"         = "cowplot",
                   "Economist"       = "economist",
@@ -198,8 +210,6 @@ report_ui <- function(id) {
                 label    = "Plot theme:",
                 choices  = c(
                   "Minimal"         = "minimal",
-                  "Ipsum"           = "ipsum",
-                  "Ipsum RC"        = "ipsum_rc",
                   "Publication"     = "publication",
                   "Cowplot"         = "cowplot",
                   "Economist"       = "economist",
@@ -263,7 +273,8 @@ report_ui <- function(id) {
         )
       )
     )
-  )
+  )   # closes navset_pill
+  )   # closes tagList
 }
 
 
@@ -532,37 +543,64 @@ report_server <- function(id, shared_state) {
           length(vars)
         }
 
+        shiny::showModal(shiny::modalDialog(
+          title = shiny::tagList(
+            shiny::tags$span(
+              class = "spinner-border spinner-border-sm me-2",
+              role  = "status",
+              shiny::tags$span(class = "visually-hidden", "Loading...")
+            ),
+            paste0("Generating Report (", n_sections, " section",
+                   if (n_sections != 1) "s" else "", ")")
+          ),
+          shiny::div(
+            class = "progress mb-2",
+            style = "height: 6px;",
+            shiny::div(
+              id              = "edark_progress_bar",
+              class           = "progress-bar progress-bar-striped progress-bar-animated",
+              role            = "progressbar",
+              style           = "width: 0%;",
+              `aria-valuenow` = "0",
+              `aria-valuemin` = "0",
+              `aria-valuemax` = "100"
+            )
+          ),
+          shiny::tags$p(
+            id    = "edark_progress_detail",
+            class = "text-muted mb-0 small",
+            "Starting..."
+          ),
+          footer    = NULL,
+          easyClose = FALSE
+        ))
+        on.exit(shiny::removeModal(), add = TRUE)
+
         tryCatch({
-          shiny::withProgress(
-            message = paste0("Generating report (", n_sections, " sections)\u2026"),
-            value   = 0,
-            {
-              generate_report(
-                dataset                 = shared_state$dataset_working,
-                column_types            = shared_state$column_types,
-                report_type             = input$report_type,
-                variables               = vars,
-                primary_variable        = if (input$report_type == "primary_vs_others")
-                                             input$primary_variable else NULL,
-                primary_role            = input$primary_role %||% "exposure",
-                stratify_variable       = {
-                  sv <- input$stratify_variable
-                  if (is.null(sv) || !nzchar(sv)) NULL else sv
-                },
-                format                  = input$output_format,
-                output_path             = file,
-                include_dataset_summary = isTRUE(input$include_dataset_summary),
-                include_tableone        = isTRUE(input$include_tableone) &&
-                                            input$report_type == "all_vars",
-                ggplot_theme            = input$ggplot_theme      %||% "minimal",
-                color_palette           = input$color_palette     %||% "Set2",
-                show_data_labels        = isTRUE(input$show_data_labels),
-                show_legend             = isTRUE(input$show_legend),
-                legend_position         = input$legend_position   %||% "top",
-                progress_fn             = function(frac, detail) {
-                  shiny::setProgress(value = frac, detail = detail)
-                }
-              )
+          generate_report(
+            dataset                 = shared_state$dataset_working,
+            column_types            = shared_state$column_types,
+            report_type             = input$report_type,
+            variables               = vars,
+            primary_variable        = if (input$report_type == "primary_vs_others")
+                                         input$primary_variable else NULL,
+            primary_role            = input$primary_role %||% "exposure",
+            stratify_variable       = {
+              sv <- input$stratify_variable
+              if (is.null(sv) || !nzchar(sv)) NULL else sv
+            },
+            format                  = input$output_format,
+            output_path             = file,
+            include_dataset_summary = isTRUE(input$include_dataset_summary),
+            include_tableone        = isTRUE(input$include_tableone) &&
+                                        input$report_type == "all_vars",
+            ggplot_theme            = input$ggplot_theme      %||% "minimal",
+            color_palette           = input$color_palette     %||% "Set2",
+            show_data_labels        = isTRUE(input$show_data_labels),
+            show_legend             = isTRUE(input$show_legend),
+            legend_position         = input$legend_position   %||% "top",
+            progress_fn             = function(frac, detail) {
+              session$sendCustomMessage("edark_report_progress", list(frac = frac, detail = detail))
             }
           )
         }, error = function(e) {
@@ -754,26 +792,54 @@ report_server <- function(id, shared_state) {
           stop("No items in custom report.")
         }
 
+        n_items <- length(items)
+        shiny::showModal(shiny::modalDialog(
+          title = shiny::tagList(
+            shiny::tags$span(
+              class = "spinner-border spinner-border-sm me-2",
+              role  = "status",
+              shiny::tags$span(class = "visually-hidden", "Loading...")
+            ),
+            paste0("Generating Custom Report (", n_items, " item",
+                   if (n_items != 1) "s" else "", ")")
+          ),
+          shiny::div(
+            class = "progress mb-2",
+            style = "height: 6px;",
+            shiny::div(
+              id              = "edark_progress_bar",
+              class           = "progress-bar progress-bar-striped progress-bar-animated",
+              role            = "progressbar",
+              style           = "width: 0%;",
+              `aria-valuenow` = "0",
+              `aria-valuemin` = "0",
+              `aria-valuemax` = "100"
+            )
+          ),
+          shiny::tags$p(
+            id    = "edark_progress_detail",
+            class = "text-muted mb-0 small",
+            "Starting..."
+          ),
+          footer    = NULL,
+          easyClose = FALSE
+        ))
+        on.exit(shiny::removeModal(), add = TRUE)
+
         tryCatch({
-          shiny::withProgress(
-            message = paste0("Generating custom report (", length(items), " items)\u2026"),
-            value   = 0,
-            {
-              generate_custom_report(
-                items            = items,
-                dataset          = shared_state$dataset_working,
-                column_types     = shared_state$column_types,
-                format           = input$custom_output_format,
-                output_path      = file,
-                ggplot_theme     = input$custom_ggplot_theme     %||% "minimal",
-                color_palette    = input$custom_color_palette    %||% "Set2",
-                show_data_labels = isTRUE(input$custom_show_data_labels),
-                show_legend      = isTRUE(input$custom_show_legend),
-                legend_position  = input$custom_legend_position  %||% "top",
-                progress_fn      = function(frac, detail) {
-                  shiny::setProgress(value = frac, detail = detail)
-                }
-              )
+          generate_custom_report(
+            items            = items,
+            dataset          = shared_state$dataset_working,
+            column_types     = shared_state$column_types,
+            format           = input$custom_output_format,
+            output_path      = file,
+            ggplot_theme     = input$custom_ggplot_theme     %||% "minimal",
+            color_palette    = input$custom_color_palette    %||% "Set2",
+            show_data_labels = isTRUE(input$custom_show_data_labels),
+            show_legend      = isTRUE(input$custom_show_legend),
+            legend_position  = input$custom_legend_position  %||% "top",
+            progress_fn      = function(frac, detail) {
+              session$sendCustomMessage("edark_report_progress", detail)
             }
           )
         }, error = function(e) {
