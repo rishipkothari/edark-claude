@@ -365,3 +365,4 @@ Both datasets should be generated as R scripts in `inst/test_data/` and document
 - §5.4 (stale propagation), §8.6 (reset pipeline)
 - Global Mandates (withProgress refactor reminder)
 - All sections — this is the integration phase
+
