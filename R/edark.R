@@ -83,8 +83,8 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
         border-color: #86b7fe !important;
       }
 
-      /* theme toggle button */
-      #theme_toggle {
+      /* theme + debug navbar buttons */
+      #theme_toggle, #debug_btn {
         background: none;
         border: none;
         color: rgba(255,255,255,0.75);
@@ -92,7 +92,7 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
         padding: 0.25rem 0.5rem;
         line-height: 1;
       }
-      #theme_toggle:hover { color: #ffffff; }
+      #theme_toggle:hover, #debug_btn:hover { color: #ffffff; }
     "))),
 
     # ── Tab 1: Prepare ───────────────────────────────────────────────────────
@@ -170,7 +170,10 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
 
     bslib::nav_spacer(),
     bslib::nav_item(
-      shiny::actionButton("theme_toggle", label = tagList(span("Theme", class = "me-2"), icon("moon")))
+      shiny::actionButton("debug_btn", label = shiny::icon("bug"))
+    ),
+    bslib::nav_item(
+      shiny::actionButton("theme_toggle", label = shiny::tagList(span("Theme", class = "me-2"), icon("moon")))
     )
   )
 
@@ -344,8 +347,75 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
         )
       )
       shiny::updateActionButton(session, "theme_toggle",
-        label = tagList(span("Theme", class = "me-2"), icon(if (dark) "sun" else "moon"))
+        label = shiny::tagList(span("Theme", class = "me-2"), icon(if (dark) "sun" else "moon"))
       )
+    }, ignoreInit = TRUE)
+
+    # ── Debug button ──────────────────────────────────────────────────────────
+    shiny::observeEvent(input$debug_btn, {
+      if (!identical(input$main_navbar, "analyze")) return(invisible(NULL))
+
+      step <- input[["analysis_main-analysis_steps"]]
+      if (is.null(step)) step <- "step1"
+
+      .dbg <- function(label, x) {
+        cat(sprintf("  [%s]\n", label))
+        if (is.null(x)) cat("    <NULL>\n") else str(x, max.level = 3, give.attr = FALSE)
+      }
+
+      spec   <- shiny::isolate(shared_state$analysis_spec)
+      result <- shiny::isolate(shared_state$analysis_result)
+      adata  <- shiny::isolate(shared_state$analysis_data)
+
+      cat(sprintf("\n════════════════ DEBUG · %s ════════════════\n", toupper(step)))
+
+      if (step == "step1") {
+        if (!is.null(adata)) {
+          cat(sprintf("  [analysis_data] %d rows × %d cols\n", nrow(adata), ncol(adata)))
+          cat(sprintf("  cols: %s\n", paste(names(adata), collapse = ", ")))
+        } else {
+          cat("  [analysis_data] <NULL>\n")
+        }
+        .dbg("analysis_spec$variable_roles",                    spec$variable_roles)
+        .dbg("analysis_spec$specification_metadata$study_type", spec$specification_metadata$study_type)
+        .dbg("analysis_spec$variable_roles$reference_levels",   spec$variable_roles$reference_levels)
+
+      } else if (step == "step2") {
+        .dbg("analysis_result$result_tables$table1_overall",     result$result_tables$table1_overall)
+        .dbg("analysis_result$result_tables$table1_by_exposure", result$result_tables$table1_by_exposure)
+        .dbg("analysis_result$result_tables$table1_by_outcome",  result$result_tables$table1_by_outcome)
+
+      } else if (step == "step3") {
+        .dbg("analysis_result$variable_investigation",        result$variable_investigation)
+        .dbg("analysis_spec$variable_selection_specification", spec$variable_selection_specification)
+
+      } else if (step == "step4") {
+        .dbg("analysis_spec$variable_roles$final_model_covariates", spec$variable_roles$final_model_covariates)
+        .dbg("analysis_spec$variable_roles$reference_levels",       spec$variable_roles$reference_levels)
+
+      } else if (step == "step5") {
+        .dbg("analysis_spec$model_design",             spec$model_design)
+        .dbg("analysis_result$fitted_models$primary",  result$fitted_models$primary_model)
+        .dbg("analysis_result$run_status",             result$run_status)
+
+      } else if (step == "step6") {
+        .dbg("analysis_result$result_plots$diagnostic_plots", result$result_plots$diagnostic_plots)
+        .dbg("analysis_result$inference_summary",             result$inference_summary)
+
+      } else if (step == "step7") {
+        .dbg("analysis_result$result_tables",    result$result_tables)
+        .dbg("analysis_result$inference_summary", result$inference_summary)
+
+      } else if (step == "step8") {
+        .dbg("analysis_spec (full)", spec)
+        if (!is.null(result)) {
+          cat(sprintf("  [analysis_result keys] %s\n", paste(names(result), collapse = ", ")))
+        } else {
+          cat("  [analysis_result] <NULL>\n")
+        }
+      }
+
+      cat("════════════════════════════════════════════════\n\n")
     }, ignoreInit = TRUE)
 
     # ── Cross-tab navigation (requested by modules via shared_state$requested_tab) ─
