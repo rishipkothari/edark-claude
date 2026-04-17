@@ -414,4 +414,4 @@ session$sendCustomMessage("edark_analysis_progress", list(frac = 0.5, detail = "
 
 #### Analysis module debugging
 - SMDs still dont work in table 1
-- when testing table 1 strat - selecting factors for exp and outcome, going to table 1 tab, selecting both checkboxes, going back to role selection, selecting numerics for exposure and outcome, back to table 1 and generate, i think its still trying to factor numerics bc it hung bad
+- when testing table 1 strat - selecting factors for exp and outcome, going to table 1 tab, selecting both checkboxes, going back to role selection, selecting numerics for exposure and outcome, back to table 1 and generate, its not unchecking the factor boxes bc its still generating table 1s implicitly factoring the numeric values and displaying the tabs for them
