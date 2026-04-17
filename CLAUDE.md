@@ -411,3 +411,7 @@ session$sendCustomMessage("edark_analysis_progress", list(frac = 0.5, detail = "
 - Report contents options still TODO: collinearity investigation option.
 - `shinytest2` module tests + `testthat` unit tests
 - **Bug — center tables in PPT + HTML reports**: `flextable::set_table_properties(align = "center")` is set in both `.style_dataset_summary_ft()` and `.style_section_ft()` in `generate_report.R` but tables still appear left-aligned in PPT and HTML output. DOCX may work. Investigate `officer` slide content alignment for PPT and the Rmd template's table rendering for HTML.
+
+#### Analysis module debugging
+- SMDs still dont work in table 1
+- when testing table 1 strat - selecting factors for exp and outcome, going to table 1 tab, selecting both checkboxes, going back to role selection, selecting numerics for exposure and outcome, back to table 1 and generate, i think its still trying to factor numerics bc it hung bad

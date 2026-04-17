@@ -87,7 +87,7 @@ analysis_varinvestigation_ui <- function(id) {
       bslib::layout_sidebar(
         sidebar = bslib::sidebar(
           position = "left",
-          width    = 240,
+          width    = 360,
           shiny::tags$p("P-value Threshold",
             class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
           shiny::numericInput(
@@ -124,7 +124,7 @@ analysis_varinvestigation_ui <- function(id) {
       bslib::layout_sidebar(
         sidebar = bslib::sidebar(
           position = "left",
-          width    = 240,
+          width    = 360,
           shiny::tags$p("Threshold",
             class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
           shiny::tags$p(class = "small", "Pairs above 0.7 are flagged."),
@@ -146,7 +146,7 @@ analysis_varinvestigation_ui <- function(id) {
       bslib::layout_sidebar(
         sidebar = bslib::sidebar(
           position = "left",
-          width    = 260,
+          width    = 390,
           shiny::tags$p("Method",
             class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
           shinyWidgets::radioGroupButtons(

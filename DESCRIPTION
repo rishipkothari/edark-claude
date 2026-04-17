@@ -63,7 +63,8 @@ Imports:
     jsonlite,
     zip,
     digest,
-    magrittr
+    magrittr,
+    smd
 Suggests:
     testthat (>= 3.0.0),
     shinytest2

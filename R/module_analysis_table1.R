@@ -21,12 +21,9 @@ analysis_table1_ui <- function(id) {
   bslib::layout_sidebar(
     sidebar = bslib::sidebar(
       position = "left",
-      width    = 260,
+      width    = 390,
 
-      shiny::tags$p("Stratification",
-        class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
-      shiny::checkboxInput(ns("strat_by_exposure"), "By Exposure", value = TRUE),
-      shiny::checkboxInput(ns("strat_by_outcome"),  "By Outcome",  value = FALSE),
+      shiny::uiOutput(ns("strat_ui")),
 
       shiny::tags$p("Options",
         class = "text-muted small text-uppercase fw-semibold mt-3 mb-1"),
@@ -62,23 +59,55 @@ analysis_table1_server <- function(id, shared_state) {
 
     ns <- session$ns
 
-    # ── Set checkbox defaults from study type when spec changes ──────────────
+    # ── Set checkbox defaults from spec when spec changes ────────────────────
     shiny::observeEvent(shared_state$analysis_spec, {
       spec <- shared_state$analysis_spec
       if (is.null(spec)) return()
 
-      st <- spec$specification_metadata$study_type
-      if (is.null(st)) return()
-
-      strat_exp <- st %in% c("exposure_outcome", "descriptive_exposure")
-      strat_out <- st == "risk_factor"
-      p_exp     <- FALSE
-      p_out     <- st %in% c("risk_factor", "exposure_outcome")
-
-      shiny::updateCheckboxInput(session, "strat_by_exposure", value = strat_exp)
-      shiny::updateCheckboxInput(session, "strat_by_outcome",  value = strat_out)
-      shiny::updateCheckboxInput(session, "include_pvalues",   value = p_out)
+      st    <- spec$specification_metadata$study_type
+      p_out <- !is.null(st) && st %in% c("risk_factor", "exposure_outcome")
+      shiny::updateCheckboxInput(session, "include_pvalues", value = p_out)
     }, ignoreNULL = TRUE)
+
+    # ── Stratification UI (conditional on variable types) ────────────────────
+    output$strat_ui <- shiny::renderUI({
+      spec   <- shared_state$analysis_spec
+      shiny::req(!is.null(spec))
+      ctypes <- shared_state$column_types
+
+      exp_var <- spec$variable_roles$exposure_variable
+      out_var <- spec$variable_roles$outcome_variable
+
+      exp_is_factor <- !is.null(exp_var) && !is.null(ctypes) &&
+                       exp_var %in% names(ctypes) && ctypes[[exp_var]] == "factor"
+      out_is_factor <- !is.null(out_var) && !is.null(ctypes) &&
+                       out_var %in% names(ctypes) && ctypes[[out_var]] == "factor"
+
+      strat_exp_default <- isTRUE(spec$table1_specification$stratify_by_exposure)
+      strat_out_default <- isTRUE(spec$table1_specification$stratify_by_outcome)
+
+      if (!exp_is_factor) shiny::updateCheckboxInput(session, "strat_by_exposure", value = FALSE)
+      if (!out_is_factor) shiny::updateCheckboxInput(session, "strat_by_outcome",  value = FALSE)
+
+      exp_row <- if (!is.null(exp_var) && exp_is_factor)
+        shiny::checkboxInput(ns("strat_by_exposure"),
+                             paste0("By Exposure (", exp_var, ")"),
+                             value = strat_exp_default)
+      out_row <- if (!is.null(out_var) && out_is_factor)
+        shiny::checkboxInput(ns("strat_by_outcome"),
+                             paste0("By Outcome (", out_var, ")"),
+                             value = strat_out_default)
+
+      any_factor_stratifier <- exp_is_factor || out_is_factor
+      if (!any_factor_stratifier) return(NULL)
+
+      shiny::tagList(
+        shiny::tags$p("Stratification",
+          class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+        exp_row,
+        out_row
+      )
+    })
 
     # ── Generate Table 1 ─────────────────────────────────────────────────────
     shiny::observeEvent(input$btn_generate, {

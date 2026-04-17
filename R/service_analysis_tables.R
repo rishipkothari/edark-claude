@@ -70,7 +70,15 @@ build_table1 <- function(data,
             length(unique(stats::na.omit(strat_col)))
           }
           if (n_levels == 2L) {
-            tbl <- tryCatch(tbl %>% gtsummary::add_difference(), error = function(e) tbl)
+            tbl <- tryCatch(
+              tbl %>% gtsummary::add_difference(
+                test = list(
+                  gtsummary::all_continuous()   ~ "smd",
+                  gtsummary::all_categorical()  ~ "smd"
+                )
+              ),
+              error = function(e) tbl
+            )
           }
         }
 

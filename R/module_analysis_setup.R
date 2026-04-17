@@ -50,6 +50,13 @@ NULL
   // Candidate checkbox changed
   $(document).on('change', '.edark-role-checkbox', function() {
     var varName = $(this).data('var');
+    if (this.checked) {
+      RADIO_ROLES.forEach(function(r) {
+        document.querySelectorAll(
+          '.edark-role-radio[data-role=\"' + r + '\"][data-var=\"' + CSS.escape(varName) + '\"]'
+        ).forEach(function(el) { el.checked = false; });
+      });
+    }
     Shiny.setInputValue(NS + 'role_change',
       { var: varName, role: 'candidate', value: this.checked },
       { priority: 'event' }
@@ -83,6 +90,24 @@ NULL
       { priority: 'event' }
     );
   });
+
+  // Select All candidates button clicked
+  $(document).on('click', '.edark-select-all-candidates', function(e) {
+    e.preventDefault();
+    document.querySelectorAll('.edark-role-checkbox').forEach(function(el) {
+      var varName = el.getAttribute('data-var');
+      var hasRadioRole = RADIO_ROLES.some(function(r) {
+        return Array.from(document.querySelectorAll(
+          '.edark-role-radio[data-role=\"' + r + '\"][data-var=\"' + CSS.escape(varName) + '\"]'
+        )).some(function(radio) { return radio.checked; });
+      });
+      if (!hasRadioRole) el.checked = true;
+    });
+    Shiny.setInputValue(NS + 'role_change',
+      { var: '__select_all_candidates__', role: 'candidate', value: true },
+      { priority: 'event' }
+    );
+  });
 })();
 ")))
 }
@@ -98,10 +123,14 @@ analysis_setup_ui <- function(id) {
     bslib::layout_sidebar(
       sidebar = bslib::sidebar(
         position = "right",
-        width    = 270,
+        width    = 405,
+        shiny::uiOutput(ns("action_buttons_ui")),
+        shiny::tags$hr(class = "my-2"),
+        shiny::uiOutput(ns("incoming_snapshot_ui")),
+        shiny::tags$hr(class = "my-2"),
         shiny::uiOutput(ns("study_type_ui")),
         shiny::uiOutput(ns("role_summary_ui")),
-        shiny::uiOutput(ns("dataset_snapshot_ui"))
+        shiny::uiOutput(ns("selected_snapshot_ui"))
       ),
       shiny::uiOutput(ns("main_content"))
     )
@@ -133,13 +162,14 @@ analysis_setup_server <- function(id, shared_state) {
     }
 
     # ── Dataset freeze ───────────────────────────────────────────────────────
-    shiny::observeEvent(input$btn_start_analysis, {
+    .do_freeze <- function() {
       wd <- shiny::isolate(shared_state$dataset_working)
       if (is.null(wd) || nrow(wd) == 0) return()
 
-      wd[[".edark_row_id"]] <- seq_len(nrow(wd))
       sig <- digest::digest(wd, algo = "sha256")
+      wd[[".edark_row_id"]] <- seq_len(nrow(wd))
 
+      reset_analysis_pipeline(shared_state, from_step = 1L)
       shared_state$analysis_data   <- wd
       shared_state$analysis_result <- NULL
 
@@ -190,7 +220,6 @@ analysis_setup_server <- function(id, shared_state) {
         )
       )
 
-      # Build initial roles_state from the frozen dataset columns
       ctypes <- shiny::isolate(shared_state$column_types)
       vars   <- setdiff(names(wd), ".edark_row_id")
 
@@ -210,6 +239,10 @@ analysis_setup_server <- function(id, shared_state) {
 
       roles_state(init_roles)
       frozen_trigger(shiny::isolate(frozen_trigger()) + 1L)
+    }
+
+    shiny::observeEvent(input$btn_start_analysis, {
+      .do_freeze()
     }, ignoreInit = TRUE)
 
     # ── Dataset signature mismatch detection ─────────────────────────────────
@@ -243,11 +276,7 @@ analysis_setup_server <- function(id, shared_state) {
 
     shiny::observeEvent(input$confirm_restart, {
       shiny::removeModal()
-      reset_analysis_pipeline(shared_state, from_step = 1L)
-      shared_state$analysis_data <- NULL
-      shared_state$analysis_spec <- NULL
-      roles_state(NULL)
-      frozen_trigger(shiny::isolate(frozen_trigger()) + 1L)
+      .do_freeze()
     }, ignoreInit = TRUE)
 
     # ── Role change dispatcher ────────────────────────────────────────────────
@@ -306,6 +335,11 @@ analysis_setup_server <- function(id, shared_state) {
             current[[v]][["candidate"]] <- FALSE
           }
         }
+      } else if (var == "__select_all_candidates__") {
+        for (v in names(current)) {
+          has_radio <- any(vapply(RADIO_ROLES, function(r) isTRUE(current[[v]][[r]]), logical(1)))
+          if (!has_radio) current[[v]][["candidate"]] <- TRUE
+        }
       } else {
         if (!var %in% names(current)) return()
 
@@ -319,6 +353,9 @@ analysis_setup_server <- function(id, shared_state) {
           current[[var]][["candidate"]] <- FALSE
           current[[var]][[role]] <- TRUE
         } else if (role == "candidate") {
+          if (isTRUE(value)) {
+            for (r in RADIO_ROLES) current[[var]][[r]] <- FALSE
+          }
           current[[var]][["candidate"]] <- isTRUE(value)
         } else if (role == "reference_level") {
           current[[var]][["reference_level"]] <- value
@@ -357,8 +394,17 @@ analysis_setup_server <- function(id, shared_state) {
         "descriptive"
       }
 
-      t1_strat_exp <- study_type %in% c("exposure_outcome", "descriptive_exposure")
-      t1_strat_out <- study_type == "risk_factor"
+      ctypes <- shiny::isolate(shared_state$column_types)
+      exp_is_factor <- !is.null(exposure_var) && !is.null(ctypes) &&
+                       exposure_var %in% names(ctypes) && ctypes[[exposure_var]] == "factor"
+      out_is_factor <- !is.null(outcome_var) && !is.null(ctypes) &&
+                       outcome_var %in% names(ctypes) && ctypes[[outcome_var]] == "factor"
+      t1_strat_exp <- study_type %in% c("exposure_outcome", "descriptive_exposure") && exp_is_factor
+      t1_strat_out <- study_type == "risk_factor" && out_is_factor
+
+      radio_assigned <- Filter(Negate(is.null),
+                               list(outcome_var, exposure_var, subject_var, cluster_var, time_var))
+      candidates <- setdiff(candidates, unlist(radio_assigned))
 
       t1_vars <- unique(c(outcome_var, exposure_var, candidates))
       t1_vars <- t1_vars[!vapply(t1_vars, is.null, logical(1))]
@@ -407,29 +453,15 @@ analysis_setup_server <- function(id, shared_state) {
                       n_r, n_c, n_cc, pct)
             ),
             shiny::tags$p(
-              class = "text-muted small mb-3",
+              class = "text-muted small mb-0",
               "Freezing the dataset creates a snapshot for analysis. Changes in Prepare",
               "after this point won't affect the analysis unless you restart."
-            ),
-            shiny::actionButton(
-              ns("btn_start_analysis"),
-              label = shiny::tagList(shiny::icon("play"), " Start Analysis"),
-              class = "btn-primary"
             )
           )
         )
       } else {
         shiny::tagList(
           shiny::uiOutput(ns("mismatch_banner")),
-          shiny::div(
-            class = "mb-2 d-flex align-items-center gap-2",
-            shiny::textInput(
-              ns("role_search"),
-              label       = NULL,
-              placeholder = "Search variables\u2026",
-              width       = "280px"
-            )
-          ),
           reactable::reactableOutput(ns("role_table"))
         )
       }
@@ -443,12 +475,7 @@ analysis_setup_server <- function(id, shared_state) {
         shiny::icon("triangle-exclamation"),
         shiny::span(
           "Your working dataset has changed since this analysis was started.",
-          "Restart to use the updated data."
-        ),
-        shiny::actionButton(
-          ns("btn_restart_analysis"),
-          "Restart Analysis",
-          class = "btn-warning btn-sm ms-auto"
+          "Use \u201cRestart Analysis\u201d in the sidebar to use the updated data."
         )
       )
     })
@@ -498,23 +525,25 @@ analysis_setup_server <- function(id, shared_state) {
       }
 
       df <- data.frame(
+        ID         = seq_along(vars),
         Variable   = vars,
         Type       = vapply(vars, function(v) {
           if (!is.null(ctypes) && v %in% names(ctypes)) ctypes[[v]] else "unknown"
         }, character(1)),
-        outcome    = FALSE,
-        exposure   = FALSE,
-        candidate  = FALSE,
-        subject_id = FALSE,
-        cluster    = FALSE,
-        time       = FALSE,
         ref_level  = vapply(vars, function(v) {
           if (!is.null(ctypes) && v %in% names(ctypes) && ctypes[[v]] == "factor") {
             col <- adata[[v]]
             if (is.factor(col) && length(levels(col)) > 0) levels(col)[1] else ""
           } else ""
         }, character(1)),
-        stringsAsFactors = FALSE
+        exposure   = FALSE,
+        outcome    = FALSE,
+        candidate  = FALSE,
+        subject_id = FALSE,
+        cluster    = FALSE,
+        time       = FALSE,
+        stringsAsFactors = FALSE,
+        row.names  = NULL
       )
 
       reactable::reactable(
@@ -529,6 +558,11 @@ analysis_setup_server <- function(id, shared_state) {
           minWidth = 60
         ),
         columns = list(
+          ID = reactable::colDef(
+            name     = "ID",
+            minWidth = 45,
+            sortable = TRUE
+          ),
           Variable = reactable::colDef(
             name     = "Variable",
             align    = "left",
@@ -540,25 +574,56 @@ analysis_setup_server <- function(id, shared_state) {
             minWidth = 80,
             cell     = function(value, index) .type_badge(value)
           ),
-          outcome = reactable::colDef(
-            header   = .clear_header("Outcome", "outcome"),
-            minWidth = 80,
-            cell     = .radio_cell("outcome")
+          ref_level = reactable::colDef(
+            name     = "Ref. Level",
+            minWidth = 130,
+            align    = "left",
+            cell     = function(value, index) {
+              v <- vars[index]
+              if (!is.null(ctypes) && v %in% names(ctypes) && ctypes[[v]] == "factor") {
+                col  <- adata[[v]]
+                lvls <- if (is.factor(col)) levels(col) else character(0)
+                if (length(lvls) == 0) {
+                  return(htmltools::tags$span("\u2014", class = "text-muted"))
+                }
+                htmltools::tags$select(
+                  class       = "edark-role-reflevel form-select form-select-sm",
+                  `data-var`  = v,
+                  style       = "font-size:0.8rem;",
+                  lapply(lvls, function(lev) htmltools::tags$option(value = lev, lev))
+                )
+              } else {
+                htmltools::tags$span("\u2014", class = "text-muted")
+              }
+            }
           ),
           exposure = reactable::colDef(
             header   = .clear_header("Exposure", "exposure"),
             minWidth = 80,
             cell     = .radio_cell("exposure")
           ),
+          outcome = reactable::colDef(
+            header   = .clear_header("Outcome", "outcome"),
+            minWidth = 80,
+            cell     = .radio_cell("outcome")
+          ),
           candidate = reactable::colDef(
             header = htmltools::tags$div(
               class = "d-flex flex-column align-items-center",
-              htmltools::tags$span(style = "font-size:0.75rem;", "Candidate"),
-              htmltools::tags$button(
-                "Clear",
-                class       = "edark-clear-role btn btn-link btn-sm p-0 text-muted",
-                style       = "font-size:0.7rem; line-height:1;",
-                `data-role` = "candidate"
+              htmltools::tags$span(style = "font-size:0.75rem;", "Covariate"),
+              htmltools::tags$div(
+                class = "d-flex gap-2",
+                htmltools::tags$button(
+                  "All",
+                  class = "edark-select-all-candidates btn btn-link btn-sm p-0 text-muted",
+                  style = "font-size:0.7rem; line-height:1;"
+                ),
+                htmltools::tags$button(
+                  "Clear",
+                  class       = "edark-clear-role btn btn-link btn-sm p-0 text-muted",
+                  style       = "font-size:0.7rem; line-height:1;",
+                  `data-role` = "candidate"
+                )
               )
             ),
             minWidth = 90,
@@ -585,40 +650,33 @@ analysis_setup_server <- function(id, shared_state) {
             header   = .clear_header("Time", "time"),
             minWidth = 60,
             cell     = .radio_cell("time")
-          ),
-          ref_level = reactable::colDef(
-            name     = "Ref. Level",
-            minWidth = 130,
-            align    = "left",
-            cell     = function(value, index) {
-              v <- vars[index]
-              if (!is.null(ctypes) && v %in% names(ctypes) && ctypes[[v]] == "factor") {
-                col  <- adata[[v]]
-                lvls <- if (is.factor(col)) levels(col) else character(0)
-                if (length(lvls) == 0) {
-                  return(htmltools::tags$span("\u2014", class = "text-muted"))
-                }
-                htmltools::tags$select(
-                  class       = "edark-role-reflevel form-select form-select-sm",
-                  `data-var`  = v,
-                  style       = "font-size:0.8rem;",
-                  lapply(lvls, function(lev) htmltools::tags$option(value = lev, lev))
-                )
-              } else {
-                htmltools::tags$span("\u2014", class = "text-muted")
-              }
-            }
           )
         )
       )
     })
 
-    # Wire search input to reactable
-    shiny::observeEvent(input$role_search, {
-      reactable::updateReactable("role_table", searchValue = input$role_search)
-    }, ignoreInit = TRUE)
-
     # ── Sidebar outputs ──────────────────────────────────────────────────────
+    output$action_buttons_ui <- shiny::renderUI({
+      adata    <- shared_state$analysis_data
+      mismatch <- sig_mismatch()
+
+      if (is.null(adata)) {
+        shiny::actionButton(
+          ns("btn_start_analysis"),
+          label = shiny::tagList(shiny::icon("play"), " Start Analysis"),
+          class = "btn-primary w-100"
+        )
+      } else {
+        shiny::tagList(
+          shiny::actionButton(
+            ns("btn_restart_analysis"),
+            label = shiny::tagList(shiny::icon("rotate"), " Restart Analysis"),
+            class = if (mismatch) "btn-warning w-100" else "btn-outline-secondary w-100"
+          )
+        )
+      }
+    })
+
     output$study_type_ui <- shiny::renderUI({
       spec <- shared_state$analysis_spec
       if (is.null(spec)) return(NULL)
@@ -690,13 +748,13 @@ analysis_setup_server <- function(id, shared_state) {
       )
     })
 
-    output$dataset_snapshot_ui <- shiny::renderUI({
-      adata <- shared_state$analysis_data
-      if (is.null(adata)) return(NULL)
+    output$incoming_snapshot_ui <- shiny::renderUI({
+      wd <- shared_state$dataset_working
+      if (is.null(wd)) return(NULL)
 
-      vars   <- setdiff(names(adata), ".edark_row_id")
-      n_rows <- nrow(adata)
-      n_cc   <- sum(stats::complete.cases(adata[, vars, drop = FALSE]))
+      n_rows <- nrow(wd)
+      n_cols <- ncol(wd)
+      n_cc   <- sum(stats::complete.cases(wd))
 
       .row <- function(label, val) {
         shiny::div(
@@ -707,10 +765,58 @@ analysis_setup_server <- function(id, shared_state) {
       }
 
       shiny::tagList(
-        shiny::tags$p("Dataset Snapshot",
-          class = "text-muted small text-uppercase fw-semibold mt-3 mb-1"),
+        shiny::tags$p("Incoming Dataset Snapshot",
+          class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
         .row("Rows",           n_rows),
-        .row("Variables",      length(vars)),
+        .row("Variables",      n_cols),
+        .row("Complete cases", sprintf("%d (%d%%)", n_cc,
+                                       round(n_cc / n_rows * 100L)))
+      )
+    })
+
+    output$selected_snapshot_ui <- shiny::renderUI({
+      adata <- shared_state$analysis_data
+      spec  <- shared_state$analysis_spec
+      if (is.null(adata) || is.null(spec)) return(NULL)
+
+      vr <- spec$variable_roles
+      selected_vars <- unique(Filter(Negate(is.null), c(
+        vr$outcome_variable,
+        vr$exposure_variable,
+        vr$candidate_covariates,
+        vr$subject_id_variable,
+        vr$cluster_variable,
+        vr$time_variable
+      )))
+      selected_vars <- intersect(selected_vars, names(adata))
+
+      n_rows <- nrow(adata)
+
+      if (length(selected_vars) == 0) {
+        return(shiny::tagList(
+          shiny::tags$hr(class = "my-2"),
+          shiny::tags$p("Selected Dataset Snapshot",
+            class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+          shiny::tags$small(class = "text-muted", "No variables assigned yet.")
+        ))
+      }
+
+      n_cc <- sum(stats::complete.cases(adata[, selected_vars, drop = FALSE]))
+
+      .row <- function(label, val) {
+        shiny::div(
+          class = "d-flex justify-content-between mb-1",
+          shiny::tags$span(class = "text-muted small", label),
+          shiny::tags$span(class = "small fw-semibold", val)
+        )
+      }
+
+      shiny::tagList(
+        shiny::tags$hr(class = "my-2"),
+        shiny::tags$p("Selected Dataset Snapshot",
+          class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+        .row("Rows",           n_rows),
+        .row("Variables",      length(selected_vars)),
         .row("Complete cases", sprintf("%d (%d%%)", n_cc,
                                        round(n_cc / n_rows * 100L)))
       )
