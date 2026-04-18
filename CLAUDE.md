@@ -415,3 +415,5 @@ session$sendCustomMessage("edark_analysis_progress", list(frac = 0.5, detail = "
 #### Analysis module debugging
 - SMDs still dont work in table 1
 - when testing table 1 strat - selecting factors for exp and outcome, going to table 1 tab, selecting both checkboxes, going back to role selection, selecting numerics for exposure and outcome, back to table 1 and generate, its not unchecking the factor boxes bc its still generating table 1s implicitly factoring the numeric values and displaying the tabs for them
+- table 1 and univariable screen variable order should be exposure --> outcome --> all else in original dataset order
+- collinearity plot base size should be similarly scaled to # of variables; still too small when theres just a few

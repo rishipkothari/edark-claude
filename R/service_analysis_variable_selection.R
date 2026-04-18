@@ -66,6 +66,14 @@ run_univariable_screen <- function(data, spec) {
   tidy_all <- dplyr::bind_rows(Filter(Negate(is.null), results))
   if (nrow(tidy_all) == 0L) return(NULL)
 
+  exposure     <- roles$exposure_variable
+  cand_ordered <- intersect(names(data), candidates)
+  if (!is.null(exposure) && nzchar(exposure) && exposure %in% cand_ordered)
+    cand_ordered <- c(exposure, setdiff(cand_ordered, exposure))
+  var_order <- stats::setNames(seq_along(cand_ordered), cand_ordered)
+
+  ref_levels <- if (!is.null(roles$reference_levels)) roles$reference_levels else list()
+
   tidy_all %>%
     dplyr::select(
       variable, term,
@@ -74,8 +82,15 @@ run_univariable_screen <- function(data, spec) {
       conf.high = dplyr::any_of("conf.high"),
       p.value
     ) %>%
-    dplyr::arrange(.data$p.value) %>%
-    dplyr::mutate(suggested = .data$p.value < threshold)
+    dplyr::mutate(
+      .var_rank       = var_order[.data$variable],
+      reference_level = vapply(.data$variable, function(v) {
+        if (v %in% names(ref_levels)) as.character(ref_levels[[v]]) else NA_character_
+      }, character(1L)),
+      suggested = .data$p.value < threshold
+    ) %>%
+    dplyr::arrange(.data$.var_rank, .data$term) %>%
+    dplyr::select(-.data$.var_rank)
 }
 
 
@@ -262,7 +277,8 @@ run_stepwise <- function(data, spec) {
       selected_variables = selected_vars,
       direction          = direction,
       criterion          = criterion,
-      final_formula      = stats::formula(selected_fit)
+      final_formula      = stats::formula(selected_fit),
+      step_trace         = selected_fit$anova
     )
   }, error = function(e) {
     list(

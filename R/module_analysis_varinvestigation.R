@@ -326,9 +326,10 @@ analysis_varinvestigation_server <- function(id, shared_state) {
           p.value   = signif(.data$p.value, 3L)
         ) %>%
         dplyr::select(
-          Variable = variable,
-          Term     = term,
-          Estimate = estimate,
+          Variable  = variable,
+          Term      = term,
+          Reference = dplyr::any_of("reference_level"),
+          Estimate  = estimate,
           `CI Low`  = dplyr::any_of("conf.low"),
           `CI High` = dplyr::any_of("conf.high"),
           `P-value` = p.value
@@ -340,8 +341,7 @@ analysis_varinvestigation_server <- function(id, shared_state) {
         selection = "none",
         options   = list(
           pageLength = 20,
-          dom        = "t",
-          order      = list(list(5L, "asc"))  # sort by p-value
+          dom        = "t"
         )
       ) %>%
         DT::formatStyle(
@@ -440,7 +440,10 @@ analysis_varinvestigation_server <- function(id, shared_state) {
       coll <- collin_computed()
       shiny::req(!is.null(coll), !is.null(coll$cor_matrix))
 
-      mat <- coll$cor_matrix
+      mat        <- coll$cor_matrix
+      n_vars     <- nrow(mat)
+      label_size <- max(2, min(5, 10 - 0.6 * n_vars))
+      base_size  <- max(9, min(16, round(18 - 0.6 * n_vars)))
       df  <- as.data.frame(as.table(mat))
       names(df) <- c("Var1", "Var2", "r")
       df$r <- as.numeric(df$r)
@@ -448,7 +451,7 @@ analysis_varinvestigation_server <- function(id, shared_state) {
       ggplot2::ggplot(df, ggplot2::aes(x = .data$Var1, y = .data$Var2, fill = .data$r)) +
         ggplot2::geom_tile(color = "white") +
         ggplot2::geom_text(ggplot2::aes(label = round(.data$r, 2L)),
-                           size = 3, color = "black") +
+                           size = label_size, color = "black") +
         ggplot2::scale_fill_gradient2(
           low     = "#2166ac",
           mid     = "white",
@@ -457,7 +460,7 @@ analysis_varinvestigation_server <- function(id, shared_state) {
           limits  = c(-1, 1),
           name    = "r"
         ) +
-        ggplot2::theme_minimal(base_size = 12) +
+        ggplot2::theme_minimal(base_size = base_size) +
         ggplot2::theme(
           axis.text.x  = ggplot2::element_text(angle = 45, hjust = 1),
           panel.grid   = ggplot2::element_blank()
@@ -471,7 +474,10 @@ analysis_varinvestigation_server <- function(id, shared_state) {
       coll <- collin_computed()
       shiny::req(!is.null(coll), !is.null(coll$cramers_v_mat))
 
-      mat <- coll$cramers_v_mat
+      mat        <- coll$cramers_v_mat
+      n_vars     <- nrow(mat)
+      label_size <- max(2, min(5, 10 - 0.6 * n_vars))
+      base_size  <- max(9, min(16, round(18 - 0.6 * n_vars)))
       df  <- as.data.frame(as.table(mat))
       names(df) <- c("Var1", "Var2", "V")
       df$V <- as.numeric(df$V)
@@ -480,7 +486,7 @@ analysis_varinvestigation_server <- function(id, shared_state) {
         ggplot2::geom_tile(color = "white") +
         ggplot2::geom_text(ggplot2::aes(label = ifelse(is.na(.data$V), "",
                                                         round(.data$V, 2L))),
-                           size = 3, color = "black") +
+                           size = label_size, color = "black") +
         ggplot2::scale_fill_gradient(
           low  = "white",
           high = "#d6604d",
@@ -488,7 +494,7 @@ analysis_varinvestigation_server <- function(id, shared_state) {
           na.value = "grey90",
           name = "V"
         ) +
-        ggplot2::theme_minimal(base_size = 12) +
+        ggplot2::theme_minimal(base_size = base_size) +
         ggplot2::theme(
           axis.text.x  = ggplot2::element_text(angle = 45, hjust = 1),
           panel.grid   = ggplot2::element_blank()
@@ -570,6 +576,11 @@ analysis_varinvestigation_server <- function(id, shared_state) {
         )
       }
     })
+
+    shiny::observeEvent(input$sw_direction, {
+      new_criterion <- if (isTRUE(input$sw_direction == "forward")) "AIC" else "BIC"
+      shiny::updateSelectInput(session, "sw_criterion", selected = new_criterion)
+    }, ignoreInit = TRUE, ignoreNULL = TRUE)
 
     shiny::observeEvent(input$btn_run_sl, {
       spec   <- shiny::isolate(shared_state$analysis_spec)
@@ -692,6 +703,41 @@ analysis_varinvestigation_server <- function(id, shared_state) {
                 result$coef_data %>%
                   dplyr::mutate(estimate = round(.data$estimate, 4L)) %>%
                   dplyr::select(Term = term, Estimate = estimate),
+                compact    = TRUE,
+                pagination = FALSE,
+                highlight  = TRUE
+              )
+            )
+          )
+        },
+        if (method == "Stepwise" && !is.null(result$step_trace)) {
+          crit_label <- if (isTRUE(result$criterion == "BIC")) "BIC" else "AIC"
+          direction_label <- paste0(
+            toupper(substring(result$direction, 1L, 1L)),
+            substring(result$direction, 2L)
+          )
+          trace_df <- result$step_trace
+          if ("AIC" %in% names(trace_df))
+            names(trace_df)[names(trace_df) == "AIC"] <- crit_label
+          num_cols <- intersect(c(crit_label, "Df", "Sum of Sq", "RSS",
+                                  "Deviance", "Resid. Df", "Resid. Dev"), names(trace_df))
+          trace_df[num_cols] <- lapply(trace_df[num_cols], function(x) round(x, 2L))
+
+          bslib::card(
+            class = "mt-2",
+            bslib::card_header("Selection Steps"),
+            bslib::card_body(
+              shiny::tags$p(
+                class = "text-muted small mb-2",
+                paste0(
+                  direction_label, " stepwise selection (", crit_label, "). ",
+                  "Each row shows a variable added or removed and the resulting ",
+                  crit_label, " score. Lower ", crit_label,
+                  " is better; a step is accepted when it reduces the score."
+                )
+              ),
+              reactable::reactable(
+                trace_df,
                 compact    = TRUE,
                 pagination = FALSE,
                 highlight  = TRUE

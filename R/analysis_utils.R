@@ -79,6 +79,7 @@ apply_reference_levels <- function(data, reference_levels) {
     if (!var_name %in% names(data)) next
     col <- data[[var_name]]
     if (!is.factor(col)) next
+    if (is.ordered(col)) next
     if (!ref %in% levels(col)) next
     data[[var_name]] <- stats::relevel(col, ref = ref)
   }

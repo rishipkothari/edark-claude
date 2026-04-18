@@ -38,7 +38,11 @@ build_table1 <- function(data,
   t1_spec      <- spec$table1_specification
 
   t1_vars <- setdiff(t1_vars, ".edark_row_id")
-  t1_vars <- intersect(t1_vars, names(data))
+  t1_vars <- intersect(names(data), t1_vars)          # dataset column order
+  priority <- c(exposure_var, outcome_var)
+  priority <- priority[!vapply(priority, function(x) is.null(x) || !nzchar(x), logical(1))]
+  priority <- intersect(priority, t1_vars)
+  t1_vars  <- c(priority, setdiff(t1_vars, priority)) # exposure → outcome → rest
 
   if (length(t1_vars) == 0) {
     return(list(overall = NULL, by_exposure = NULL, by_outcome = NULL))

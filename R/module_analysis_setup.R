@@ -406,7 +406,7 @@ analysis_setup_server <- function(id, shared_state) {
                                list(outcome_var, exposure_var, subject_var, cluster_var, time_var))
       candidates <- setdiff(candidates, unlist(radio_assigned))
 
-      t1_vars <- unique(c(outcome_var, exposure_var, candidates))
+      t1_vars <- unique(c(exposure_var, outcome_var, candidates))
       t1_vars <- t1_vars[!vapply(t1_vars, is.null, logical(1))]
       t1_vars <- t1_vars[nzchar(t1_vars)]
 
