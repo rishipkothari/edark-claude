@@ -13,7 +13,12 @@ run_stepwise(data, spec)
 }
 \value{
 A named list: \code{selected_variables}, \code{direction},
-\code{criterion}, \code{final_formula}. Returns \code{NULL} on failure.
+\code{criterion}, \code{final_formula}, \code{step_trace}, plus
+\code{excluded_variables} (\code{data.frame(variable, reason)} of
+candidates that could not be modelled on the complete rows),
+\code{n_used} and \code{n_total}. On a fit error, \code{error} holds the
+message and \code{selected_variables} is empty. Returns \code{NULL} when
+no outcome or candidates are assigned.
 }
 \description{
 Applies \code{stats::step()} using backward or forward direction with BIC

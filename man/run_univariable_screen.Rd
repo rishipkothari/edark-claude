@@ -14,10 +14,19 @@ run_univariable_screen(data, spec)
 \value{
 A \code{tibble} with columns \code{variable}, \code{term},
 \code{estimate}, \code{conf.low}, \code{conf.high}, \code{p.value},
-\code{suggested} (logical: p < threshold). Returns \code{NULL} when no
-candidates or no outcome are assigned.
+\code{reference_level}, \code{effect_measure}, and \code{suggested}
+(logical: p < threshold). For a binary outcome \code{estimate} and the
+CI are odds ratios (\code{effect_measure = "odds_ratio"}); for a
+continuous outcome they are raw coefficients
+(\code{effect_measure = "coefficient"}). Candidates that cannot be
+modelled (single-level factor, constant numeric, or a failed fit) are
+omitted and listed in \code{attr(result, "excluded_variables")}, a
+\code{data.frame(variable, reason)}; if every candidate is excluded the
+tibble has zero rows. Returns \code{NULL} when no candidates or no
+outcome are assigned.
 }
 \description{
 Fits one \code{lm} (continuous outcome) or \code{glm} (binary outcome)
-per candidate variable. Returns a tidy tibble sorted by p-value.
+per candidate variable. Returns a tidy tibble, exposure first, then
+candidates in dataset column order.
 }

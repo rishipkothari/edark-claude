@@ -93,20 +93,10 @@ validate_analysis <- function(spec, data, tier = "full", verbose = FALSE) {
          "Outcome has only one unique value.")
   }
 
-  # PF_FACTOR_SINGLE_LEVEL — check predictors visible at this tier
-  check_fac_vars <- if (!is.null(covariates) && length(covariates) > 0) {
-    intersect(covariates, names(data_t1))
-  } else {
-    names(data_t1)[vapply(data_t1, is.factor, logical(1))]
-  }
-  for (v in check_fac_vars) {
-    if (is.factor(data_t1[[v]]) &&
-        length(levels(droplevels(data_t1[[v]]))) == 1L) {
-      .add("PF_FACTOR_SINGLE_LEVEL", "error",
-           paste0("Variable '", v,
-                  "' has only one level remaining after removing missing values."))
-    }
-  }
+  # PF_FACTOR_SINGLE_LEVEL (Tier 1) — exposure only. Covariates are checked in
+  # Tier 2 against the full-model complete cases; at Step 3 a single-level
+  # candidate is excluded by the selection service rather than blocking the step.
+  .check_single_level(exposure, data_t1, .add)
 
   if (tier == "tier1") return(.finalize(msgs, verbose))
 
@@ -144,7 +134,12 @@ validate_analysis <- function(spec, data, tier = "full", verbose = FALSE) {
 
   if (n_t2 == 0L) return(.finalize(msgs, verbose))
 
-  out_t2         <- data_t2[[outcome]]
+  # PF_FACTOR_SINGLE_LEVEL (Tier 2) — covariates after listwise deletion over
+  # every model variable; a factor can collapse to one level here even when it
+  # has several in the full data.
+  .check_single_level(setdiff(covariates, exposure), data_t2, .add)
+
+  out_t2        <- data_t2[[outcome]]
   out_binary_t2  <- is.factor(out_t2) && length(levels(droplevels(out_t2))) == 2L
   out_cont_t2    <- is.numeric(out_t2)
 
@@ -316,6 +311,18 @@ validate_analysis <- function(spec, data, tier = "full", verbose = FALSE) {
   vars <- vars[!vapply(vars, is.null, logical(1))]
   vars <- vars[nzchar(vars)]
   intersect(vars, names(data))
+}
+
+# Emit PF_FACTOR_SINGLE_LEVEL for each factor in `vars` with < 2 observed
+# levels in `data` (already complete-cased by the caller).
+.check_single_level <- function(vars, data, add) {
+  for (v in .safe_vars(vars, data)) {
+    if (is.factor(data[[v]]) && nlevels(droplevels(data[[v]])) < 2L) {
+      add("PF_FACTOR_SINGLE_LEVEL", "error",
+          paste0("Variable '", v,
+                 "' has only one level remaining after removing missing values."))
+    }
+  }
 }
 
 # Build the deduplicated predictor vector from exposure + covariates.

@@ -13,8 +13,10 @@ run_lasso(data, spec)
 }
 \value{
 A named list: \code{selected_variables}, \code{lambda_type},
-\code{lambda_selected}, \code{coef_data}, \code{cv_fit}.
-Returns \code{NULL} on failure.
+\code{lambda_selected}, \code{coef_data}, \code{cv_fit}, plus
+\code{excluded_variables}, \code{n_used} and \code{n_total} (as for
+\code{\link{run_stepwise}}). On a fit error, \code{error} holds the
+message. Returns \code{NULL} when no outcome or candidates are assigned.
 }
 \description{
 Applies \code{glmnet::cv.glmnet} with alpha = 1 (LASSO). Factor variables

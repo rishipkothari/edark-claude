@@ -200,6 +200,25 @@ curr_type <- if (col %in% names(types)) types[[col]] else fallback
 ### Every shared_state observer must guard with `!identical()`
 `renderUI` + input observers can loop: an input change triggers renderUI which re-renders the input which fires the observer again. Without the guard, brief `""` values during re-render overwrite valid data. Every `observeEvent` that writes to `shared_state` needs `if (!identical(old, new))`.
 
+### Inputs removed from the DOM keep their last value
+When a `renderUI` stops emitting an input, Shiny **retains that input's last value** in the input registry — `input$foo` keeps returning the stale value indefinitely. `updateXInput(session, "foo", ...)` cannot clear it either, because the message targets an element that no longer exists (or is being removed in the same render pass) and is silently dropped.
+
+Never trust a conditionally-rendered input on its own. Derive eligibility from state, and gate every read:
+```r
+elig      <- strat_eligible()                                  # from spec + frozen data
+strat_exp <- elig$exposure && isTRUE(input$strat_by_exposure)   # not the raw input
+```
+This caused the Table 1 bug where switching exposure/outcome from factor to numeric still produced tables stratified by a numeric variable. Pure functions downstream (`build_table1()`) should guard independently too — see `.can_stratify()`.
+
+### shinyjs needs `useShinyjs()` — it lives in the `page_navbar` header in `edark.R`
+Every shinyjs helper depends on it, including `shinyjs::disabled()`, which only adds a `shinyjs-disabled` CSS class that shinyjs's JS turns into a real `disabled` attribute. Remove that call and all disable/toggle logic silently stops working (buttons render clickable).
+
+### Listwise deletion can collapse a factor to one level
+A factor with several levels in the full data can have only one left once rows missing *any* other model variable are dropped — `glm`/`lm`/`model.matrix` then fail with "contrasts can be applied only to factors with 2 or more levels". No upfront check can predict this; it depends on the surviving rows. In Step 3, `.prepare_selection_data()` / `.partition_modelable()` in `service_analysis_variable_selection.R` exclude such candidates after complete-casing and return `excluded_variables`, `n_used`, `n_total`, which the UI shows as an amber alert. Any new model-fitting path should do the same.
+
+### Disabling one choice of a radio/select without shinyjs
+`shinyjs::toggleState()` / `disable()` act on a whole input by id — they cannot disable a single choice within it. `htmltools::tagQuery` is no help either — its selectors do not support `[attr=value]`. `.disable_choice(tag, value)` in `module_analysis_table1.R` walks the tag tree and sets the boolean `disabled` attribute instead. Note `<option>` tags arrive as a **pre-rendered HTML string** (shiny builds a select's option list via `selectOptions()`), so string children are patched textually — and the select must be built with `selectize = FALSE`, since selectize.js constructs its list in JS and leaves no `<option>` markup to patch.
+
 ### `apply_prepare_pipeline()` uses `isolate()` — reactive callers must declare dependencies explicitly
 Any `reactive({})` that only calls `apply_prepare_pipeline(shared_state)` will **never invalidate** — the function reads everything via `isolate()`. Callers must read the relevant `shared_state` fields on their own lines first to create dependencies.
 
@@ -323,7 +342,7 @@ edark_report(liver_tx, report_type = "primary_vs_others",
 Tab 4 (`4 · Analyze`) — an 8-step guided workflow for fitting and reporting statistical models. Full spec: `PRD/EDARK_Analysis_Module_PRD.md`. Build sequence: `PRD/EDARK_Analysis_Build_Plan.md`.
 
 ### Current state
-Phase 0 complete: infrastructure scaffold, utility functions, full validator, pipeline reset, and placeholder stubs for all 8 steps. Steps 1–8 are placeholder cards pending Phases 1–8.
+Phases 0–2 complete (infrastructure, Setup, Table 1). Phase 3 (Variable Investigation) is built and in debugging — see "Analysis module debugging" below. Steps 4–8 are placeholder stubs pending Phases 4–8.
 
 ### Test data for Phase 3
 `liver_tx` (500 × 36) is built to exercise variable investigation. Regenerate via `Rscript data-raw/liver_tx_sample.R` (seeded).
@@ -354,9 +373,9 @@ Phase 0 complete: infrastructure scaffold, utility functions, full validator, pi
 
 Returns `list(validity_flag, messages, display_messages)` where `validity_flag` is `"valid"` / `"warnings"` / `"invalid"`.
 
-**Tier 1** (core data validity — runs before any analysis operation): `PF_NO_OUTCOME`, `PF_ZERO_COMPLETE`, `PF_OUTCOME_NO_VARIANCE_BINARY`, `PF_OUTCOME_NO_VARIANCE_CONTINUOUS`, `PF_FACTOR_SINGLE_LEVEL`.
+**Tier 1** (core data validity — runs before any analysis operation): `PF_NO_OUTCOME`, `PF_ZERO_COMPLETE`, `PF_OUTCOME_NO_VARIANCE_BINARY`, `PF_OUTCOME_NO_VARIANCE_CONTINUOUS`, `PF_FACTOR_SINGLE_LEVEL` (exposure only).
 
-**Tier 2** (model specification — adds to Tier 1, runs before multivariable model): errors: `PF_NO_PREDICTORS`, `PF_OUTCOME_MODEL_MISMATCH`, `PF_MIXED_NO_SUBJECT`, `PF_MIXED_SINGLE_CLUSTER`; warnings: `PF_LOW_EPV_10`, `PF_LOW_EPV_5`, `PF_MISSING_ANY/GT20/GT50`, `PF_RARE_FACTOR_LEVEL`, `PF_HIGH_CORRELATION`, `PF_FEW_CLUSTERS`, `PF_UNBALANCED_CLUSTERS`, `PF_RARE_OUTCOME`, `PF_EXPOSURE_NOT_IN_MODEL`; notes (verbose only): `PF_SINGLE_COVARIATE`, `PF_SAMPLE_SUMMARY`, `PF_MODEL_SUMMARY`, `PF_DATA_STRUCTURE`, `PF_REFERENCE_LEVELS`.
+**Tier 2** (model specification — adds to Tier 1, runs before multivariable model): errors: `PF_NO_PREDICTORS`, `PF_OUTCOME_MODEL_MISMATCH`, `PF_MIXED_NO_SUBJECT`, `PF_MIXED_SINGLE_CLUSTER`, `PF_FACTOR_SINGLE_LEVEL` (covariates, checked on the full-model complete cases); warnings: `PF_LOW_EPV_10`, `PF_LOW_EPV_5`, `PF_MISSING_ANY/GT20/GT50`, `PF_RARE_FACTOR_LEVEL`, `PF_HIGH_CORRELATION`, `PF_FEW_CLUSTERS`, `PF_UNBALANCED_CLUSTERS`, `PF_RARE_OUTCOME`, `PF_EXPOSURE_NOT_IN_MODEL`; notes (verbose only): `PF_SINGLE_COVARIATE`, `PF_SAMPLE_SUMMARY`, `PF_MODEL_SUMMARY`, `PF_DATA_STRUCTURE`, `PF_REFERENCE_LEVELS`.
 
 ### Pipeline reset (`service_analysis_pipeline.R`)
 `reset_analysis_pipeline(shared_state, from_step)` — called by modules after user confirms a destructive upstream change. Never shows its own modal.
@@ -405,13 +424,12 @@ session$sendCustomMessage("edark_analysis_progress", list(frac = 0.5, detail = "
 ## What's not built yet
 
 #### In progress
-- **Analysis module** (Phases 1–9): Steps 1–8 are placeholder stubs. Infrastructure (Phase 0) is complete. See `PRD/EDARK_Analysis_Build_Plan.md` for phase definitions and acceptance criteria.
+- **Analysis module** (Phases 1–9): Phases 0–2 complete; Phase 3 in debugging; Steps 4–8 are placeholder stubs. See `PRD/EDARK_Analysis_Build_Plan.md` for phase definitions and acceptance criteria.
 
 #### High magnitude change
 - Alternative plot type options per variable combination (heat map, balloon plot, etc.)
 - Word report: reference `.docx` template with defined heading styles
 - Integrate studybuddy — use working dataset for direct model creation and publication-quality outputs
-- Tab re-ordering: once Analysis is complete, the intended nav order is Prepare → Explore → Analyze, with the current Report tab nested within Explore (Describe / Correlate / Trend / Report pills). Tab 4 `Analyze` is currently appended after Report and will move in a later integration step.
 
 #### Mid magnitude change
 - Dataset export: save working dataset to RDS, save original dataset and variable transform spec to RDS (or similar), save transformed dataset to CSV
@@ -426,6 +444,5 @@ session$sendCustomMessage("edark_analysis_progress", list(frac = 0.5, detail = "
 - **Bug — center tables in PPT + HTML reports**: `flextable::set_table_properties(align = "center")` is set in both `.style_dataset_summary_ft()` and `.style_section_ft()` in `generate_report.R` but tables still appear left-aligned in PPT and HTML output. DOCX may work. Investigate `officer` slide content alignment for PPT and the Rmd template's table rendering for HTML.
 
 #### Analysis module debugging
-- when testing table 1 strat - selecting factors for exp and outcome, going to table 1 tab, selecting both checkboxes, going back to role selection, selecting numerics for exposure and outcome, back to table 1 and generate, its not unchecking the factor boxes bc its still generating table 1s implicitly factoring the numeric values and displaying the tabs for them
-- table 1 and univariable screen variable order should be exposure --> outcome --> all else in original dataset order
 - collinearity plot base size should be similarly scaled to # of variables; still too small when theres just a few
+- **`postop_aki_stage` conflates "no AKI" with "missing"** — `NA` means the patient had no AKI, but every complete-case path reads it as missing. Including it as a covariate silently drops ~62% of rows and trips `PF_MISSING_GT50`. Consider splitting into a `has_aki` logical plus stage-among-those-with-AKI.

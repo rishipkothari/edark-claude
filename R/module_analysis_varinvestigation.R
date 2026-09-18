@@ -36,6 +36,25 @@ NULL
 }
 
 
+# ── Shared helper: excluded-variables alert ───────────────────────────────────
+# Amber alert listing candidates a selection method left out, with reasons.
+# `excluded` is a data.frame(variable, reason); NULL / zero rows → NULL.
+.excluded_vars_alert <- function(excluded, heading) {
+  if (is.null(excluded) || nrow(excluded) == 0L) return(NULL)
+  shiny::div(
+    class = "alert alert-warning mb-2",
+    shiny::tags$strong(shiny::icon("triangle-exclamation"), " ", heading),
+    shiny::tags$ul(
+      class = "mb-0 ps-3",
+      lapply(seq_len(nrow(excluded)), function(i) {
+        shiny::tags$li(shiny::tags$code(excluded$variable[i]),
+                       " — ", excluded$reason[i])
+      })
+    )
+  )
+}
+
+
 # ── Shared helper: blocking modal ─────────────────────────────────────────────
 .analysis_progress_modal <- function(title_text, detail_text = "Running\u2026") {
   shiny::modalDialog(
@@ -236,16 +255,50 @@ analysis_varinvestigation_server <- function(id, shared_state) {
       .tier1_banner_ui(shared_state$analysis_spec, shared_state$analysis_data)
     })
 
+    # Current p-value threshold. Falls back to the spec value while the numeric
+    # input is blank, mid-edit, or out of range, so downstream renders never
+    # see NA.
+    univ_threshold <- shiny::reactive({
+      thr <- input$univ_threshold
+      if (is.null(thr) || is.na(thr) || thr <= 0 || thr > 1) {
+        spec <- shiny::isolate(shared_state$analysis_spec)
+        thr  <- spec$variable_selection_specification$univariable_p_threshold
+      }
+      if (is.null(thr)) 0.2 else thr
+    })
+
+    # Threshold change: persist to spec and re-flag the stored screen result
+    # (no refit \u2014 p-values are unchanged, only the cut-off moves).
+    shiny::observeEvent(univ_threshold(), {
+      thr <- univ_threshold()
+
+      spec <- shiny::isolate(shared_state$analysis_spec)
+      if (!is.null(spec) &&
+          !identical(spec$variable_selection_specification$univariable_p_threshold, thr)) {
+        spec$variable_selection_specification$univariable_p_threshold <- thr
+        shared_state$analysis_spec <- spec
+      }
+
+      res <- shiny::isolate(shared_state$analysis_result)
+      tbl <- res$variable_investigation$univariable
+      if (!is.null(tbl)) {
+        new_suggested <- !is.na(tbl$p.value) & tbl$p.value < thr
+        if (!identical(tbl$suggested, new_suggested)) {
+          tbl$suggested <- new_suggested
+          res$variable_investigation$univariable <- tbl
+          res$result_tables$univariable_screen   <- tbl
+          shared_state$analysis_result <- res
+        }
+      }
+    }, ignoreInit = TRUE)
+
     shiny::observeEvent(input$btn_run_univariable, {
       spec  <- shiny::isolate(shared_state$analysis_spec)
       adata <- shiny::isolate(shared_state$analysis_data)
       if (is.null(spec) || is.null(adata)) return()
 
-      # Update threshold in spec
-      thr <- input$univ_threshold
-      if (!is.null(thr) && !is.na(thr)) {
-        spec$variable_selection_specification$univariable_p_threshold <- thr
-      }
+      thr <- univ_threshold()
+      spec$variable_selection_specification$univariable_p_threshold <- thr
 
       shiny::showModal(.analysis_progress_modal("Running Univariable Screen\u2026"))
       on.exit(shiny::removeModal(), add = TRUE)
@@ -258,13 +311,14 @@ analysis_varinvestigation_server <- function(id, shared_state) {
       if (is.null(res$variable_investigation)) res$variable_investigation <- list()
       if (is.null(res$result_tables)) res$result_tables <- list()
 
-      res$variable_investigation$univariable     <- screen_result
-      res$result_tables$univariable_screen        <- screen_result
+      res$variable_investigation$univariable          <- screen_result
+      res$variable_investigation$univariable_excluded <- attr(screen_result, "excluded_variables")
+      res$result_tables$univariable_screen             <- screen_result
       shared_state$analysis_result <- res
 
       # Persist threshold
       cur_spec <- shiny::isolate(shared_state$analysis_spec)
-      if (!is.null(cur_spec) && !is.null(thr)) {
+      if (!is.null(cur_spec)) {
         cur_spec$variable_selection_specification$univariable_p_threshold <- thr
         shared_state$analysis_spec <- cur_spec
       }
@@ -275,23 +329,26 @@ analysis_varinvestigation_server <- function(id, shared_state) {
       tbl <- res$variable_investigation$univariable
       if (is.null(tbl)) return(NULL)
 
-      thr       <- input$univ_threshold
-      if (is.null(thr) || is.na(thr)) thr <- 0.2
-      n_total   <- nrow(tbl)
-      n_suggest <- sum(tbl$suggested, na.rm = TRUE)
+      thr <- univ_threshold()
+
+      # Count variables, not terms: a factor is suggested if any level passes
+      n_tested  <- length(unique(tbl$variable))
+      n_suggest <- length(unique(
+        tbl$variable[!is.na(tbl$p.value) & tbl$p.value < thr]
+      ))
 
       shiny::tagList(
         shiny::tags$hr(class = "my-2"),
         shiny::div(
           class = "d-flex justify-content-between mb-1",
           shiny::tags$span(class = "text-muted small", "Variables tested"),
-          shiny::tags$span(class = "small fw-semibold",
-                           length(unique(tbl$variable)))
+          shiny::tags$span(class = "small fw-semibold", n_tested)
         ),
         shiny::div(
           class = "d-flex justify-content-between mb-1",
           shiny::tags$span(class = "text-muted small",
-                           sprintf("Suggested (p < %.2f)", thr)),
+                           paste0("Variables suggested (p < ",
+                                  format(thr, nsmall = 2L), ")")),
           shiny::tags$span(class = "small fw-semibold text-success", n_suggest)
         )
       )
@@ -307,51 +364,67 @@ analysis_varinvestigation_server <- function(id, shared_state) {
           shiny::tags$p(class = "mt-2", "Click \u201cRun Screen\u201d to run univariable regressions.")
         ))
       }
-      DT::dataTableOutput(ns("univ_dt"))
+      shiny::tagList(
+        .excluded_vars_alert(res$variable_investigation$univariable_excluded,
+                             "Not tested:"),
+        reactable::reactableOutput(ns("univ_table"))
+      )
     })
 
-    output$univ_dt <- DT::renderDataTable({
+    output$univ_table <- reactable::renderReactable({
       res <- shared_state$analysis_result
       tbl <- res$variable_investigation$univariable
       shiny::req(!is.null(tbl))
 
-      thr <- input$univ_threshold
-      if (is.null(thr) || is.na(thr)) thr <- 0.2
+      thr       <- univ_threshold()
+      sig       <- !is.na(tbl$p.value) & tbl$p.value < thr
+      is_or     <- identical(tbl$effect_measure[1], "odds_ratio")
+      est_label <- if (is_or) "Odds Ratio" else "Coefficient (\u03b2)"
 
-      display <- tbl %>%
-        dplyr::mutate(
-          estimate  = round(.data$estimate, 3L),
-          conf.low  = if ("conf.low"  %in% names(.)) round(.data$conf.low,  3L) else NA,
-          conf.high = if ("conf.high" %in% names(.)) round(.data$conf.high, 3L) else NA,
-          p.value   = signif(.data$p.value, 3L)
-        ) %>%
-        dplyr::select(
-          Variable  = variable,
-          Term      = term,
-          Reference = dplyr::any_of("reference_level"),
-          Estimate  = estimate,
-          `CI Low`  = dplyr::any_of("conf.low"),
-          `CI High` = dplyr::any_of("conf.high"),
-          `P-value` = p.value
-        )
+      display <- data.frame(
+        variable        = tbl$variable,
+        term            = tbl$term,
+        reference_level = if ("reference_level" %in% names(tbl)) tbl$reference_level else NA_character_,
+        estimate        = tbl$estimate,
+        conf.low        = if ("conf.low"  %in% names(tbl)) tbl$conf.low  else NA_real_,
+        conf.high       = if ("conf.high" %in% names(tbl)) tbl$conf.high else NA_real_,
+        p.value         = tbl$p.value,
+        stringsAsFactors = FALSE
+      )
 
-      DT::datatable(
+      num_col <- function(name) {
+        reactable::colDef(name = name, format = reactable::colFormat(digits = 3L),
+                          na = "\u2014", align = "right")
+      }
+
+      reactable::reactable(
         display,
-        rownames  = FALSE,
-        selection = "none",
-        options   = list(
-          pageLength = 20,
-          dom        = "t"
-        )
-      ) %>%
-        DT::formatStyle(
-          "P-value",
-          target          = "row",
-          backgroundColor = DT::styleInterval(
-            thr,
-            c("#d4edda", "transparent")
+        columns = list(
+          variable        = reactable::colDef(name = "Variable", minWidth = 140),
+          term            = reactable::colDef(name = "Term", minWidth = 140),
+          reference_level = reactable::colDef(name = "Reference", na = "\u2014"),
+          estimate        = num_col(est_label),
+          conf.low        = num_col("95% CI Low"),
+          conf.high       = num_col("95% CI High"),
+          p.value         = reactable::colDef(
+            name  = "P-value",
+            align = "right",
+            cell  = function(value) {
+              if (is.na(value)) "\u2014"
+              else if (value < 0.001) "< 0.001"
+              else sprintf("%.3f", value)
+            }
           )
-        )
+        ),
+        # rowStyle index is the original data row, so highlighting survives sorting
+        rowStyle   = function(index) {
+          if (sig[index]) list(background = "rgba(25, 135, 84, 0.18)")
+        },
+        pagination = FALSE,
+        height     = "calc(100vh - 260px)",
+        highlight  = TRUE,
+        compact    = TRUE
+      )
     })
 
     # ── COLLINEARITY ──────────────────────────────────────────────────────────
@@ -643,6 +716,14 @@ analysis_varinvestigation_server <- function(id, shared_state) {
       n_sel <- length(result$selected_variables)
       shiny::tagList(
         shiny::tags$hr(class = "my-2"),
+        if (!is.null(result$n_used)) {
+          shiny::div(
+            class = "d-flex justify-content-between mb-1",
+            shiny::tags$span(class = "text-muted small", "Complete rows used"),
+            shiny::tags$span(class = "small fw-semibold",
+                             paste(result$n_used, "of", result$n_total))
+          )
+        },
         shiny::div(
           class = "d-flex justify-content-between mb-1",
           shiny::tags$span(class = "text-muted small", "Variables suggested"),
@@ -680,6 +761,8 @@ analysis_varinvestigation_server <- function(id, shared_state) {
           shiny::div(class = "alert alert-danger mb-3",
                      shiny::icon("circle-xmark"), " ", err)
         },
+        .excluded_vars_alert(result$excluded_variables,
+                             "Excluded from selection:"),
         bslib::card(
           bslib::card_header("Suggested Variables"),
           bslib::card_body(

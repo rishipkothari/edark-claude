@@ -42,7 +42,10 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       bootswatch = "flatly",
       primary    = "#2c7be5"
     ),
-    header = shiny::tags$head(shiny::tags$style(shiny::HTML("
+    header = shiny::tagList(
+      # Required for shinyjs::disabled() / toggleState() to take effect
+      shinyjs::useShinyjs(),
+      shiny::tags$head(shiny::tags$style(shiny::HTML("
       /* ── EDARK custom properties ── change values here, nowhere else ────── */
 
       /* sidebar nav-pill tabs */
@@ -93,7 +96,7 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
         line-height: 1;
       }
       #theme_toggle:hover, #debug_btn:hover { color: #ffffff; }
-    "))),
+    ")))),
 
     # ── Tab 1: Prepare ───────────────────────────────────────────────────────
     bslib::nav_panel(

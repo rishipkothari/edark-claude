@@ -12,24 +12,93 @@
 NULL
 
 
+# Split candidates into those that can enter a model on `data` (already
+# complete-cased by the caller) and those that cannot — a factor with < 2
+# observed levels, or a constant numeric. Returns list(keep, excluded) where
+# `excluded` is a data.frame(variable, reason).
+.partition_modelable <- function(data, candidates) {
+  reasons <- vapply(candidates, function(v) {
+    x <- data[[v]]
+    n_distinct <- length(unique(x[!is.na(x)]))
+    if (n_distinct >= 2L) return(NA_character_)
+    if (is.numeric(x)) "no variation after removing missing values"
+    else "only 1 level after removing missing values"
+  }, character(1), USE.NAMES = FALSE)
+
+  list(
+    keep     = candidates[is.na(reasons)],
+    excluded = data.frame(
+      variable         = candidates[!is.na(reasons)],
+      reason           = reasons[!is.na(reasons)],
+      stringsAsFactors = FALSE
+    )
+  )
+}
+
+# Drop unobserved levels from the factor columns in `vars`, so that empty
+# levels do not become all-zero dummy columns.
+.droplevels_cols <- function(data, vars) {
+  for (v in intersect(vars, names(data))) {
+    if (is.factor(data[[v]])) data[[v]] <- droplevels(data[[v]])
+  }
+  data
+}
+
+# Shared prep for stepwise / LASSO, which listwise-delete across the whole
+# candidate pool. Excludes candidates that cannot be modelled on the surviving
+# rows. Returns list(data, keep, error, run_info); `run_info` (excluded
+# variables, rows used, rows total) is appended to every result, success or
+# failure, so the UI can explain what was dropped.
+.prepare_selection_data <- function(data, data_cc, candidates) {
+  part     <- .partition_modelable(data_cc, candidates)
+  run_info <- list(
+    excluded_variables = part$excluded,
+    n_used             = nrow(data_cc),
+    n_total            = nrow(data)
+  )
+
+  error <- if (nrow(data_cc) == 0L) {
+    "No rows are complete across the outcome and all candidate variables."
+  } else if (length(part$keep) == 0L) {
+    "None of the candidate variables can be modelled on the complete rows."
+  }
+
+  list(
+    data     = .droplevels_cols(data_cc, part$keep),
+    keep     = part$keep,
+    error    = error,
+    run_info = run_info
+  )
+}
+
+
 #' Run univariable regression screen
 #'
 #' Fits one \code{lm} (continuous outcome) or \code{glm} (binary outcome)
-#' per candidate variable. Returns a tidy tibble sorted by p-value.
+#' per candidate variable. Returns a tidy tibble, exposure first, then
+#' candidates in dataset column order.
 #'
 #' @param data A \code{data.frame} (the frozen analysis dataset).
 #' @param spec A named list conforming to the \code{analysis_spec} structure.
 #'
 #' @return A \code{tibble} with columns \code{variable}, \code{term},
 #'   \code{estimate}, \code{conf.low}, \code{conf.high}, \code{p.value},
-#'   \code{suggested} (logical: p < threshold). Returns \code{NULL} when no
-#'   candidates or no outcome are assigned.
+#'   \code{reference_level}, \code{effect_measure}, and \code{suggested}
+#'   (logical: p < threshold). For a binary outcome \code{estimate} and the
+#'   CI are odds ratios (\code{effect_measure = "odds_ratio"}); for a
+#'   continuous outcome they are raw coefficients
+#'   (\code{effect_measure = "coefficient"}). Candidates that cannot be
+#'   modelled (single-level factor, constant numeric, or a failed fit) are
+#'   omitted and listed in \code{attr(result, "excluded_variables")}, a
+#'   \code{data.frame(variable, reason)}; if every candidate is excluded the
+#'   tibble has zero rows. Returns \code{NULL} when no candidates or no
+#'   outcome are assigned.
 #' @export
 run_univariable_screen <- function(data, spec) {
   roles      <- spec$variable_roles
   outcome    <- roles$outcome_variable
   candidates <- roles$univariable_test_pool
-  threshold  <- spec$variable_selection_specification$univariable_p_threshold
+  threshold  <- spec$variable_selection_specification$univariable_p_threshold                                                                                       
   if (is.null(threshold)) threshold <- 0.2
 
   if (is.null(outcome) || !nzchar(outcome)) return(NULL)
@@ -40,31 +109,58 @@ run_univariable_screen <- function(data, spec) {
   out_col   <- data[[outcome]]
   is_binary <- is.factor(out_col) && length(levels(droplevels(out_col))) == 2L
 
+  # Each candidate yields either tidy rows or an exclusion reason
+  .skip <- function(cand, reason) {
+    list(tidy = NULL,
+         excluded = data.frame(variable = cand, reason = reason,
+                               stringsAsFactors = FALSE))
+  }
+
   results <- lapply(candidates, function(cand) {
-    if (!cand %in% names(data)) return(NULL)
+    if (!cand %in% names(data)) return(.skip(cand, "not in the analysis dataset"))
 
     cc <- compute_complete_cases(data, c(outcome, cand))$data
-    if (nrow(cc) == 0L) return(NULL)
+    if (nrow(cc) == 0L) return(.skip(cand, "no complete rows with the outcome"))
+
+    part <- .partition_modelable(cc, cand)
+    if (nrow(part$excluded) > 0L) return(.skip(cand, part$excluded$reason))
 
     tryCatch({
+      cc   <- .droplevels_cols(cc, cand)
       fmla <- stats::as.formula(paste(outcome, "~", cand))
 
       if (is_binary) {
         fit      <- stats::glm(fmla, data = cc, family = stats::binomial())
-        tidy_res <- broom::tidy(fit, conf.int = TRUE, exponentiate = FALSE)
+        tidy_res <- broom::tidy(fit, conf.int = TRUE, exponentiate = TRUE)
       } else {
         fit      <- stats::lm(fmla, data = cc)
         tidy_res <- broom::tidy(fit, conf.int = TRUE)
       }
 
-      tidy_res %>%
-        dplyr::filter(.data$term != "(Intercept)") %>%
-        dplyr::mutate(variable = cand)
-    }, error = function(e) NULL)
+      list(tidy = tidy_res %>%
+             dplyr::filter(.data$term != "(Intercept)") %>%
+             dplyr::mutate(variable = cand),
+           excluded = NULL)
+    }, error = function(e) .skip(cand, paste("model failed:", conditionMessage(e))))
   })
 
-  tidy_all <- dplyr::bind_rows(Filter(Negate(is.null), results))
-  if (nrow(tidy_all) == 0L) return(NULL)
+  excluded <- dplyr::bind_rows(lapply(results, `[[`, "excluded"))
+  if (nrow(excluded) == 0L) {
+    excluded <- data.frame(variable = character(0), reason = character(0),
+                           stringsAsFactors = FALSE)
+  }
+
+  tidy_all <- dplyr::bind_rows(lapply(results, `[[`, "tidy"))
+  if (nrow(tidy_all) == 0L) {
+    empty <- tibble::tibble(
+      variable = character(0), term = character(0), estimate = numeric(0),
+      conf.low = numeric(0), conf.high = numeric(0), p.value = numeric(0),
+      reference_level = character(0), effect_measure = character(0),
+      suggested = logical(0)
+    )
+    attr(empty, "excluded_variables") <- excluded
+    return(empty)
+  }
 
   exposure     <- roles$exposure_variable
   cand_ordered <- intersect(names(data), candidates)
@@ -74,7 +170,7 @@ run_univariable_screen <- function(data, spec) {
 
   ref_levels <- if (!is.null(roles$reference_levels)) roles$reference_levels else list()
 
-  tidy_all %>%
+  out <- tidy_all %>%
     dplyr::select(
       variable, term,
       estimate,
@@ -87,10 +183,14 @@ run_univariable_screen <- function(data, spec) {
       reference_level = vapply(.data$variable, function(v) {
         if (v %in% names(ref_levels)) as.character(ref_levels[[v]]) else NA_character_
       }, character(1L)),
-      suggested = .data$p.value < threshold
+      effect_measure  = if (is_binary) "odds_ratio" else "coefficient",
+      suggested = !is.na(.data$p.value) & .data$p.value < threshold
     ) %>%
     dplyr::arrange(.data$.var_rank, .data$term) %>%
     dplyr::select(-.data$.var_rank)
+
+  attr(out, "excluded_variables") <- excluded
+  out
 }
 
 
@@ -213,7 +313,12 @@ compute_collinearity <- function(data, candidates) {
 #' @param spec A named list conforming to the \code{analysis_spec} structure.
 #'
 #' @return A named list: \code{selected_variables}, \code{direction},
-#'   \code{criterion}, \code{final_formula}. Returns \code{NULL} on failure.
+#'   \code{criterion}, \code{final_formula}, \code{step_trace}, plus
+#'   \code{excluded_variables} (\code{data.frame(variable, reason)} of
+#'   candidates that could not be modelled on the complete rows),
+#'   \code{n_used} and \code{n_total}. On a fit error, \code{error} holds the
+#'   message and \code{selected_variables} is empty. Returns \code{NULL} when
+#'   no outcome or candidates are assigned.
 #' @export
 run_stepwise <- function(data, spec) {
   roles      <- spec$variable_roles
@@ -230,6 +335,16 @@ run_stepwise <- function(data, spec) {
 
   cands_present <- intersect(candidates, names(data_cc))
   if (length(cands_present) == 0L) return(NULL)
+
+  prep <- .prepare_selection_data(data, data_cc, cands_present)
+  .fail <- function(msg) {
+    c(list(selected_variables = character(0), direction = direction,
+           criterion = criterion, final_formula = NULL, error = msg),
+      prep$run_info)
+  }
+  if (!is.null(prep$error)) return(.fail(prep$error))
+  cands_present <- prep$keep
+  data_cc       <- prep$data
 
   out_col   <- data_cc[[outcome]]
   is_binary <- is.factor(out_col) && length(levels(droplevels(out_col))) == 2L
@@ -273,22 +388,14 @@ run_stepwise <- function(data, spec) {
       if (length(matches) > 0L) matches[1L] else t
     })))
 
-    list(
+    c(list(
       selected_variables = selected_vars,
       direction          = direction,
       criterion          = criterion,
       final_formula      = stats::formula(selected_fit),
       step_trace         = selected_fit$anova
-    )
-  }, error = function(e) {
-    list(
-      selected_variables = character(0),
-      direction          = direction,
-      criterion          = criterion,
-      final_formula      = NULL,
-      error              = conditionMessage(e)
-    )
-  })
+    ), prep$run_info)
+  }, error = function(e) .fail(conditionMessage(e)))
 }
 
 
@@ -302,8 +409,10 @@ run_stepwise <- function(data, spec) {
 #' @param spec A named list conforming to the \code{analysis_spec} structure.
 #'
 #' @return A named list: \code{selected_variables}, \code{lambda_type},
-#'   \code{lambda_selected}, \code{coef_data}, \code{cv_fit}.
-#'   Returns \code{NULL} on failure.
+#'   \code{lambda_selected}, \code{coef_data}, \code{cv_fit}, plus
+#'   \code{excluded_variables}, \code{n_used} and \code{n_total} (as for
+#'   \code{\link{run_stepwise}}). On a fit error, \code{error} holds the
+#'   message. Returns \code{NULL} when no outcome or candidates are assigned.
 #' @export
 run_lasso <- function(data, spec) {
   roles      <- spec$variable_roles
@@ -319,6 +428,17 @@ run_lasso <- function(data, spec) {
 
   cands_present <- intersect(candidates, names(data_cc))
   if (length(cands_present) == 0L) return(NULL)
+
+  prep <- .prepare_selection_data(data, data_cc, cands_present)
+  .fail <- function(msg) {
+    c(list(selected_variables = character(0), lambda_type = lambda_sel,
+           lambda_selected = NULL, coef_data = NULL, cv_fit = NULL,
+           error = msg),
+      prep$run_info)
+  }
+  if (!is.null(prep$error)) return(.fail(prep$error))
+  cands_present <- prep$keep
+  data_cc       <- prep$data
 
   out_col   <- data_cc[[outcome]]
   is_binary <- is.factor(out_col) && length(levels(droplevels(out_col))) == 2L
@@ -355,21 +475,12 @@ run_lasso <- function(data, spec) {
       character(0)
     }
 
-    list(
+    c(list(
       selected_variables = selected_vars,
       lambda_type        = lambda_sel,
       lambda_selected    = chosen_lambda,
       coef_data          = coef_df,
       cv_fit             = cv_fit
-    )
-  }, error = function(e) {
-    list(
-      selected_variables = character(0),
-      lambda_type        = lambda_sel,
-      lambda_selected    = NULL,
-      coef_data          = NULL,
-      cv_fit             = NULL,
-      error              = conditionMessage(e)
-    )
-  })
+    ), prep$run_info)
+  }, error = function(e) .fail(conditionMessage(e)))
 }
