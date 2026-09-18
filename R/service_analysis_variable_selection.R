@@ -150,13 +150,22 @@ run_univariable_screen <- function(data, spec) {
       cc   <- .droplevels_cols(cc, cand)
       fmla <- stats::as.formula(paste(outcome, "~", cand))
 
-      if (is_binary) {
-        fit      <- stats::glm(fmla, data = cc, family = stats::binomial())
-        tidy_res <- broom::tidy(fit, conf.int = TRUE, exponentiate = TRUE)
+      fit <- if (is_binary) {
+        stats::glm(fmla, data = cc, family = stats::binomial())
       } else {
-        fit      <- stats::lm(fmla, data = cc)
-        tidy_res <- broom::tidy(fit, conf.int = TRUE)
+        stats::lm(fmla, data = cc)
       }
+
+      # Same estimates / CIs / p-values as every other model in the app;
+      # estimate and CI are on the reporting scale (OR for logistic).
+      ct <- edark_coef_table(fit, cc)
+      tidy_res <- tibble::tibble(
+        term      = ct$term,
+        estimate  = ct$effect,
+        conf.low  = ct$effect.low,
+        conf.high = ct$effect.high,
+        p.value   = ct$p.value
+      )
 
       list(tidy = tidy_res %>%
              dplyr::filter(.data$term != "(Intercept)") %>%
@@ -299,7 +308,7 @@ compute_collinearity <- function(data, candidates) {
         flagged[[length(flagged) + 1L]] <- data.frame(
           var1  = rownames(cramers_v_mat)[idx[k, 1]],
           var2  = colnames(cramers_v_mat)[idx[k, 2]],
-          type  = "Cramér's V",
+          type  = "Cram\u00e9r's V",
           value = round(v, 3L),
           stringsAsFactors = FALSE
         )

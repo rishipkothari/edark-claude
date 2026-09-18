@@ -11,8 +11,8 @@ model (\code{lmerTest::lmer}), and logistic mixed model
 Pure functions — no Shiny. See PRD §4.4 and §7.1\enc{–}{-}7.5.
 }
 \details{
-All confidence intervals are Wald (estimate \eqn{\pm} 1.96 SE, computed
-from the fixed-effect estimates and their variance, which is what
-\code{confint.default()} does for lm/glm). P-values are model-native:
-t-tests (lm), Wald z (glm, glmer), Satterthwaite df (lmerTest).
+Coefficients, CIs and p-values come from \code{edark_coef_table()}
+(\code{stats_inference.R}): Wald-type CIs whose critical value matches the
+model-native p-value — t (lm), t with Satterthwaite df (lmerTest), z (glm,
+glmer).
 }

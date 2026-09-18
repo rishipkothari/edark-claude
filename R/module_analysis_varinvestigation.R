@@ -61,7 +61,7 @@ NULL
       class = "mb-0 ps-3",
       lapply(seq_len(nrow(excluded)), function(i) {
         shiny::tags$li(shiny::tags$code(excluded$variable[i]),
-                       " — ", excluded$reason[i])
+                       " \u2014 ", excluded$reason[i])
       })
     )
   )
@@ -422,11 +422,7 @@ analysis_varinvestigation_server <- function(id, shared_state) {
           p.value         = reactable::colDef(
             name  = "P-value",
             align = "right",
-            cell  = function(value) {
-              if (is.na(value)) "\u2014"
-              else if (value < 0.001) "< 0.001"
-              else sprintf("%.3f", value)
-            }
+            cell  = function(value) edark_format_p(value)
           )
         ),
         # rowStyle index is the original data row, so highlighting survives sorting

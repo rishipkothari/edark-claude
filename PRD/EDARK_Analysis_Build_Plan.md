@@ -282,7 +282,12 @@ which also clears `analysis_result$diagnostics`.
 ## Phase 7 — Step 7: Results
 
 ### Decisions (agreed 2026-09-18, before build)
-- **CIs stay Wald-type everywhere (estimate ± critical value × SE), with the critical value from the same distribution as the p-value**: t (residual df) for `lm`, t (Satterthwaite df) for `lmerTest::lmer`, z for `glm` / `glmer`. Today `lm` and `lmer` use 1.96 next to a t-test p-value, so the CI and p can disagree at small n. Change `.coef_table()` in `service_analysis_models.R` and the footnotes (§4.2) to match.
+- ✅ **Done ahead of Phase 7 — one statistics layer app-wide** (`R/stats_inference.R`, PRD §4.2, CLAUDE.md "Statistical methods registry"): Wald-type CIs whose critical value matches the p-value (t / Satterthwaite t / z); Step 3's univariable screen and Step 5 use the same `edark_coef_table()`; Table 1 and the Report use the same group tests (`edark_group_test()`); one p-value format (`edark_format_p()`); one footnote sentence per model type (`edark_inference_note()`). Step 7 must use these — no new CI/p code.
+- **Results table rows:** exposure + final covariates only (not unchosen Step 3 candidates), so every cell is filled. Two column groups — Unadjusted and Adjusted — each with estimate (95% CI) and p-value. No intercept. Random effects are **not** in this table (Fit statistics only).
+- **Summary tab:** key numbers only, no prose.
+- **Forest plot:** every model term (exposure + all covariates), adjusted estimates.
+- **Methods paragraph:** no variable-selection description; include R and package versions.
+- **Output selection:** keep a way to include/exclude each output (e.g. no forest plot).
 - **gtsummary is a formatter only.** Pass `tbl_regression()` a `tidy_fun` that returns our coefficient table — its default recomputes `glm` CIs by profile likelihood, which would contradict Step 5 and the "Wald" footnote.
 - **Unadjusted column is refit in Step 7** (not taken from Step 3): one model per variable (exposure + final covariates), on the **final model's complete-case sample** so both columns share one n, with the **same engine** as the final model — mixed models get univariable mixed models with the same cluster intercepts.
 - **Summary tab** is a reactive render of what `analysis_result` already holds (no computation, no checkbox).
@@ -332,9 +337,11 @@ which also clears `analysis_result$diagnostics`.
 - Live zip preview
 - Download button with validation
 - Blocking modal with per-step progress
+- Step 8 reachable once the dataset is frozen (change its gating in `module_analysis_main.R`); every item listed from the start, disabled with a "created in Step N" tooltip until its source exists in `analysis_result`
+- Analysis dataset is an optional item
 
 ### What NOT to touch
-- All other module and service files (complete at this point)
+- All other module and service files (complete at this point), except the Step 8 gating in `module_analysis_main.R`
 
 ### Acceptance criteria
 - Each preset pre-checks correct items
@@ -351,9 +358,59 @@ which also clears `analysis_result$diagnostics`.
 - Zip preview updates reactively
 - Blocking modal shows per-step progress
 - Export folder structure matches §10.2 exactly
+- Items for outputs not yet created are visible but disabled, and become selectable once created
 
 ### PRD references
 - §5.3 Step 8, §6.10, §10.1–10.12
+
+---
+
+## Phase S — Session Save and Load
+
+**Independent of Phases 7–8** — touches only Prepare, Step 1 and Step 4, all complete. Build whenever convenient.
+
+### What to build
+
+**S1 — Service layer**
+- `service_session.R`: `dataset_definition()`, `build_session()`, `read_session()`, `.SESSION_SCHEMA_VERSION`, the migration framework (empty for v1), and `reconcile_session()` with every §13.6 rule
+- `testthat` unit tests: save → read gives an identical session; each §13.6 row, including new and missing factor levels and numeric bounds at the data edge; newer schema refused; invalid file refused
+
+**S2 — Save**
+- `module_session.R`: Session navbar menu, save modal with the "Include dataset" checkbox, `downloadHandler`
+
+**S3 — Load: Prepare**
+- Load modal, confirm modal, and steps 1–3 of §13.7
+- One shared function runs the Apply pipeline so Apply and load don't duplicate it — refactor out of `module_prepare_confirm.R` if needed
+
+**S4 — Load: Analyze**
+- `shared_state$session_restore` payload
+- `module_analysis_setup.R`: take the payload in — freeze, apply roles, clear `roles`
+- `module_analysis_covariate_confirm.R`: take the payload in on a `roles_key` change when the roles match
+- Navigate and show the toast
+
+**S5 — Launch argument and autosave**
+- `edark(session = )` per §13.8
+- Autosave writer, file limit, and resume modal per §13.9
+
+### What NOT to touch
+- Steps 2, 3, 5–8 module and service files
+- Model fitting, validation, and reset logic (`service_analysis_models.R`, `service_analysis_validation.R`, `service_analysis_pipeline.R`)
+
+### Acceptance criteria
+- Round trip on `liver_tx` with transforms, filters, roles, clusters and covariates: after loading, every Prepare tab, the Step 1 table and the Step 4 checkboxes show the saved state; the Step 5 preflight equals the preflight before saving; nothing has been fitted
+- A session saved before Step 4 was used restores roles, and Step 4 opens with nothing checked
+- A session saved before Start Analysis restores Prepare only
+- Loading onto `liver_tx[1:300, ]` succeeds; filters and reference levels adjust per §13.6
+- Loading onto `liver_tx` with a column dropped, or a column's type changed: everything else loads, with no error and no list of what was skipped
+- Loading onto an unrelated dataset (e.g. `mtcars`) is refused
+- A newer-schema file is refused with the update message
+- Data in a session file is used only by `edark(session = )` with no dataset argument, never by an in-app load
+- An autosave is written after Apply, a role change and a covariate change, never contains data, and offers resume on the next launch with the same dataset definition
+- Verified in the browser with `chromote`, not only `testServer` (the Step 1 and Step 4 tables are patched client-side)
+- `devtools::check()` passes with 0 errors, 0 warnings
+
+### PRD references
+- §13.1–13.10, §5.3 Step 8 (materials vs session)
 
 ---
 

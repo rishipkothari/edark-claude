@@ -49,7 +49,7 @@ build_table1 <- function(data,
   priority <- c(exposure_var, outcome_var)
   priority <- priority[!vapply(priority, function(x) is.null(x) || !nzchar(x), logical(1))]
   priority <- intersect(priority, t1_vars)
-  t1_vars  <- c(priority, setdiff(t1_vars, priority)) # exposure → outcome → rest
+  t1_vars  <- c(priority, setdiff(t1_vars, priority)) # exposure \u2192 outcome \u2192 rest
 
   if (length(t1_vars) == 0) {
     return(list(overall = NULL, by_exposure = NULL, by_outcome = NULL))
@@ -80,7 +80,17 @@ build_table1 <- function(data,
           gtsummary::bold_labels()
 
         if (include_p) {
-          tbl <- tbl %>% gtsummary::add_p()
+          # Same tests and p-value display as every other group comparison
+          # in the app (stats_inference.R): Kruskal-Wallis for numeric
+          # variables; chi-square, or Fisher's exact when any expected
+          # count < 5, for categorical ones.
+          tbl <- tbl %>% gtsummary::add_p(
+            test = list(
+              gtsummary::all_continuous()  ~ "kruskal.test",
+              gtsummary::all_categorical() ~ .gts_categorical_test
+            ),
+            pvalue_fun = function(x) ifelse(is.na(x), NA_character_, edark_format_p(x))
+          )
         }
 
         if (include_smd_flag) {

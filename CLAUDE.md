@@ -34,6 +34,7 @@ R/
 ├── build_plot_spec.R           build_univariate_plot_spec() / build_bivariate_plot_spec() / build_trend_plot_spec()
 ├── render_plot.R               All 11 plot types; dispatches from a spec list
 ├── build_variable_summary.R    Summary stats table for a single variable
+├── stats_inference.R           THE place p-values and CIs are computed — see "Statistical methods registry"
 ├── generate_report.R           Core report generation: builds sections, assembles PPT/Word/HTML
 │
 ├── module_column_manager.R     Prepare › Columns tab — include/exclude only
@@ -244,7 +245,24 @@ Use `geom_label()` with a one-row data frame and `inherit.aes = FALSE` instead. 
 Both modules use a `registered_cols` guard (`setdiff`) to prevent double-registering observers when the eligible column set re-fires. Without this, every reactive update to the spec list re-registers all existing observers, causing duplicate writes.
 
 ### chi-square on small expected counts
-In `.build_bivariate_fac_fac_table()`: `suppressWarnings(chisq.test(...))`, then if any expected cell < 5 fall back to `fisher.test(simulate.p.value = TRUE, B = 2000)`. Never let chi-square warnings reach report generation logs.
+All group comparisons go through `edark_group_test()` (`stats_inference.R`): chi-square without continuity correction, or Fisher's exact when any expected count < 5 (Monte Carlo with a fixed seed only if the exact algorithm fails). Chi-square warnings are suppressed there, never in callers.
+
+---
+
+## Statistical methods registry
+
+**Every p-value and CI in the app is computed in `R/stats_inference.R`. Never call `confint()`, `confint.default()`, `broom::tidy(conf.int = TRUE)`, `chisq.test()`, `fisher.test()`, `kruskal.test()` or `cor.test()` anywhere else, and never format a p-value by hand.** PRD §4.2 is the spec.
+
+| Quantity | Function | Method | Used by |
+|---|---|---|---|
+| Regression estimate / CI / p | `edark_coef_table(model, data)` | Wald-type: est ± crit × SE; crit = t(residual df) for lm, t(Satterthwaite df) for lmerTest, z for glm/glmer; p from `summary()`. OR = exp(est, limits) | Step 3 univariable screen, Step 5 fit, Step 7 (planned) |
+| Numeric across groups | `edark_group_test(x, g)` | Kruskal-Wallis | Table 1 (`add_p(test = "kruskal.test")`), Report Table One, Report num × fac |
+| Categorical across groups | `edark_group_test(x, g)` / `.gts_categorical_test` | Chi-square (no Yates); Fisher's exact if any expected < 5 | Table 1, Report Table One, Report fac × fac |
+| Correlation | `edark_cor_test(x, y)` | Pearson r; t-test p; Fisher's z CI | Explore scatter label, Report num × num |
+| p display | `edark_format_p(p)` | "< 0.001" else 3 decimals; NA → "—" (gtsummary gets a wrapper that keeps NA blank) | Everywhere |
+| CI / p wording | `edark_inference_note(model_type)` | One sentence per model type | Step 5 footnote, Summary, Step 7 + methods (planned) |
+
+Not regression inference, so defined where computed: Breusch-Pagan (`lmtest::bptest`), AUC CI (DeLong, `pROC::ci.auc`), calibration-bin CI (Wilson), SMD (gtsummary), Explore trend `mean_ci` (t CI of a mean). The F-test p in Step 5 fit statistics is `summary.lm`'s.
 
 ### patchwork + rvg::dml incompatibility
 `rvg::dml()` only accepts plain ggplot objects. `histogram_density` uses `split_panels = TRUE` in reports so the patchwork is never constructed. Any other patchwork reaching a report assembler is rasterised via `ggsave()` + `external_img()` / `body_add_img()`.
@@ -415,7 +433,7 @@ One role per variable: `outcome_variable` and `exposure_variable` (single-select
 
 ### Model fitting (`service_analysis_models.R`)
 - Model data: complete cases over outcome + predictors (+ clusters if mixed) → **ordered factors made unordered** (treatment contrasts, not `.L`/`.Q` polynomial terms — Auto-factor and cut-point transforms produce ordered factors) → reference levels → `droplevels` → clusters `factor()`.
-- Coefficients come from `summary(model)$coefficients` for all four engines; Wald CI = est ± 1.96·SE. **Don't use `confint.default()` on a merMod** — `coef()` of a merMod is per-group, not the fixed effects. Terms map to variables via the model matrix `assign` attribute (`lme4::getME(model, "X")` for mixed), never by name prefix.
+- Coefficients come from `edark_coef_table()` (see the Statistical methods registry); CI critical value matches the p-value's distribution. **Don't use `confint.default()` on a merMod** — `coef()` of a merMod is per-group, not the fixed effects. Terms map to variables via the model matrix `assign` attribute (`lme4::getME(model, "X")` for mixed), never by name prefix.
 - `summary()` of an `lmerTest::lmer` fit gives Satterthwaite p-values only because lmerTest's S3 method is registered — always fit linear mixed models with `lmerTest::lmer`, not `lme4::lmer`.
 - Warnings/messages are captured with `withCallingHandlers` + `tryCatch`, never thrown. Convergence, separation and "Rescale variables" warnings get plain-language hints (`.explain_fit_warning()`); lme4's "boundary (singular) fit" message is replaced by our own singular-fit warning.
 - `analysis_outcome_event(spec, data)` → the event level for a binary outcome (the non-reference level) — drives "Modelling: ead = TRUE (vs FALSE)".

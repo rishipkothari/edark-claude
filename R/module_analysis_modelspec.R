@@ -489,8 +489,8 @@ analysis_modelspec_server <- function(id, shared_state) {
 }
 
 .ms_fmt_p <- function(p) {
-  if (is.null(p) || is.na(p)) return("\u2014")
-  if (p < 0.001) "< 0.001" else sprintf("%.3f", p)
+  if (is.null(p)) return("\u2014")
+  edark_format_p(p)
 }
 
 .ms_fmt_est <- function(x) {
@@ -575,10 +575,7 @@ analysis_modelspec_server <- function(id, shared_state) {
           p        = reactable::colDef(name = "p-value", align = "right")
         )
       ),
-      shiny::tags$p(class = "small text-muted mt-2 mb-0",
-                    sprintf("Wald 95%% confidence intervals. P-values from %s.%s",
-                            .ANALYSIS_PVALUE_METHOD[[mt]],
-                            if (mt == "logistic_mixed") " Interpret with caution in small samples or with rare outcomes." else ""))
+      shiny::tags$p(class = "small text-muted mt-2 mb-0", edark_inference_note(mt))
     )
   )
 }

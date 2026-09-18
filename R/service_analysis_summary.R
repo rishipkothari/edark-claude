@@ -10,13 +10,6 @@
 NULL
 
 
-.ANALYSIS_PVALUE_METHOD <- c(
-  linear         = "t-tests",
-  logistic       = "Wald z-tests",
-  linear_mixed   = "t-tests with Satterthwaite degrees of freedom (lmerTest)",
-  logistic_mixed = "Wald z-tests"
-)
-
 .STUDY_TYPE_LABELS <- c(
   exposure_outcome     = "Exposure-outcome association study",
   risk_factor          = "Risk factor / association study",
@@ -330,9 +323,7 @@ build_analysis_summary <- function(spec, result, data, validation = NULL) {
     if (!is.null(fmla)) .srow("Formula", fmla),
     if (mixed) .srow("Random intercepts", paste(vr$cluster_variables, collapse = ", ")),
     if (mixed) .srow("Optimizer", md$optimizer %||% "bobyqa"),
-    if (!is.null(mt)) .srow("Inference", sprintf("Wald %d%% confidence intervals; p-values from %s",
-                                                 round((md$confidence_interval_level %||% 0.95) * 100),
-                                                 .ANALYSIS_PVALUE_METHOD[[mt]])),
+    if (!is.null(mt)) .srow("Inference", edark_inference_note(mt)),
     .srow("Missing data", "Complete-case analysis"),
     status
   ))

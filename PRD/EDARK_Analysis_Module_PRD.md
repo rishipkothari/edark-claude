@@ -397,18 +397,34 @@ All analytical methods available in v1. Linear regression and logistic regressio
 
 ### 4.2 P-value and Confidence Interval Methods
 
-All confidence intervals throughout the module are **Wald-based**. This applies to all model types without exception. Wald CIs are instantaneous, never fail, and are the standard in clinical research reporting. Profile likelihood CIs and likelihood ratio test p-values are deferred to v1.5 as advanced options (see §11).
+**One definition per quantity, app-wide.** Every p-value and CI is computed by `R/stats_inference.R` — no other file computes them. Regression CIs are **Wald-type** for every model: estimate ± critical value × SE, where the critical value comes from **the same distribution as the model's p-value**. A CI therefore excludes the null exactly when p < 0.05. Wald CIs are instantaneous, never fail, and are the standard in clinical research reporting. Profile likelihood CIs and likelihood ratio test p-values are deferred to v1.5 as advanced options (see §11).
 
 | Method | P-value approach | Confidence intervals | Notes |
 |---|---|---|---|
-| Linear regression | t-tests, native from `summary()` | Wald-based via `confint.default()` | Standard OLS assumptions apply |
-| Logistic regression | Wald z-tests, native from `summary()` | Wald-based via `confint.default()` | Acceptable for adequate sample sizes |
-| Linear mixed model | Satterthwaite approximated df via `lmerTest` | Wald-based via `confint.default()` | Standard accepted approach in clinical research |
-| Logistic mixed model | Wald z-tests, native from `summary()` | Wald-based via `confint.default()` | Interpret with caution in small samples, sparse data, or near-boundary random effects. Preflight validation flags inadequate event counts. |
-| Stepwise | From final `lm` or `glm` object | From final model object | Inference on stepwise-selected model labeled advisory |
+| Linear regression | t-tests (residual df), native from `summary()` | estimate ± t(0.975, residual df) × SE (= `confint.lm()`) | Standard OLS assumptions apply |
+| Logistic regression | Wald z-tests, native from `summary()` | estimate ± 1.96 × SE on the log-odds scale, exponentiated (= `confint.default()`) | Acceptable for adequate sample sizes |
+| Linear mixed model | t-tests with Satterthwaite df via `lmerTest` | estimate ± t(0.975, Satterthwaite df) × SE | Standard accepted approach in clinical research |
+| Logistic mixed model | Wald z-tests, native from `summary()` | estimate ± 1.96 × SE, exponentiated | Interpret with caution in small samples, sparse data, or near-boundary random effects. Preflight validation flags inadequate event counts. |
+| Univariable screen (Step 3), unadjusted models (Step 7) | As the matching model type above | As the matching model type above | Same function (`edark_coef_table()`) as the final model |
+| Stepwise | Not reported | Not reported | Selection only |
 | LASSO | None | None | Explicitly exploratory; coefficient path and selected variable list only |
 
-**Publication table footnotes:** All tables include "Wald-based confidence intervals." Linear regression: "P-values from t-tests." Logistic regression: "P-values from Wald z-tests." Linear mixed model: "P-values from Satterthwaite approximated degrees of freedom." Logistic mixed model: "P-values from Wald z-tests. Interpret with caution in small samples or with rare outcomes."
+**Other tests (group comparisons and correlation):**
+
+| Quantity | Where | Method |
+|---|---|---|
+| Numeric variable across groups | Table 1, Report Table One, Report correlation sections | Kruskal-Wallis test (any number of groups) |
+| Categorical variable across groups | Table 1, Report Table One, Report correlation sections | Pearson chi-square without continuity correction; Fisher's exact test when any expected count < 5 (Monte Carlo, 10,000 replicates, fixed seed, only if the exact algorithm runs out of memory) |
+| Correlation of two numeric variables | Explore scatter plot, Report correlation sections | Pearson r; t-test p (n − 2 df); 95% CI by Fisher's z |
+| Standardised mean difference | Table 1 | gtsummary `smd` (no p-value) |
+
+**P-value display:** "< 0.001", otherwise three decimals (`edark_format_p()`), everywhere including gtsummary tables.
+
+**Publication table footnotes** come from `edark_inference_note(model_type)` — the same sentence in Step 5, Step 7, the Summary and the methods paragraph:
+- Linear: "Wald-type 95% confidence intervals using the t distribution with residual degrees of freedom. P-values from t-tests."
+- Logistic: "Wald 95% confidence intervals (normal distribution), exponentiated to odds ratios. P-values from Wald z-tests."
+- Linear mixed: "Wald-type 95% confidence intervals using the t distribution with Satterthwaite degrees of freedom. P-values from t-tests with Satterthwaite degrees of freedom (lmerTest)."
+- Logistic mixed: as logistic, plus "Interpret with caution in small samples or with rare outcomes."
 
 ### 4.3 Full Package Dependencies
 
@@ -650,6 +666,8 @@ Variables: exposure + outcome + all candidates, fixed order. Placeholders for un
 
 Export checklist repopulates on tab entry. See §10 for complete specifications.
 
+**Reachable** once the dataset is frozen (not gated on a fitted model). Every item is listed from the start but disabled, with a tooltip naming the step that creates it, until its source exists in `analysis_result`. The analysis dataset is an optional item. Session files are separate — see §13.
+
 **Step complete when:** download initiated.
 
 ### 5.4 Stale State Propagation
@@ -784,9 +802,9 @@ Two-column full-width. Left: presets, checklists with step-of-origin subheadings
 
 **Complete cases:** `na.action = na.omit`. Row count stored in `run_status$run_messages`. Implemented in `analysis_utils.R`.
 
-**Confidence intervals:** Wald-based for all models, 95%, hardcoded: estimate ± 1.96 × SE from `summary(model)$coefficients` (identical to `confint.default()` for lm/glm; `confint.default()` is not used directly because it does not handle `merMod` fixed effects). Logistic models report odds ratios (exponentiated estimate and limits).
+**Confidence intervals:** Wald-type for all models, 95%, computed by `edark_coef_table()` (`R/stats_inference.R`) from `summary(model)$coefficients`: estimate ± critical value × SE, the critical value matching the p-value's distribution (t with residual df for lm, t with Satterthwaite df for lmerTest, z for glm/glmer). See §4.2. `confint()` / `confint.default()` / `broom::tidy(conf.int = TRUE)` are not used — they differ by model class (profile likelihood for glm) and do not handle `merMod` fixed effects. Logistic models report odds ratios (exponentiated estimate and limits).
 
-**Coefficient extraction:** `summary(model)$coefficients` for all four engines (estimate, SE, statistic, native p-value); terms are mapped to variables through the model matrix `assign` attribute. Stored as a data.frame in `inference_summary$coefficients` (variable, term, level, estimate, std.error, statistic, p.value, conf.low, conf.high, effect, effect.low, effect.high, effect_measure). Fit statistics are a long data.frame (key, label, value, format) in `inference_summary$fit_statistics`. `broom` / `broom.mixed` / gtsummary tables are left to Phase 7.
+**Coefficient extraction:** `edark_coef_table()` — `summary(model)$coefficients` for all four engines (estimate, SE, statistic, native p-value); terms are mapped to variables through the model matrix `assign` attribute. Stored as a data.frame in `inference_summary$coefficients` (variable, term, level, estimate, std.error, statistic, df, p.value, conf.low, conf.high, effect, effect.low, effect.high, effect_measure). Fit statistics are a long data.frame (key, label, value, format) in `inference_summary$fit_statistics`. `broom` / `broom.mixed` / gtsummary tables are left to Phase 7.
 
 **P-values:** method varies by model type. All displayed to 3 decimal places max; < 0.001 as "< 0.001".
 
@@ -1083,7 +1101,9 @@ No candidates → disabled. Single candidate → valid. All excluded → modal w
 
 ### 10.1 Overview
 
-Export reads from cached `analysis_result`. No recomputation during export. Checklist repopulates on Step 8 tab entry.
+Export reads from cached `analysis_result`. No recomputation during export. Checklist repopulates on Step 8 tab entry. Items whose source has not been created yet are shown disabled (§5.3 Step 8).
+
+Export produces **materials** — outputs for publication and reproduction. Saving and resuming work is a **session file** (§13), not an export.
 
 ### 10.2 Export Folder Structure (Authoritative — supersedes §3.8)
 
@@ -1155,7 +1175,7 @@ Spec exported as both JSON (human-readable) and RDS (programmatic). Analysis pac
 
 ### 11.2 Deferred Features
 
-**High Priority — v1.5:** propensity score methods (PSM, IPTW, PS-adjusted), Prepare pipeline session bundle.
+**High Priority — v1.5:** propensity score methods (PSM, IPTW, PS-adjusted). (The Prepare pipeline session bundle is now in scope as session save/load — §13.)
 
 **Mid Priority — v1.5:** analysis package import, additional models (GEE, multinomial, ordinal, Poisson, NB), marginal effects, LRT p-values for glmer (advanced option), profile likelihood CIs (advanced option), elastic net (LASSO alpha), customizable report builder, NNT/ARR, dynamic rounding.
 
@@ -1192,7 +1212,9 @@ R/
 ├── service_analysis_codegen.R            ← R code generator
 ├── service_analysis_export.R             ← export assembly pipeline
 ├── service_analysis_pipeline.R           ← reset_analysis_pipeline()
-└── analysis_utils.R                      ← formula assembly, reference levels, complete cases
+├── analysis_utils.R                      ← formula assembly, reference levels, complete cases
+├── module_session.R                      ← session save/load menu, autosave, resume (§13)
+└── service_session.R                     ← session build/read/migrate/reconcile (§13)
 ```
 
 ### 12.2 Module ↔ Service File Mapping
@@ -1207,6 +1229,7 @@ R/
 | `module_analysis_diagnostics.R` | `service_analysis_diagnostics.R`, `service_analysis_plots.R` |
 | `module_analysis_results.R` | `service_analysis_tables.R`, `service_analysis_plots.R` |
 | `module_analysis_export.R` | `service_analysis_export.R` |
+| `module_session.R` | `service_session.R` |
 
 ### 12.3 Coding Conventions
 
@@ -1215,3 +1238,126 @@ All code follows: `CLAUDE.md` (architecture rules, module convention, reactivity
 ### 12.4 Phased Build Plan
 
 The implementation is organized into sequential phases. The phased build plan is specified in a separate document: **`EDARK_Analysis_Build_Plan.md`**. See that document for phase definitions, acceptance criteria, "do not touch" lists, test datasets, and prompt briefs.
+
+---
+
+## Section 13 — Session Save and Load
+
+Spans Prepare and Analyze. Supersedes the "Prepare pipeline session bundle" formerly deferred in §11.2. Build sequence: Phase S in `EDARK_Analysis_Build_Plan.md`.
+
+### 13.1 Purpose
+
+Let a researcher save their setup and pick up where they left off — on the same dataset, or on a new version of it with the same columns (e.g. a refreshed data pull). A session file stores **decisions, not results**. Loading one sets up the app; nothing is fitted or computed. Anything that needs to run (Table 1, variable investigation, the model) is re-run by the user.
+
+This is separate from **materials** (Step 8 Export, §10), which exports outputs for publication and reproduction.
+
+### 13.2 What a Session Contains
+
+The minimum session is the work that is slowest to redo by hand:
+
+| Area | Content | Source |
+|---|---|---|
+| Prepare | Included columns, type overrides, transforms, row filters | `shared_state$last_applied_specs` |
+| Step 1 | Outcome, exposure, candidate covariates, clusters | `analysis_spec$variable_roles` |
+| Step 4 | Checked covariates and reference levels. Only saved if Step 4 was used (`final_model_covariates` is not `NULL`) | `analysis_spec$variable_roles` |
+
+**Not in a v1 session:** Explore settings, custom report items, Report settings, Table 1 options, Step 3 settings and results, model settings (including the optimizer), and any fitted object, table, or plot.
+
+Prepare settings that were staged but not yet applied are not saved. A session reflects the last Apply.
+
+### 13.3 File Format
+
+A single `.rds` file with the extension `.edark.rds`, containing a plain named list. It must hold no functions or environments, and nothing from the file is ever run as code.
+
+```r
+list(
+  session_schema_version = 1L,
+  edark_version          = "0.2.x",
+  saved_at               = <POSIXct>,
+  dataset_definition = list(
+    columns       = c(age_tx = "numeric", graft_type = "factor", ...),  # EDARK types, original data
+    factor_levels = list(graft_type = c("DBD", "DCD", "LD"), ...)
+  ),
+  prepare  = list(included_columns, column_type_overrides,
+                  column_transform_specs, row_filter_specs),
+  analysis = list(                        # NULL if Start Analysis was never clicked
+    roles = list(outcome_variable, exposure_variable,
+                 candidate_covariates, cluster_variables),
+    covariates = list(                    # NULL if Step 4 was not used
+      final_model_covariates, reference_levels
+    )
+  ),
+  data = NULL                             # or the original data.frame, if the user chose to include it
+)
+```
+
+### 13.4 Dataset Definition
+
+The dataset definition describes the **original** dataset (`dataset_original`, after the automatic type casting at launch): each column's name, its EDARK type (numeric / factor / datetime / character — not the R class, so integer vs double never matters), and each factor's levels. It is **not a hash of the data**. Different or additional rows never affect loading.
+
+When a session is loaded, a saved column **still applies** if a column with the same name and the same EDARK type exists in the current dataset. A saved column that is missing, or whose type differs, is treated as absent. Factor levels are never a reason to reject a load; §13.6 covers them.
+
+This is separate from the full-data hash that Step 1 stores at freeze (`specification_metadata$dataset_signature`), which still drives the "working dataset has changed" banner within a single session.
+
+### 13.5 Schema Versioning
+
+`session_schema_version` describes the session file format, not the app version. It changes only when the file's structure changes.
+
+- **Older file:** upgraded on load by running migration functions in order (`.session_migrate_v1_to_v2()`, then v2→v3, and so on). Every schema change ships with its migration.
+- **Newer file** (saved by a later EDARK): refused with *"This session was saved with a newer version of EDARK (x.y.z). Update EDARK to load it."*
+- **Unreadable or wrong structure:** refused with *"This file is not a valid EDARK session."*
+
+### 13.6 Partial Loads
+
+A session may be a mid-work save, and it may be loaded onto a different version of the dataset. **Apply whatever still fits, skip whatever doesn't, and don't report what was skipped.**
+
+| Item | Rule |
+|---|---|
+| Included columns | Keep the saved columns that still apply. Columns new to the dataset are included (the user never excluded them). |
+| Type override | Skipped if its column no longer applies. |
+| Transform | Skipped if its column no longer applies, or if it is invalid on this data (`.transform_spec_is_valid()`, e.g. log of values ≤ 0). Cut points outside the new range are dropped as usual. |
+| Factor row filter | Keep saved levels that still exist. Levels new to the dataset are kept (the user never excluded them). If no saved level survives, the filter is skipped. |
+| Numeric row filter | A saved bound that sat at the old data edge (the user did not restrict that side) moves to the new data edge. Any other bound is kept as the user set it, clamped to the new data range. |
+| Outcome / exposure | Skipped if the variable no longer applies. |
+| Candidates / clusters | Keep the variables that still apply. |
+| Covariates | Keep the variables that still apply and are still candidates. |
+| Reference level | If the saved level no longer exists, fall back to the first level that does (existing Step 4 behaviour). |
+
+A load is refused only if **no** saved column applies: *"This session does not match this dataset."*
+
+### 13.7 Load Sequence
+
+The load follows the order the user would have worked in. Later stages are handed to their modules as waiting payloads, so no module's reset logic can clear what the load just set.
+
+1. **Confirm.** If the app has any applied Prepare changes or a frozen analysis, show *"Load session? This replaces your current data preparation and analysis setup."* with Cancel / Load.
+2. **Read** the file, validate it, upgrade old schemas, and apply the §13.6 rules against the current `dataset_original`.
+3. **Prepare.** Write the adjusted settings into the staged Prepare fields and run the same pipeline Apply uses. Then save them as `last_applied_specs` and increment `revert_trigger`, so every Prepare tab refreshes its UI.
+4. **Analyze.** If the session has an `analysis` block, write `shared_state$session_restore <- list(token, roles, covariates)`.
+   - **Step 1** sees the payload, freezes the dataset (as if Start Analysis were clicked), applies the roles through its normal path (`.sync_spec()` + `.push_roles_to_table()`), and clears `roles` from the payload. No "Clear Analysis Results?" dialog appears; step 1 of this sequence already confirmed.
+   - **Step 4**: when its `roles_key` changes and a `covariates` payload is waiting, it applies the payload only if the spec's current roles match the payload's roles. It then sets its covariate selection from the payload instead of starting empty, and clears the payload. Its existing live-write logic then writes the covariates to the spec.
+5. **Navigate** to the furthest stage restored: Step 4 if covariates were restored, Step 1 if roles were, otherwise Prepare.
+6. **Notify** with a toast: *"Session loaded (saved 2026-09-18 14:02)."*
+
+### 13.8 Entry Points
+
+- **In the app:** a **Session** menu on the right of the navbar with *Save session…* and *Load session…*.
+  - **Save** shows an "Include dataset" checkbox (off by default) with the note *"Includes patient-level data. Only share where your data governance allows."* The file downloads as `edark_session_YYYY-MM-DD_HHMMSS.edark.rds`.
+  - **Load** accepts a session file. Any data inside it is **ignored**; an app session never switches datasets.
+- **At launch:** `edark(dataset, session = "path.edark.rds")`.
+  - `dataset` given → the session is applied to that dataset, and any data in the file is ignored.
+  - `dataset` omitted and the file contains data → that data is launched, then the session is applied.
+  - `dataset` omitted and the file has no data → error: *"This session has no data. Call edark(your_data, session = ...)."*
+
+### 13.9 Autosave
+
+- **What:** a session without data. Data is never written automatically.
+- **When:** whenever saved content changes (`last_applied_specs`, `variable_roles`, `final_model_covariates`, `reference_levels`), with a ~2 s delay so a burst of clicks becomes one save. It only writes if the content differs from the last autosave. It also saves once when the session ends.
+- **Where:** `tools::R_user_dir("edark", "data")/autosave/`. Files are named by a short hash of the dataset definition (not the data), with the newest 10 kept per definition.
+- **Resume:** at launch, if an autosave exists for this dataset definition and no `session` argument was passed, show *"Resume your previous session from 2026-09-18 14:02?"* with **Resume** / **Start fresh**. Resume runs the load sequence in §13.7.
+
+### 13.10 Architecture Notes
+
+- Pure functions (no Shiny) go in `R/service_session.R`: `build_session()`, `read_session()`, `.session_migrate_*()`, `dataset_definition()`, `reconcile_session()` (the §13.6 rules).
+- `R/module_session.R`: `session_ui()` / `session_server()` handle the navbar menu, the save/load modals, autosave, and the resume prompt.
+- **An exception to the analysis-field rule:** the session module may read `analysis_spec` to save it. It never writes analysis fields directly; Steps 1 and 4 apply their parts of `shared_state$session_restore` themselves.
+- New `shared_state` fields: `session_restore` (the waiting payload, `NULL` when idle) and `session_loaded_at`.

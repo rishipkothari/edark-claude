@@ -6,10 +6,10 @@
 #' (\code{lme4::glmer}), plus the rules for which model a spec can use.
 #' Pure functions — no Shiny. See PRD §4.4 and §7.1\enc{–}{-}7.5.
 #'
-#' All confidence intervals are Wald (estimate \eqn{\pm} 1.96 SE, computed
-#' from the fixed-effect estimates and their variance, which is what
-#' \code{confint.default()} does for lm/glm). P-values are model-native:
-#' t-tests (lm), Wald z (glm, glmer), Satterthwaite df (lmerTest).
+#' Coefficients, CIs and p-values come from \code{edark_coef_table()}
+#' (\code{stats_inference.R}): Wald-type CIs whose critical value matches the
+#' model-native p-value — t (lm), t with Satterthwaite df (lmerTest), z (glm,
+#' glmer).
 #'
 #' @importFrom magrittr %>%
 #'
@@ -283,7 +283,7 @@ fit_analysis_model <- function(spec, data) {
   }
 
   # ── Extract ───────────────────────────────────────────────────────────────
-  coefs <- tryCatch(.coef_table(model, cc, is_mixed, is_logit), error = function(e) {
+  coefs <- tryCatch(edark_coef_table(model, cc), error = function(e) {
     .msg("warning", "extract", paste("Coefficient table failed:", conditionMessage(e)))
     NULL
   })
@@ -346,61 +346,6 @@ fit_analysis_model <- function(spec, data) {
   }
   w
 }
-
-
-# Fixed-effect coefficient table with Wald CIs. Works for lm, glm,
-# lmerModLmerTest and glmerMod: summary()$coefficients holds the estimate,
-# SE, test statistic and native p-value for each; the term → variable map
-# comes from the model matrix's "assign" attribute.
-.coef_table <- function(model, data, is_mixed, is_logit) {
-  sm <- summary(model)$coefficients
-  stat_col <- grep("value$", colnames(sm))[1L]
-  p_col    <- grep("^Pr", colnames(sm))[1L]
-
-  if (is_mixed) {
-    X      <- lme4::getME(model, "X")
-    labels <- attr(stats::terms(model, fixed.only = TRUE), "term.labels")
-  } else {
-    X      <- stats::model.matrix(model)
-    labels <- attr(stats::terms(model), "term.labels")
-  }
-  col_var <- c("(Intercept)", labels)[attr(X, "assign") + 1L]
-  names(col_var) <- colnames(X)
-
-  terms <- rownames(sm)
-  var   <- unname(col_var[terms])
-  level <- vapply(seq_along(terms), function(i) {
-    v <- var[i]
-    if (is.na(v) || !v %in% names(data) || !is.factor(data[[v]])) return(NA_character_)
-    sub(paste0("^", .regex_escape(v)), "", terms[i])
-  }, character(1))
-
-  z   <- stats::qnorm(0.975)
-  est <- unname(sm[, 1L])
-  se  <- unname(sm[, 2L])
-  lo  <- est - z * se
-  hi  <- est + z * se
-
-  data.frame(
-    variable       = var,
-    term           = terms,
-    level          = level,
-    estimate       = est,
-    std.error      = se,
-    statistic      = if (!is.na(stat_col)) unname(sm[, stat_col]) else NA_real_,
-    p.value        = if (!is.na(p_col)) unname(sm[, p_col]) else NA_real_,
-    conf.low       = lo,
-    conf.high      = hi,
-    effect         = if (is_logit) exp(est) else est,
-    effect.low     = if (is_logit) exp(lo) else lo,
-    effect.high    = if (is_logit) exp(hi) else hi,
-    effect_measure = if (is_logit) "odds_ratio" else "coefficient",
-    stringsAsFactors = FALSE,
-    row.names = NULL
-  )
-}
-
-.regex_escape <- function(x) gsub("([.|()\\^{}+$*?\\[\\]\\\\])", "\\\\\\1", x)
 
 
 # Fit statistics per model type (PRD §7.2–7.5) as a long table so the UI and

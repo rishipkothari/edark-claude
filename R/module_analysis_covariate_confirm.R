@@ -457,7 +457,8 @@ analysis_covariate_confirm_server <- function(id, shared_state) {
 
       .fmt_p <- function(p) {
         if (is.null(p) || is.na(p)) return("")
-        if (p < 0.001) " p<0.001" else sprintf(" p=%.3f", p)
+        fp <- edark_format_p(p)
+        if (startsWith(fp, "<")) paste0(" p", gsub(" ", "", fp)) else paste0(" p=", fp)
       }
 
       .method_col <- function(key) {
