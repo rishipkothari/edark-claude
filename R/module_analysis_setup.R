@@ -196,7 +196,8 @@ analysis_setup_server <- function(id, shared_state) {
           stratify_by_outcome                  = FALSE,
           include_pvalues_exposure             = FALSE,
           include_pvalues_outcome              = TRUE,
-          include_standardized_mean_difference = TRUE
+          include_smd_exposure                 = TRUE,
+          include_smd_outcome                  = FALSE
         ),
         variable_selection_specification = list(
           method                  = "univariable",

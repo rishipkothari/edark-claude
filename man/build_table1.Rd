@@ -7,9 +7,10 @@
 build_table1(
   data,
   spec,
-  include_pvalues_exposure = FALSE,
-  include_pvalues_outcome = TRUE,
-  include_smd = TRUE
+  include_pvalues_exposure = NULL,
+  include_pvalues_outcome = NULL,
+  include_smd_exposure = NULL,
+  include_smd_outcome = NULL
 )
 }
 \arguments{
@@ -17,12 +18,14 @@ build_table1(
 
 \item{spec}{A named list conforming to the \code{analysis_spec} structure.}
 
-\item{include_pvalues_exposure}{Logical. Add p-values to the by-exposure tab.}
+\item{include_pvalues_exposure, include_pvalues_outcome}{Logical. Add p-values
+to the by-exposure / by-outcome tab. \code{NULL} (the default) falls back to
+the matching field in \code{spec$table1_specification}.}
 
-\item{include_pvalues_outcome}{Logical. Add p-values to the by-outcome tab.}
-
-\item{include_smd}{Logical. Add standardized mean difference to the
-by-exposure tab (only applied when the stratifier has exactly 2 levels).}
+\item{include_smd_exposure, include_smd_outcome}{Logical. Add standardized mean
+difference to the by-exposure / by-outcome tab. Only applied when that
+stratifier has exactly 2 observed levels. \code{NULL} (the default) falls
+back to the matching field in \code{spec$table1_specification}.}
 }
 \value{
 A named list: \code{overall}, \code{by_exposure}, \code{by_outcome}.
@@ -31,4 +34,8 @@ Elements are \code{NULL} when not applicable.
 \description{
 Generates up to three \code{gtsummary::tbl_summary} objects: an overall
 summary and optional stratified tables by exposure and outcome.
+}
+\details{
+P-values and SMD are mutually exclusive per tab: when both are
+requested for the same stratifier, SMD wins.
 }

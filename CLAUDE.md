@@ -70,7 +70,10 @@ R/
 ├── service_analysis_export.R       Export zip assembly pipeline (Phase 8)
 │
 ├── data.R                      Roxygen docs for built-in liver_tx dataset
-└── data/liver_tx.rda           120-row synthetic liver transplant dataset (default for edark())
+└── data/liver_tx.rda           500 × 36 synthetic liver transplant dataset (default for edark())
+
+data-raw/
+└── liver_tx_sample.R           Regenerates data/liver_tx.rda — run with Rscript; seeded, reproducible
 
 inst/
 ├── report_template.Rmd         Bundled Rmd template for HTML report output
@@ -322,6 +325,16 @@ Tab 4 (`4 · Analyze`) — an 8-step guided workflow for fitting and reporting s
 ### Current state
 Phase 0 complete: infrastructure scaffold, utility functions, full validator, pipeline reset, and placeholder stubs for all 8 steps. Steps 1–8 are placeholder cards pending Phases 1–8.
 
+### Test data for Phase 3
+`liver_tx` (500 × 36) is built to exercise variable investigation. Regenerate via `Rscript data-raw/liver_tx_sample.R` (seeded).
+
+- **Outcomes**: `ead` (logical → 2-level factor, ~28% prevalence) for logistic; `postop_los_days` for linear.
+- **Cluster**: `transplant_center` — 12 unbalanced centers with real random intercepts. Deliberately above the `PF_FEW_CLUSTERS` threshold (<10) and below `PF_UNBALANCED_CLUSTERS` (size CV >1), so neither fires by default; induce both with a row filter.
+- **Collinearity tiers**: `preop_meld` ↔ `preop_meld_na` (r 0.92, VIF ~10); `recipient_bmi` = weight/height² (VIF 41–151); `intraop_ebl_ml` ↔ `intraop_rbc_units` (r 0.92); `preop_meld` vs its three component labs (VIF ~5 — the MELD formula is on the log scale, so it is only moderately *linearly* redundant).
+- **Noise block (zero effect on every outcome)**: `donor_blood_type`, `donor_height_cm`, `or_room_number`, `surgery_start_hour`, `preop_ferritin`, `referral_source`. Verified: backward/forward stepwise (BIC) and LASSO (`lambda.1se`) all retain 0 of 6.
+- **Weak-but-real**: `preop_sodium` survives a liberal univariable screen, dropped by BIC. Use it to test p-threshold sensitivity.
+- **Missingness**: `preop_ferritin` 35% (trips `PF_MISSING_GT20`), `donor_age` 12%, `preop_albumin` 8%, `intraop_max_lactate` 5%, `preop_inr` 3%. `postop_aki_stage` NA means *no AKI*, not missing — including it in a model guts the complete-case n.
+
 ### Pipe mandate
 **Use `magrittr` `%>%` exclusively throughout all analysis module code and generated R scripts. Never use the base R pipe `|>`.**
 
@@ -413,7 +426,6 @@ session$sendCustomMessage("edark_analysis_progress", list(frac = 0.5, detail = "
 - **Bug — center tables in PPT + HTML reports**: `flextable::set_table_properties(align = "center")` is set in both `.style_dataset_summary_ft()` and `.style_section_ft()` in `generate_report.R` but tables still appear left-aligned in PPT and HTML output. DOCX may work. Investigate `officer` slide content alignment for PPT and the Rmd template's table rendering for HTML.
 
 #### Analysis module debugging
-- SMDs still dont work in table 1
 - when testing table 1 strat - selecting factors for exp and outcome, going to table 1 tab, selecting both checkboxes, going back to role selection, selecting numerics for exposure and outcome, back to table 1 and generate, its not unchecking the factor boxes bc its still generating table 1s implicitly factoring the numeric values and displaying the tabs for them
 - table 1 and univariable screen variable order should be exposure --> outcome --> all else in original dataset order
 - collinearity plot base size should be similarly scaled to # of variables; still too small when theres just a few
