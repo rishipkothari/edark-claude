@@ -348,7 +348,7 @@ edark_report(liver_tx, report_type = "primary_vs_others",
 Tab 4 (`4 · Analyze`) — an 8-step guided workflow for fitting and reporting statistical models. Full spec: `PRD/EDARK_Analysis_Module_PRD.md`. Build sequence: `PRD/EDARK_Analysis_Build_Plan.md`.
 
 ### Current state
-Phases 0–5 complete (infrastructure, Setup, Table 1, Variable Investigation, Covariate Confirmation, Model Specification), including the pre-Phase 5 refactor: subject ID and time roles removed in favour of a multi-select **cluster** role, random slopes removed, Step 4's Confirm button removed (live writes), Step 3 stepwise/LASSO hold the exposure. Steps 6–8 are placeholder stubs. The R code generator (`service_analysis_codegen.R`) is deferred. The PRD is updated for all of this; the build plan's Phase 4/5 sections still describe the old Confirm/pending flow, accordions, warning modal and random slopes — the PRD wins.
+Phases 0–5 complete (infrastructure, Setup, Table 1, Variable Investigation, Covariate Confirmation, Model Specification), including the pre-Phase 5 refactor: subject ID and time roles removed in favour of a multi-select **cluster** role, random slopes removed, Step 4's Confirm button removed (live writes), Step 3 stepwise/LASSO hold the exposure. Steps 6–8 are placeholder stubs. The R code generator (`service_analysis_codegen.R`) is deferred. The PRD and build plan are updated for all of this (build plan marks Phases 4–5 complete "as built" and adds a deferred Phase 5b for the code generator); where they ever disagree, the PRD wins.
 
 ### Test data for Phase 3
 `liver_tx` (500 × 36) is built to exercise variable investigation. Regenerate via `Rscript data-raw/liver_tx_sample.R` (seeded).
