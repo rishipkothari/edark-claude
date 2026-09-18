@@ -16,8 +16,18 @@ analysis_diagnostics_server(id, shared_state)
 \item{shared_state}{A Shiny \code{reactiveValues} object.}
 }
 \description{
-UI and server for Step 6 of the Analysis workflow: model assumption
-diagnostics (residuals, influence, VIF, convergence) and optional
-prediction performance diagnostics (ROC/AUC, calibration).
-Full implementation: Phase 6 of the build plan.
+UI and server for Step 6 of the Analysis workflow. Sidebar: the checks to
+run, in two groups — \strong{Model assumptions} (all ticked by default)
+and \strong{Prediction performance} (optional, unticked, collapsed; for
+prediction studies only) — and the Run Diagnostics button. Main panel: an
+Overview tab with every computed value and warning at a glance, then one
+tab per computed check.
+}
+\details{
+Diagnostics are advisory: nothing here blocks Step 7 or 8. Results are
+stored in \code{analysis_result$diagnostics},
+\code{result_plots$diagnostic_plots}, \code{result_tables$diagnostic_summary}
+and \code{inference_summary$influence_measures}; a new fit or any
+model-affecting change clears them (\code{reset_analysis_pipeline()}).
+Computation lives in \code{service_analysis_diagnostics.R}.
 }

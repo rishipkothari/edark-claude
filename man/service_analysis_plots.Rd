@@ -4,10 +4,8 @@
 \alias{service_analysis_plots}
 \title{Analysis Plot Generation Service}
 \description{
-Generates all \code{ggplot2} figures for the Analysis module: coefficient
-(forest) plot, residuals vs fitted, Q-Q plot, scale-location, Cook's
-distance, leverage, random effects Q-Q, cluster size distribution, ROC
-curve, calibration plot, predicted probability distribution, LASSO
-coefficient path, and LASSO cross-validation curve.
-Implemented in Phases 6 and 7 of the build plan.
+\code{ggplot2} figures for the Analysis module. Each function takes plain
+vectors / data frames (never a Shiny object) and returns a ggplot, so the
+same figure is shown in the app and saved by the export.
+Phase 6: diagnostic plots. Phase 7 adds the forest plot.
 }

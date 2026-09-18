@@ -4,9 +4,24 @@
 \alias{service_analysis_diagnostics}
 \title{Analysis Diagnostic Computation Service}
 \description{
-Computes all post-fit model diagnostics: residual checks, influence
-measures, VIF, Breusch-Pagan test, separation detection, random effects
-Q-Q, cluster size distribution, ROC/AUC, calibration, and predicted
-probability distributions. See PRD §7.2\enc{–}{-}7.5 (diagnostics sections).
-Implemented in Phase 6 of the build plan.
+Post-fit diagnostics for the Step 5 model (PRD §7.2\enc{–}{-}7.5). Pure
+functions — no Shiny. \code{analysis_diagnostic_options()} lists the checks
+a model type offers; \code{run_analysis_diagnostics()} computes the selected
+ones and returns values, plots and messages for Step 6 to store.
+}
+\details{
+Two groups of checks:
+\itemize{
+\item \strong{Model assumptions} — residuals (standard plots +
+Breusch-Pagan for linear models; binned residuals for logistic models,
+whose raw residuals are uninformative), influence (Cook's distance,
+leverage — non-mixed models), collinearity (VIF), separation (logistic),
+random effects (per-cluster variance, ICC, cluster sizes, Q-Q — mixed).
+\item \strong{Prediction performance} — optional, for prediction studies.
+Apparent (in-sample) performance only. Mixed models use marginal
+predictions (\code{re.form = NA}): the fixed effects alone, as for a
+new patient from an unseen cluster.
+}
+Sample accounting and fitting warnings (convergence, singular fit) are
+always reported — they cost nothing and belong with every model.
 }

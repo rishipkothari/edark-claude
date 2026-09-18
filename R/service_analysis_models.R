@@ -336,6 +336,11 @@ fit_analysis_model <- function(spec, data) {
     return(paste0(w, " \u2014 Usually (quasi-)separation: a predictor perfectly ",
                   "predicts the outcome for some rows. Check sparse factor levels."))
   }
+  if (grepl("Rescale variables", w, fixed = TRUE)) {
+    return(paste0(w, " \u2014 A predictor is on a much larger scale than the others ",
+                  "(e.g. mL next to units). Estimates are usually fine; rescaling it ",
+                  "in Prepare (e.g. mL \u2192 L, or Standardize) removes the warning."))
+  }
   if (grepl("algorithm did not converge", w, fixed = TRUE)) {
     return(paste0(w, " \u2014 Often caused by separation or very sparse data."))
   }

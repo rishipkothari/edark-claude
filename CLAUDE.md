@@ -54,7 +54,7 @@ R/
 ├── module_analysis_varinvestigation.R   Analyze › Step 3: Variable Investigation — univariable screen, collinearity, stepwise/LASSO (Phase 3)
 ├── module_analysis_covariate_confirm.R  Analyze › Step 4: Covariate Confirmation — final covariates, reference levels, live missingness; writes to spec on every change (Phase 4)
 ├── module_analysis_modelspec.R     Analyze › Step 5: Model Specification — Summary tab (audit) + Run Model tab (auto model type, optimizer, live preflight, fit, results) (Phase 5)
-├── module_analysis_diagnostics.R   Analyze › Step 6: Diagnostics — residuals, influence, VIF, ROC (Phase 6)
+├── module_analysis_diagnostics.R   Analyze › Step 6: Diagnostics — check lists + Run; Overview + per-check tabs (Phase 6)
 ├── module_analysis_results.R       Analyze › Step 7: Results — tables, forest plot, methods paragraph (Phase 7)
 ├── module_analysis_export.R        Analyze › Step 8: Export — zip assembly, preset selector, download (Phase 8)
 │
@@ -63,9 +63,9 @@ R/
 ├── service_analysis_validation.R   validate_analysis(spec, data, tier, verbose) — all Tier 1 + Tier 2 preflight checks
 ├── service_analysis_models.R       Model fitting engines: lm / glm / lmerTest::lmer / lme4::glmer; model options, outcome event, stale check (Phase 5)
 ├── service_analysis_summary.R      build_analysis_summary() — Step 5 Summary sections, pure, reusable by export (Phase 5)
-├── service_analysis_diagnostics.R  Post-fit diagnostic computation (Phase 6)
+├── service_analysis_diagnostics.R  analysis_diagnostic_options() / run_analysis_diagnostics() — pure (Phase 6)
 ├── service_analysis_tables.R       gtsummary table generation — Table 1, results, combined table (Phases 2, 7)
-├── service_analysis_plots.R        ggplot figure generation — forest plot, residuals, ROC, etc. (Phases 6, 7)
+├── service_analysis_plots.R        ggplot figures from plain data — diagnostic plots (Phase 6); forest plot (Phase 7)
 ├── service_analysis_variable_selection.R  Univariable screen / stepwise / LASSO (Phase 3)
 ├── service_analysis_codegen.R      Reproducible R script generator (Phase 5)
 ├── service_analysis_export.R       Export zip assembly pipeline (Phase 8)
@@ -348,7 +348,7 @@ edark_report(liver_tx, report_type = "primary_vs_others",
 Tab 4 (`4 · Analyze`) — an 8-step guided workflow for fitting and reporting statistical models. Full spec: `PRD/EDARK_Analysis_Module_PRD.md`. Build sequence: `PRD/EDARK_Analysis_Build_Plan.md`.
 
 ### Current state
-Phases 0–5 complete (infrastructure, Setup, Table 1, Variable Investigation, Covariate Confirmation, Model Specification), including the pre-Phase 5 refactor: subject ID and time roles removed in favour of a multi-select **cluster** role, random slopes removed, Step 4's Confirm button removed (live writes), Step 3 stepwise/LASSO hold the exposure. Steps 6–8 are placeholder stubs. The R code generator (`service_analysis_codegen.R`) is deferred. The PRD and build plan are updated for all of this (build plan marks Phases 4–5 complete "as built" and adds a deferred Phase 5b for the code generator); where they ever disagree, the PRD wins.
+Phases 0–6 complete (infrastructure, Setup, Table 1, Variable Investigation, Covariate Confirmation, Model Specification, Diagnostics), including the pre-Phase 5 refactor: subject ID and time roles removed in favour of a multi-select **cluster** role, random slopes removed, Step 4's Confirm button removed (live writes), Step 3 stepwise/LASSO hold the exposure. Steps 7–8 are placeholder stubs; Phase 7 decisions (CI critical values, gtsummary as formatter only, unadjusted models refit on the model sample) are recorded in the build plan. The R code generator (`service_analysis_codegen.R`) is deferred. The PRD and build plan are updated for all of this (build plan marks Phases 4–5 complete "as built" and adds a deferred Phase 5b for the code generator); where they ever disagree, the PRD wins.
 
 ### Test data for Phase 3
 `liver_tx` (500 × 36) is built to exercise variable investigation. Regenerate via `Rscript data-raw/liver_tx_sample.R` (seeded).
@@ -407,7 +407,7 @@ One role per variable: `outcome_variable` and `exposure_variable` (single-select
 ### Step 5 — Model Specification (`module_analysis_modelspec.R`)
 - Two tabs (`navset_underline`): **Summary** (first) and **Run Model**.
 - **Model type is automatic**: `analysis_model_options(spec, data)` returns all four types with `available` / `reason`; exactly one is available for a supported outcome (family from `analysis_outcome_type()`, mixed iff clusters assigned). An observer writes it to `model_design$model_type` (NULL for an unsupported outcome). The dropdown is display-only — others are disabled via `.disable_choice()` with the reason in their label.
-- **Optimizer** (mixed only, Advanced accordion) is the only Step 5 setting. Changing it after a fit does **not** clear the model — `analysis_fit_is_stale(spec, result)` compares model inputs against `analysis_result$specification_snapshot` and the UI shows a stale banner.
+- **Optimizer** (mixed only, Advanced accordion) is the only Step 5 setting. Changing it after a fit opens "Clear Model Results?": Clear & Continue → `reset_analysis_pipeline(shared_state, 5)` then writes the optimizer; Cancel → `updateSelectInput` back to the spec value. `analysis_fit_is_stale()` is kept as a safety net only.
 - **Preflight is live** (`validate_analysis(verbose = TRUE)` on every spec change). Sidebar shows errors + warnings; the Summary tab shows everything including passes. No Run Preflight button, no verbose checkbox, **no warning modal** on Run.
 - **Pulse**: Bootstrap gives disabled buttons `pointer-events: none`, so a click on disabled Run Model lands on its wrapper `#run_wrap`; JS adds `.edark-pulse` to `#preflight_box`.
 - **Run**: `fit_analysis_model(spec, data)` inside the blocking progress modal → `reset_analysis_pipeline(shared_state, 4)` (clears the previous fit and anything downstream) → writes `specification_snapshot`, `run_status` (status, fitted_at, error, n_used, n_total, formula, outcome_event, reference_levels, preflight warnings, run_messages), `fitted_models$primary_model`, `inference_summary$coefficients / fit_statistics / predicted_values`. A failed fit stores `status = "failed"` and no model.
@@ -417,8 +417,16 @@ One role per variable: `outcome_variable` and `exposure_variable` (single-select
 - Model data: complete cases over outcome + predictors (+ clusters if mixed) → **ordered factors made unordered** (treatment contrasts, not `.L`/`.Q` polynomial terms — Auto-factor and cut-point transforms produce ordered factors) → reference levels → `droplevels` → clusters `factor()`.
 - Coefficients come from `summary(model)$coefficients` for all four engines; Wald CI = est ± 1.96·SE. **Don't use `confint.default()` on a merMod** — `coef()` of a merMod is per-group, not the fixed effects. Terms map to variables via the model matrix `assign` attribute (`lme4::getME(model, "X")` for mixed), never by name prefix.
 - `summary()` of an `lmerTest::lmer` fit gives Satterthwaite p-values only because lmerTest's S3 method is registered — always fit linear mixed models with `lmerTest::lmer`, not `lme4::lmer`.
-- Warnings/messages are captured with `withCallingHandlers` + `tryCatch`, never thrown. Convergence and separation warnings get plain-language hints (`.explain_fit_warning()`); lme4's "boundary (singular) fit" message is replaced by our own singular-fit warning.
+- Warnings/messages are captured with `withCallingHandlers` + `tryCatch`, never thrown. Convergence, separation and "Rescale variables" warnings get plain-language hints (`.explain_fit_warning()`); lme4's "boundary (singular) fit" message is replaced by our own singular-fit warning.
 - `analysis_outcome_event(spec, data)` → the event level for a binary outcome (the non-reference level) — drives "Modelling: ead = TRUE (vs FALSE)".
+
+### Step 6 — Diagnostics (`module_analysis_diagnostics.R`, `service_analysis_diagnostics.R`, `service_analysis_plots.R`)
+- Left sidebar: **Model assumptions** checkbox group (all ticked) and **Prediction performance (optional)** in a collapsed accordion (unticked, all model types), each with Select all / Deselect all; Run Diagnostics. Main: header + `navset_card_tab` — **Overview** (Warnings card + one card per computed section, values with a reading guide from `.DG_HINTS`) then Residuals / Influence / Collinearity / Random effects / Prediction as computed.
+- Checks come from `analysis_diagnostic_options(model_type)` (the *fitted* model's type, from `specification_snapshot`). `run_analysis_diagnostics(result, data, checks)` ignores ids that don't apply — the checkbox inputs keep stale values across model types, and both `renderUI`s use `suspendWhenHidden = FALSE` so the hidden prediction list is reset too.
+- Always computed: sample accounting, fitting warnings (convergence — `optinfo$conv$lme4$messages` minus the singular notice — and `isSingular()`).
+- Per model: linear → residual plots + Breusch-Pagan; linear mixed → same plots on conditional residuals; logistic (both) → **binned residuals with `residuals = "response"`** (performance's default deviance residuals don't average to 0 and made every bin look biased). Influence (Cook's, leverage, top 10 rows with model-variable values) for non-mixed only. Separation for both logistic types (glmer: on `formula(model, fixed.only = TRUE)`). Random effects: per-cluster variance / SD / ICC computed from `VarCorr` (**`performance::icc()` returns NA once any component is singular**), residual variance σ² (linear) or π²/3 (logistic).
+- Prediction performance is **apparent** (in-sample) and says so; mixed models use `re.form = NA`. Logistic: AUC + DeLong CI, decile calibration (Wilson CIs), Brier + no-information Brier, predicted-probability histogram. Linear: RMSE, MAE, R², observed vs predicted. No calibration slope — it is 1 in-sample by construction.
+- Stored in `analysis_result$diagnostics` (everything but plots), `result_plots$diagnostic_plots`, `result_tables$diagnostic_summary` (long `metrics` table: section, key, label, value, format, level) and `inference_summary$influence_measures`. Advisory — never gates Steps 7–8.
 
 ### Summary (`service_analysis_summary.R`)
 `build_analysis_summary(spec, result, data, validation)` → list of sections `list(id, title, rows)`, each row `list(label, value, items, level)`. Current state only (not a click log). Data preparation comes from `specification_metadata$prepare_snapshot`, which Step 1 copies from `shared_state$last_applied_specs` (+ original columns/dims, working dims) at freeze — the only time Analysis reads Prepare state.
@@ -444,7 +452,7 @@ Return value also has `checks_run` and `passed` (pass messages from `.PF_PASS_LA
 | `from_step` | Clears |
 |---|---|
 | `1` | Entire `analysis_result`; resets `variable_selection_specification` and `model_design` in spec; sets `final_model_covariates` to `NULL` |
-| `4` or `5` | Fitted model, run status, result tables/plots, inference summary, generated script from `analysis_result`; step 5 also resets `model_design` in spec |
+| `4` or `5` | Fitted model, run status, result tables/plots, inference summary, `diagnostics`, generated script, methods paragraph from `analysis_result`. The spec is untouched (Step 5 writes its new setting after the reset) |
 
 ### Model types and `model_type` values
 | UI label | `model_type` value | Outcome type | Cluster variables |
@@ -487,7 +495,7 @@ session$sendCustomMessage("edark_analysis_progress", list(frac = 0.5, detail = "
 ## What's not built yet
 
 #### In progress
-- **Analysis module** (Phases 1–9): Phases 0–5 complete; Steps 6–8 are placeholder stubs. R code generator (`service_analysis_codegen.R`) deferred — Step 5's R Code Preview is a placeholder; it should consume `prepare_snapshot` + the spec. Step 5 stores coefficients + fit stats only (gtsummary tables are Phase 7). See `PRD/EDARK_Analysis_Build_Plan.md` for phase definitions and acceptance criteria.
+- **Analysis module** (Phases 1–9): Phases 0–6 complete; Steps 7–8 are placeholder stubs. R code generator (`service_analysis_codegen.R`) deferred — Step 5's R Code Preview is a placeholder; it should consume `prepare_snapshot` + the spec. Step 5 stores coefficients + fit stats only (gtsummary tables are Phase 7). See `PRD/EDARK_Analysis_Build_Plan.md` for phase definitions and acceptance criteria.
 
 #### High magnitude change
 - Alternative plot type options per variable combination (heat map, balloon plot, etc.)

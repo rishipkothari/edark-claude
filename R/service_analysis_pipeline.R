@@ -18,7 +18,7 @@ NULL
 #' @param shared_state A Shiny \code{reactiveValues} object.
 #' @param from_step Integer. The step that triggered the reset: \code{1}
 #'   (role assignment change), \code{4} (covariate change after a fit), or
-#'   \code{5} (model type change).
+#'   \code{5} (a Step 5 setting, e.g. the optimizer, changed after a fit).
 #'
 #' @return \code{invisible(NULL)}
 #' @export
@@ -47,9 +47,10 @@ reset_analysis_pipeline <- function(shared_state, from_step) {
     }
 
   } else if (from_step %in% c(4L, 5L)) {
-    # A covariate change or model type change invalidates the fitted model,
-    # diagnostics, and results — but leaves Table 1 and variable
-    # investigation intact.
+    # A covariate change (4) or a Step 5 setting change (5) invalidates the
+    # fitted model, diagnostics, and results — but leaves Table 1 and
+    # variable investigation intact. Step 5 changes the spec itself after the
+    # reset, so model_design is left alone here.
     if (!is.null(shared_state$analysis_result)) {
       res <- shared_state$analysis_result
 
@@ -75,16 +76,11 @@ reset_analysis_pipeline <- function(shared_state, from_step) {
         predicted_values   = NULL,
         influence_measures = NULL
       )
+      res$diagnostics        <- NULL
       res$generated_r_script <- NULL
       res$methods_paragraph  <- NULL
 
       shared_state$analysis_result <- res
-    }
-
-    # When the model type itself changes (Step 5), also clear the model_design
-    # in the spec so the new selection is treated as a fresh configuration.
-    if (from_step == 5L && !is.null(shared_state$analysis_spec)) {
-      shared_state$analysis_spec$model_design <- .default_model_design()
     }
   }
 

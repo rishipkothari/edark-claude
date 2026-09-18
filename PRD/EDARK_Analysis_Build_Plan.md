@@ -68,7 +68,7 @@
 
 ### Acceptance criteria
 - "Start Analysis" freezes dataset correctly with `.edark_row_id`
-- All role columns work: outcome, exposure, candidate, subject ID, cluster, time
+- All role columns work: outcome, exposure (single-select), candidate, cluster (multi-select). *(Subject ID and time roles were later removed — see PRD §5.3 Step 1.)*
 - Clear buttons deselect radio columns
 - Mutual exclusivity: assigning outcome unchecks candidate, etc.
 - Reference level dropdowns populate with R factor levels in correct order
@@ -145,80 +145,107 @@
 
 ---
 
-## Phase 4 — Step 4: Covariate Confirmation
+## Phase 4 — Step 4: Covariate Confirmation — ✅ COMPLETE
 
-### What to build
-- `module_analysis_covariate_confirm.R` — full implementation per §5.3 Step 4 and §6.6
-- Summary card at top
-- Confirmation table with: Variable, Type, Include checkbox, Univariable/Stepwise/LASSO suggestion columns, Reference level
-- Import buttons in column headers with parameter tooltips
-- Cell highlighting (green/pink/grey) per §9.7
-- Confirm button writing to `analysis_spec$variable_roles$final_model_covariates`
-- Pending state: modifications after confirmation → amber → blocks Step 5
+Built with agreed deviations from the original plan (the PRD is updated to match):
+candidates start **unchecked**; there is **no Confirm button and no pending state** —
+every change is written to the spec immediately; "Import" became **Add** (adds checks,
+no modal) and **Replace** (swaps the selection, modal); cluster variables are locked rows.
 
-### What NOT to touch
-- Steps 5–8 module files
-- Service files
+### What was built
+- `module_analysis_covariate_confirm.R` per §5.3 Step 4, §6.6, §9.7–9.8
+- Table: Include, Variable, Type, Missing, Row cost, Univariable / Stepwise / LASSO (Add / Replace + parameter tooltip in each header), Reference level
+- Right sidebar: live Model / Sample counts ("If mixed model" row count when clusters exist) and Checks
+- Live commit of `final_model_covariates`, `reference_levels` (effective levels), `variable_selection_specification$selected_variables`
+- First change after a fit → "Clear Model Results?" modal; Cancel undoes the click
+- `compute_covariate_sample()` in `analysis_utils.R`
 
-### Acceptance criteria
-- All candidates pre-checked by default
-- Suggestion columns correctly show ✓/— based on method results
-- Import buttons disabled if method not run; enabled if run
-- Import unchecks variables not selected; confirmation modal fires first
-- Cell highlighting: green for suggested, pink for not suggested, grey for not run
-- Column header tooltips show correct parameters
-- Confirm button writes `final_model_covariates` and `reference_levels` to spec
-- Pending state after modification: amber status, confirm reappears
-- Step 5 Run Model disabled when pending
+### Acceptance criteria (as built)
+- All candidates unchecked by default; role variables locked and checked at the top
+- Suggestion columns: green ✓ suggested (univariable shows smallest p), pink — not suggested, grey not run / `n/a` excluded
+- Add / Replace disabled if the method has not run; Replace shows a modal listing what will be checked / unchecked
+- Every change is written to the spec immediately; reference levels fall back to the first surviving level when the preferred one drops out
+- A Step 1 role change resets the selection; a Step 3 rerun only refreshes the suggestion columns
+- With a fitted model, the first change asks before clearing it; Cancel restores the table
 
 ### PRD references
 - §5.3 Step 4, §6.6, §9.7–9.8
 
 ---
 
-## Phase 5 — Step 5: Model Specification + Preflight + Model Fitting
+## Phase 5 — Step 5: Model Specification + Preflight + Model Fitting — ✅ COMPLETE
 
-### What to build
-- `module_analysis_modelspec.R` — full implementation per §5.3 Step 5, §6.7, §8.4
-- `service_analysis_models.R` — all four model fitting engines per §7.2–7.5
-- `service_analysis_codegen.R` — R code generator per §7.9
-- Sidebar: model dropdown, mixed model options, advanced accordion, run button
-- Main panel: stacked accordion layout per §8.4 (Model Summary, Preflight, Formula, Model Results, R Code Preview)
-- Preflight integration: Tier 2 validation on tab entry + model type change + Run Preflight button + verbose mode
-- Accordion state transitions per §8.4
-- Warning modal on Run Model with warnings
-- Pulse animation on disabled button click
-- R code preview live-updating from spec
-- Blocking modal for model fitting
+Built with agreed deviations (the PRD is updated to match): **two tabs** (Summary + Run
+Model) instead of stacked accordions; the **model type is automatic** (one valid type);
+preflight is **live** (no Run Preflight button, no verbose checkbox); **no warning modal**;
+optimizer change → **stale** results instead of a reset; the **R code generator is
+deferred** to Phase 5b.
 
-### What NOT to touch
-- Steps 6–8 module files
-- Service files other than `service_analysis_models.R` and `service_analysis_codegen.R`
+### What was built
+- `module_analysis_modelspec.R` per §5.3 Step 5, §6.7, §8.4
+- `service_analysis_models.R` — `fit_analysis_model()` (lm, glm, `lmerTest::lmer`, `lme4::glmer`), `analysis_model_options()`, `analysis_outcome_type()`, `analysis_outcome_event()`, `analysis_fit_is_stale()`
+- `service_analysis_summary.R` — `build_analysis_summary()` (pure; reusable by Phases 7–8)
+- `service_analysis_validation.R` — added `PF_OUTCOME_UNSUPPORTED`, `PF_LOOKS_CATEGORICAL`, and `checks_run` / `passed`
+- Step 1 freeze now stores `specification_metadata$prepare_snapshot`
 
-### Acceptance criteria
-- All four model types fit correctly: lm, glm, lmerTest::lmer, glmer
-- Model dropdown disables unavailable types with inline reasons
-- Mixed model options appear/hide based on selection
-- Preflight runs on tab entry and model type change
-- Verbose mode shows all checks including passes
-- Run Preflight button triggers full check display
-- Preflight errors disable Run Model + show inline message
-- Pulse animation fires on disabled button click
-- Warning modal shows on Run Model with warnings; Proceed/Cancel work
-- Model Results accordion appears on successful fit with primary estimate
-- R code preview shows correct script for each model type
-- Accordion state transitions: preflight run → Summary+Preflight expanded; fit → +Results expanded
-- Generated R code uses `pacman::p_load()`, `%>%`, RSPM repos
-- Generated script matches fitted model exactly
+### Acceptance criteria (as built)
+- All four model types fit correctly; all three optimizers (bobyqa, Nelder_Mead, nlminbwrap) run
+- Model dropdown lists all four types; the valid one is selected and written to the spec; the others are disabled with the reason in their label
+- Optimizer (Advanced accordion) appears only for mixed models
+- Live preflight: sidebar shows errors + warnings; Summary tab lists every check including passes
+- Preflight errors (or no valid model) disable Run Model with an inline message; clicking it pulses the preflight box
+- Run Model fits in the blocking modal; results show Primary result (exposure per level vs reference), Coefficients, Fit statistics, Fitting notes
+- "Modelling: outcome = event (vs reference)" shown for binary outcomes
+- Optimizer change after a fit shows the stale banner; a failed fit shows the error and stores no model
+- Step 6–8 unlock once `fitted_models$primary_model` exists
+- Summary tab covers: data preparation, dataset, roles, Table 1, variable investigation, covariates and sample, model, preflight checks
 
 ### PRD references
-- §5.3 Step 5, §6.7, §7.1–7.5, §7.9, §8.1–8.4
+- §5.3 Step 5, §6.7, §7.1–7.5, §8.1–8.4
 
 ---
 
-## Phase 6 — Step 6: Diagnostics
+## Phase 5b — R Code Generator — ⏳ DEFERRED
 
 ### What to build
+- `service_analysis_codegen.R` — R script generator per §7.9, cached in `analysis_result$generated_r_script`
+- Replace the Step 5 R Code Preview placeholder with the live script
+
+### Inputs available
+- `analysis_spec` (roles, covariates, reference levels, clusters, model_design)
+- `specification_metadata$prepare_snapshot` — Prepare settings (type overrides, included columns, transforms, row filters) so the script can rebuild the analysis dataset from the original data
+
+### Acceptance criteria
+- Script uses `pacman::p_load()`, `%>%`, RSPM repos
+- Rebuilds the model data exactly as `fit_analysis_model()` does (complete cases, ordered → unordered factors, reference levels, clusters as factors)
+- Fitted estimates match the app exactly for all four model types
+- Unrun variable selection methods are present but commented out
+
+### PRD references
+- §7.9
+
+---
+
+## Phase 6 — Step 6: Diagnostics — ✅ COMPLETE
+
+Built with agreed deviations (the PRD is updated to match): **left** sidebar with the check
+lists and Run button, and an **Overview tab** as the at-a-glance summary (instead of a right
+summary sidebar); **Prediction Performance for all model types** (linear: observed vs
+predicted, RMSE / MAE / R²), collapsed and optional, apparent performance only;
+**binned residuals** for logistic models; sample accounting and fitting warnings always
+included (no checkbox); diagnostics are advisory and never gate Steps 7–8. Also: changing the
+optimizer after a fit now clears the model (modal) via `reset_analysis_pipeline(from_step = 5)`,
+which also clears `analysis_result$diagnostics`.
+
+### What was built
+- `service_analysis_diagnostics.R` — `analysis_diagnostic_options(model_type)`, `run_analysis_diagnostics(result, data, checks, progress_fn)` (pure)
+- `service_analysis_plots.R` — all diagnostic plots (ggplot, shared `.ap_theme()`)
+- `module_analysis_diagnostics.R` — sidebar, blocking modal, Overview + per-check tabs
+- Stored in `analysis_result$diagnostics`, `result_plots$diagnostic_plots`, `result_tables$diagnostic_summary` (long metrics table), `inference_summary$influence_measures`
+
+### Original plan
+
+#### What to build
 - `module_analysis_diagnostics.R` — full implementation per §5.3 Step 6 and §6.8
 - `service_analysis_diagnostics.R` — all diagnostic computations per §7.2–7.5
 - `service_analysis_plots.R` — all diagnostic plot generation
@@ -226,6 +253,10 @@
 - Run button + blocking modal
 - `navset_card_tab` output tabs conditional on model type and selections
 - At-a-glance sidebar summary with conditional sections
+
+### Inputs from Phase 5
+- `analysis_result$fitted_models$primary_model`, `inference_summary$predicted_values` (`.edark_row_id`, `.fitted`, `.resid`, and `.fitted_marginal` for logistic mixed), `run_status` (incl. fitting warnings)
+- Mixed models have one random intercept per `variable_roles$cluster_variables` entry — random-effects Q-Q, ICC and cluster-size outputs must handle several grouping factors
 
 ### What NOT to touch
 - Steps 7–8 module files
@@ -250,6 +281,13 @@
 
 ## Phase 7 — Step 7: Results
 
+### Decisions (agreed 2026-09-18, before build)
+- **CIs stay Wald-type everywhere (estimate ± critical value × SE), with the critical value from the same distribution as the p-value**: t (residual df) for `lm`, t (Satterthwaite df) for `lmerTest::lmer`, z for `glm` / `glmer`. Today `lm` and `lmer` use 1.96 next to a t-test p-value, so the CI and p can disagree at small n. Change `.coef_table()` in `service_analysis_models.R` and the footnotes (§4.2) to match.
+- **gtsummary is a formatter only.** Pass `tbl_regression()` a `tidy_fun` that returns our coefficient table — its default recomputes `glm` CIs by profile likelihood, which would contradict Step 5 and the "Wald" footnote.
+- **Unadjusted column is refit in Step 7** (not taken from Step 3): one model per variable (exposure + final covariates), on the **final model's complete-case sample** so both columns share one n, with the **same engine** as the final model — mixed models get univariable mixed models with the same cluster intercepts.
+- **Summary tab** is a reactive render of what `analysis_result` already holds (no computation, no checkbox).
+- Footnote text lives in PRD §4.2 (the Step 7 cross-reference pointed at itself).
+
 ### What to build
 - `module_analysis_results.R` — full implementation per §5.3 Step 7 and §6.9
 - Extend `service_analysis_tables.R` — results tables, combined table via `tbl_merge()`, methods paragraph generation
@@ -260,7 +298,8 @@
 - Fit Statistics tab
 - Forest Plot tab
 - Methods tab (selectable plain text)
-- Methods paragraph cached in `analysis_result$methods_paragraph`
+- Methods paragraph cached in `analysis_result$methods_paragraph` — build it from `build_analysis_summary()` sections (Phase 5) rather than re-deriving the same facts
+- gtsummary tables (`tbl_regression`) from the fitted model — Phase 5 stores only the plain coefficient data.frame
 
 ### What NOT to touch
 - Step 8 module file
@@ -304,7 +343,7 @@
 - All table files open in Word: table1_overall.docx, multivariable_results.docx, etc.
 - All figure files render: forest_plot.png, residuals_vs_fitted.png, roc_curve.png, etc.
 - All data formats: RDS loads in R, CSV parses, .sav opens in SPSS, .dta opens in Stata, .xlsx opens in Excel
-- R script is executable and reproduces analysis
+- R script is executable and reproduces analysis (requires Phase 5b)
 - Analysis spec JSON is valid and readable
 - Analysis spec RDS loads correctly
 - Report contains correct sections, embedded tables and figures
@@ -321,7 +360,7 @@
 ## Phase 9 — Integration, Polish, and Testing
 
 ### What to build
-1. Wire `reset_analysis_pipeline()` with confirmation modals into Steps 1, 4, and 5
+1. Verify `reset_analysis_pipeline()` wiring end to end (already wired: Step 1 role changes, Step 4 first change after a fit, Step 5 new run)
 2. Implement stale state propagation per §5.4 — step status indicators update correctly
 3. Step status indicators in pill labels (not started / in progress / complete / stale)
 4. Consistent blocking modal pattern across all run buttons
@@ -331,7 +370,7 @@
 ### Test datasets
 
 **Dataset 1 — Full-featured clustered dataset** (for testing all model types):
-- ~500 observations across ~40 clusters (subject IDs)
+- ~500 observations across ~40 clusters (patient IDs), nested in a handful of sites — exercises two cluster variables
 - ~8–15 observations per cluster
 - Binary outcome (event rate ~15%)
 - Continuous outcome (e.g. creatinine)
@@ -353,7 +392,7 @@ Both datasets should be generated as R scripts in `inst/test_data/` and document
 - Full end-to-end workflow: Setup → Table 1 → Variable Investigation → Covariate Confirmation → Model Specification → Diagnostics → Results → Export produces correct zip
 - All four model types complete the full pipeline
 - Role changes in Step 1 trigger reset modal and clear downstream correctly
-- Step 4 re-confirmation clears model/diagnostics/results
+- A Step 4 covariate change after a fit (after the modal) clears model/diagnostics/results
 - Step status indicators update correctly through the workflow
 - Stale indicators appear when upstream changes invalidate downstream results
 - Dataset 2 triggers appropriate warnings throughout the pipeline

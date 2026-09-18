@@ -15,7 +15,8 @@
 #' The model type is written to the spec automatically — there is only ever
 #' one valid choice. Preflight re-runs on every spec change. Clicking the
 #' disabled Run Model button pulses the preflight box. Changing the optimizer
-#' after a fit marks the results stale rather than clearing them.
+#' after a fit asks, then clears the model and everything downstream
+#' (\code{reset_analysis_pipeline(from_step = 5)}).
 #'
 #' @param id Character. Module namespace ID.
 #' @param shared_state A Shiny \code{reactiveValues} object.
@@ -222,13 +223,50 @@ analysis_modelspec_server <- function(id, shared_state) {
       )
     })
 
+    # Any Step 5 setting change after a fit clears the model and everything
+    # built on it (diagnostics, results) — ask first; Cancel puts the
+    # dropdown back.
+    .write_optimizer <- function(value) {
+      spec <- shiny::isolate(shared_state$analysis_spec)
+      spec$model_design$optimizer <- value
+      shared_state$analysis_spec <- spec
+    }
+
     shiny::observeEvent(input$optimizer, {
       spec <- shiny::isolate(shared_state$analysis_spec)
       if (is.null(spec) || !input$optimizer %in% .ANALYSIS_OPTIMIZERS) return()
-      if (!identical(spec$model_design$optimizer, input$optimizer)) {
-        spec$model_design$optimizer <- input$optimizer
-        shared_state$analysis_spec <- spec
+      if (identical(spec$model_design$optimizer, input$optimizer)) return()
+
+      res <- shiny::isolate(shared_state$analysis_result)
+      if (is.null(res$fitted_models$primary_model)) {
+        .write_optimizer(input$optimizer)
+        return()
       }
+      shiny::showModal(shiny::modalDialog(
+        title = "Clear Model Results?",
+        shiny::p("A model has already been fitted with the current optimizer.",
+                 "Changing it will clear the fitted model, diagnostics and results.",
+                 "Table 1, variable investigation and your covariates are kept."),
+        shiny::tags$small(class = "text-muted",
+                          "Cancel keeps the current optimizer and results."),
+        footer = shiny::tagList(
+          shiny::actionButton(ns("cancel_optimizer"),  "Cancel",           class = "btn-secondary"),
+          shiny::actionButton(ns("confirm_optimizer"), "Clear & Continue", class = "btn-warning")
+        ),
+        easyClose = FALSE
+      ))
+    }, ignoreInit = TRUE)
+
+    shiny::observeEvent(input$confirm_optimizer, {
+      shiny::removeModal()
+      reset_analysis_pipeline(shared_state, from_step = 5L)
+      .write_optimizer(input$optimizer)
+    }, ignoreInit = TRUE)
+
+    shiny::observeEvent(input$cancel_optimizer, {
+      shiny::removeModal()
+      current <- shiny::isolate(shared_state$analysis_spec$model_design$optimizer) %||% "bobyqa"
+      shiny::updateSelectInput(session, "optimizer", selected = current)
     }, ignoreInit = TRUE)
 
     # ── Sidebar: compact preflight ───────────────────────────────────────────

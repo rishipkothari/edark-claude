@@ -320,7 +320,9 @@ analysis_result <- list(
       residuals_vs_fitted = NULL,
       qq_plot             = NULL,
       scale_location      = NULL,
-      influence_plot      = NULL,
+      binned_residuals    = NULL,  # logistic models
+      influence_plot      = NULL,  # Cook's distance
+      leverage_plot       = NULL,
       random_effects_qq   = NULL,
       cluster_size_plot   = NULL,
       roc_curve           = NULL,
@@ -343,8 +345,12 @@ analysis_result <- list(
     coefficients       = NULL,
     fit_statistics     = NULL,
     predicted_values   = NULL,
-    influence_measures = NULL
+    influence_measures = NULL   # per row: .edark_row_id, cooks, leverage, std_resid
   ),
+
+  diagnostics = NULL,  # Step 6: run_at, model_type, checks, sample, residuals,
+                       # influence, vif, separation, random_effects, prediction,
+                       # metrics (long table), messages — see run_analysis_diagnostics()
 
   generated_r_script  = NULL,  # character string; cached from Step 5
   methods_paragraph   = NULL,  # character string; cached from Step 7
@@ -594,7 +600,7 @@ Variables: exposure + outcome + all candidates, fixed order. Placeholders for un
 
 **No warning modal:** Run Model proceeds whenever the preflight has no errors; warnings are already on screen and are replayed in Fitting notes.
 
-**Stale results:** a change to the optimizer after a fit keeps the results but shows "The specification has changed since this model was fitted" (`analysis_fit_is_stale()`). Other model-affecting changes (Step 1 roles, Step 4 covariates / reference levels) clear the model via `reset_analysis_pipeline()`.
+**Changes after a fit:** every model-affecting change clears the model and everything built on it. Changing the optimizer after a fit asks "Clear Model Results?" (Cancel puts the dropdown back) and then calls `reset_analysis_pipeline(from_step = 5)`. Step 1 roles and Step 4 covariates / reference levels do the same from their own steps. `analysis_fit_is_stale()` remains as a safety net for the Run Model results panel.
 
 **Step complete when:** model run successfully.
 
@@ -604,15 +610,15 @@ Variables: exposure + outcome + all candidates, fixed order. Placeholders for un
 
 **Module file:** `R/module_analysis_diagnostics.R` | **Service files:** `R/service_analysis_diagnostics.R`, `R/service_analysis_plots.R`
 
-**Layout:** `layout_sidebar(position = "right")` — main panel: category checkboxes + run button + output tabs; sidebar: at-a-glance summary.
+**Layout:** `layout_sidebar(position = "left")` — sidebar: check lists + Run Diagnostics; main: model header + `navset_card_tab` (Overview first, then one tab per computed check). Same sidebar-is-setup pattern as Steps 3 and 5.
 
-**Two diagnostic categories:**
-- Model Assumptions (all checked by default): sample accounting, residuals (linear), influence, VIF, separation (logistic), random effects (mixed), convergence (mixed)
-- Prediction Performance (all unchecked, logistic only, labeled "Supplementary"): ROC/AUC, calibration, predicted probabilities
+**Always included (no checkbox):** sample accounting (rows in the frozen dataset, rows used, missing values per model variable, events for logistic models) and fitting warnings (convergence, singular fit — read from the Step 5 fit).
 
-Run Diagnostics button. Tabs conditional on model type and selections.
+**Two groups of checks** (`analysis_diagnostic_options(model_type)`):
+- **Model assumptions** (all checked by default): residuals, influential observations (non-mixed), collinearity (VIF), separation (logistic), random effects (mixed).
+- **Prediction performance** (all unchecked, in a collapsed "optional" accordion, **all model types**): for prediction studies only; not needed to report an association. Logistic: discrimination (ROC/AUC), calibration (deciles + Brier), predicted probabilities. Linear: calibration (observed vs predicted), prediction error (RMSE, MAE, R²). Always **apparent (in-sample)** performance, labelled as optimistic; mixed models use marginal predictions (`re.form = NA`).
 
-**Sidebar:** raw values only, sections conditional on what was computed. See §6.8.
+**Advisory, never blocking:** diagnostics do not gate Steps 7–8.
 
 **Step complete when:** diagnostics run at least once.
 
@@ -626,7 +632,7 @@ Run Diagnostics button. Tabs conditional on model type and selections.
 
 **Outputs:** Summary (always, auto-generated), Results table (combined univariable+multivariable default), Fit statistics, Forest plot, Methods paragraph. Generate Selected Outputs button.
 
-**Table footnotes** per model type — all Wald-based. See §5.3 Step 7 in the full specification above for complete footnote text per model type.
+**Table footnotes** per model type — all Wald-based. Footnote text per model type is in §4.2.
 
 **Step complete when:** outputs generated at least once.
 
@@ -728,22 +734,26 @@ Two tabs — Summary and Run Model — per §5.3 Step 5 and §8.4. Pulse animati
 
 **Module file:** `R/module_analysis_diagnostics.R`
 
-**Layout:** `layout_sidebar(position = "right")`
+**Layout:** `layout_sidebar(position = "left")`.
 
-Main: two categories (Model Assumptions checked / Prediction Performance unchecked), run button, `navset_card_tab` output.
+Sidebar: "Model assumptions" checkbox group (Select all / Deselect all; each choice shows a one-line description), "Prediction performance (optional)" accordion (collapsed, unchecked, Select all / Deselect all), Run Diagnostics (`btn-primary w-100`), note that sample accounting and fitting warnings are always included.
 
-**Sidebar summary — raw values, conditional sections:**
+Main: model header (type, formula, time run), then `navset_card_tab`:
 
 ```
-── Run Info ──────────────────────
-── Sample ────────────────────────
-── Collinearity ──────────────────
-── Influence ─────────────────────
-── Separation ────────────────────  [logistic]
-── Residuals ─────────────────────  [linear]
-── Random Effects ────────────────  [mixed]
-── Prediction Performance ────────  [if computed]
-── Warnings ──────────────────────
+Overview        Warnings card, then cards for each computed section:
+                Sample · Fit [mixed] · Residuals · Influence · Collinearity ·
+                Separation [logistic] · Random effects [mixed] · Prediction [if run]
+                Values with a short reading guide (e.g. "VIF 5–10 moderate, > 10 high")
+Residuals       linear: resid vs fitted, Q-Q, scale-location, Breusch-Pagan
+                linear mixed: same plots on conditional residuals (no BP)
+                logistic (both): binned residuals + % of bins including 0
+Influence       [non-mixed] Cook's distance, leverage vs std. residual, top 10 rows
+                with their model-variable values
+Collinearity    VIF table flagged OK / Moderate / High
+Random effects  [mixed] per cluster variable: variance, SD, ICC, cluster count and
+                sizes; random-intercept Q-Q; rows per cluster
+Prediction      [if run] apparent-performance note, metrics, plots
 ```
 
 ### 6.9 Step 7 — Results
@@ -804,7 +814,7 @@ Two-column full-width. Left: presets, checklists with step-of-origin subheadings
 
 **Diagnostics — Model Assumptions:** residuals vs fitted, Q-Q plot, scale-location, Breusch-Pagan (`lmtest::bptest()`), Cook's distance, leverage vs residuals, top 10 influential observations, VIF table.
 
-**Prediction Performance:** not applicable (continuous outcome).
+**Prediction Performance (optional):** apparent RMSE, MAE, R² and an observed-vs-predicted plot.
 
 ### 7.3 Logistic Regression
 
@@ -824,9 +834,9 @@ Two-column full-width. Left: presets, checklists with step-of-origin subheadings
 
 **Fit statistics:** N, N events, event rate, pseudo R² (McFadden + Nagelkerke), AIC, BIC, log-likelihood.
 
-**Diagnostics — Model Assumptions:** Cook's distance, top influential observations, VIF, separation detection.
+**Diagnostics — Model Assumptions:** binned residuals (`performance::binned_residuals(residuals = "response")`, Gelman & Hill — raw residuals of a 0/1 outcome are not interpretable, and performance's default deviance residuals do not average to zero), Cook's distance, leverage, top influential observations, VIF, separation detection (`glm(method = detectseparation::detect_separation)`).
 
-**Diagnostics — Prediction Performance (supplementary):** ROC curve with AUC (`pROC`), calibration plot (decile bins), predicted probability distribution by outcome group.
+**Diagnostics — Prediction Performance (optional):** ROC curve with AUC and DeLong CI (`pROC`), calibration plot (decile bins, Wilson CIs) with Brier score and the no-information Brier (prevalence × (1 − prevalence)), predicted probability distribution by outcome group. Apparent performance only; calibration slope/intercept are not shown because in-sample they are 1 and 0 by construction.
 
 ### 7.4 Linear Mixed Model
 
@@ -846,9 +856,9 @@ Two-column full-width. Left: presets, checklists with step-of-origin subheadings
 
 **Fit statistics:** N observations, N clusters, marginal R², conditional R², ICC, AIC, BIC, log-likelihood, random intercept SD, residual SD.
 
-**Diagnostics — Model Assumptions:** residuals vs fitted (conditional), Q-Q plot (conditional), random effects Q-Q, ICC, cluster size distribution + summary, VIF, singular fit check (`isSingular()`), convergence check.
+**Diagnostics — Model Assumptions:** residuals vs fitted, Q-Q and scale-location (conditional residuals), random effects Q-Q, per-cluster variance / ICC (from `VarCorr`; `performance::icc()` returns NA once any component is singular), cluster size distribution + summary, VIF, singular fit check (`isSingular()`), convergence check.
 
-**Prediction Performance:** not applicable (continuous outcome).
+**Prediction Performance (optional):** as linear regression, using marginal predictions (`re.form = NA`).
 
 ### 7.5 Logistic Mixed Model
 
@@ -866,7 +876,7 @@ Two-column full-width. Left: presets, checklists with step-of-origin subheadings
 
 **Fit statistics:** N observations, N clusters, N events, event rate, marginal AUC (if prediction diagnostics run), AIC, BIC, log-likelihood, random intercept variance, ICC.
 
-**Diagnostics — Model Assumptions:** random effects Q-Q, ICC, cluster size distribution + summary, VIF, singular fit, convergence.
+**Diagnostics — Model Assumptions:** binned residuals, random effects Q-Q, per-cluster ICC (latent scale, residual variance π²/3), cluster size distribution + summary, VIF, separation (checked on the fixed effects), singular fit, convergence.
 
 **Diagnostics — Prediction Performance (supplementary):** all use **marginal** predictions (`re.form = NA`). ROC/AUC, calibration, predicted probability distribution.
 
@@ -1021,8 +1031,9 @@ Single `uiOutput` banner at top of each vertical pill's main panel. Red text if 
 | Role assignment change | 1 | Table 1, var investigation, covariate selection, model, diagnostics, results | Yes if downstream results exist |
 | Covariate change in Step 4 | 4 | Model, diagnostics, results | Yes if model run (first change only — the model is then gone) |
 | New Step 5 model run | 4 | Previous model, diagnostics, results (replaced by the new fit) | No |
+| Step 5 setting change (optimizer) after a fit | 5 | Model, diagnostics, results — `model_design` is kept (the new setting is written after the reset) | Yes |
 
-The model type can no longer change on its own — it follows Step 1 roles, whose reset already clears the model. An optimizer change after a fit marks results stale instead of clearing them.
+The model type can no longer change on its own — it follows Step 1 roles, whose reset already clears the model.
 
 Does NOT trigger: Table 1 changes, diagnostic category changes, investigation reruns, export changes.
 
@@ -1148,7 +1159,7 @@ Spec exported as both JSON (human-readable) and RDS (programmatic). Analysis pac
 
 **Mid Priority — v1.5:** analysis package import, additional models (GEE, multinomial, ordinal, Poisson, NB), marginal effects, LRT p-values for glmer (advanced option), profile likelihood CIs (advanced option), elastic net (LASSO alpha), customizable report builder, NNT/ARR, dynamic rounding.
 
-**Low Priority — v2+:** survival models, stratified models, saved runs, async progress, prediction modeling infrastructure (cross-validation, split-sample, NRI, IDI, decision curves).
+**Low Priority — v2+:** survival models, stratified models, saved runs, async progress, prediction modeling infrastructure (bootstrap optimism correction, cross-validation, split-sample, calibration slope, NRI, IDI, decision curves). Step 6 reports apparent performance only.
 
 ### 11.3 Out of Scope Permanently
 

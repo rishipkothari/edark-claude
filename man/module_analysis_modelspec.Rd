@@ -32,5 +32,6 @@ formula, the "Modelling:" line, and the results.
 The model type is written to the spec automatically — there is only ever
 one valid choice. Preflight re-runs on every spec change. Clicking the
 disabled Run Model button pulses the preflight box. Changing the optimizer
-after a fit marks the results stale rather than clearing them.
+after a fit asks, then clears the model and everything downstream
+(\code{reset_analysis_pipeline(from_step = 5)}).
 }

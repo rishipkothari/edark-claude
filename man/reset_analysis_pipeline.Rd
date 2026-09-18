@@ -11,7 +11,7 @@ reset_analysis_pipeline(shared_state, from_step)
 
 \item{from_step}{Integer. The step that triggered the reset: \code{1}
 (role assignment change), \code{4} (covariate change after a fit), or
-\code{5} (model type change).}
+\code{5} (a Step 5 setting, e.g. the optimizer, changed after a fit).}
 }
 \value{
 \code{invisible(NULL)}
