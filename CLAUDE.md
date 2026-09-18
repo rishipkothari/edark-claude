@@ -49,10 +49,10 @@ R/
 ├── module_report.R             Report tab — Full Report pill (type selector, variable modal, download) + Custom Report pill (gallery, reorder, download)
 │
 ├── module_analysis_main.R          Analyze tab — orchestrator; 8-step navset_pill + JS progress handler + step gating
-├── module_analysis_setup.R         Analyze › Step 1: Setup — dataset freeze, role assignment, study type, reset modal with undo (Phase 1)
+├── module_analysis_setup.R         Analyze › Step 1: Setup — dataset freeze, role assignment (outcome/exposure/candidates/clusters), study type, reset modal with undo (Phase 1)
 ├── module_analysis_table1.R        Analyze › Step 2: Table 1 — gtsummary descriptive table (Phase 2)
 ├── module_analysis_varinvestigation.R   Analyze › Step 3: Variable Investigation — univariable screen, collinearity, stepwise/LASSO (Phase 3)
-├── module_analysis_covariate_confirm.R  Analyze › Step 4: Covariate Confirmation — final covariates, reference levels, live missingness (Phase 4)
+├── module_analysis_covariate_confirm.R  Analyze › Step 4: Covariate Confirmation — final covariates, reference levels, live missingness; writes to spec on every change (Phase 4)
 ├── module_analysis_modelspec.R     Analyze › Step 5: Model Specification — model fitting, preflight, R code preview (Phase 5)
 ├── module_analysis_diagnostics.R   Analyze › Step 6: Diagnostics — residuals, influence, VIF, ROC (Phase 6)
 ├── module_analysis_results.R       Analyze › Step 7: Results — tables, forest plot, methods paragraph (Phase 7)
@@ -347,7 +347,7 @@ edark_report(liver_tx, report_type = "primary_vs_others",
 Tab 4 (`4 · Analyze`) — an 8-step guided workflow for fitting and reporting statistical models. Full spec: `PRD/EDARK_Analysis_Module_PRD.md`. Build sequence: `PRD/EDARK_Analysis_Build_Plan.md`.
 
 ### Current state
-Phases 0–3 complete (infrastructure, Setup, Table 1, Variable Investigation). Phase 4 (Covariate Confirmation) is built and in testing. Steps 5–8 are placeholder stubs pending Phases 5–8.
+Phases 0–4 complete (infrastructure, Setup, Table 1, Variable Investigation, Covariate Confirmation), including the pre-Phase 5 refactor: subject ID and time roles removed in favour of a multi-select **cluster** role, random slopes removed, Step 4's Confirm button removed (live writes), Step 3 stepwise/LASSO hold the exposure. Steps 5–8 are placeholder stubs pending Phases 5–8. The PRD is updated for all of this; the build plan's Phase 4/5 acceptance criteria still describe the old Confirm/pending flow and random slopes — the PRD wins.
 
 ### Test data for Phase 3
 `liver_tx` (500 × 36) is built to exercise variable investigation. Regenerate via `Rscript data-raw/liver_tx_sample.R` (seeded).
@@ -369,33 +369,39 @@ Phases 0–3 complete (infrastructure, Setup, Table 1, Variable Investigation). 
 - **Dataset frozen**: clicking "Start Analysis" copies `dataset_working` → `analysis_data` with `.edark_row_id` appended. A mismatch banner detects upstream Prepare changes and prompts restart.
 
 ### Utility functions (`analysis_utils.R`)
-- `build_analysis_formula(spec)` — assembles formula from `variable_roles`; appends `(1 | subject_id)` or `(1 + slope | subject_id)` for mixed models
+- `build_analysis_formula(spec)` — assembles formula from `variable_roles`; for mixed models appends one `(1 | cluster)` per entry in `cluster_variables`. No random slopes.
 - `apply_reference_levels(data, reference_levels)` — calls `stats::relevel()` per spec before any model fit
 - `compute_complete_cases(data, variables)` — returns `list(data, n_excluded)`; always uses `na.action = na.omit` logic
-- `compute_covariate_sample(data, outcome, exposure, covariates, candidates, mixed_vars)` — Step 4's live listwise-deletion summary: row counts (base / fixed / mixed), per-variable row cost, factor levels surviving in the complete rows, EPV, and `issues` (`error` blocks Confirm: outcome/exposure/checked covariate left with < 2 levels or no variation; `warning`: EPV < 10, > 20% rows dropped, subject/cluster/time with < 2 values)
+- `compute_covariate_sample(data, outcome, exposure, covariates, candidates, cluster_vars)` — Step 4's live listwise-deletion summary: row counts (base / fixed / mixed), per-variable row cost, factor levels surviving in the complete rows, EPV, and `issues` (`error`: outcome/exposure/checked covariate left with < 2 levels or no variation — shown in Step 4, blocks the model via Step 5 preflight; `warning`: EPV < 10, > 20% rows dropped, a cluster with < 2 values)
+- `.default_model_design()` (`service_analysis_pipeline.R`) — the one place the `model_design` block is built (freeze + resets)
 
 ### Step gating (`module_analysis_main.R`)
-Steps 1–4 are always reachable (each shows its own guidance when Step 1 is incomplete). Step 5 opens once the dataset is frozen and an outcome is assigned — Table 1 and variable investigation are optional. Steps 6–8 open once `analysis_result$fitted_models$primary_model` exists. Locking adds Bootstrap's `disabled` class to the nav link (via `shinyjs::toggleClass`) with a tooltip on the parent `<li>`. Step 5's Run Model must additionally require `analysis_spec$covariate_confirmation$status == "confirmed"`.
+Steps 1–4 are always reachable (each shows its own guidance when Step 1 is incomplete). Step 5 opens once the dataset is frozen and an outcome is assigned — Table 1, variable investigation and covariate selection are all optional (nothing checked in Step 4 = exposure-only model). Steps 6–8 open once `analysis_result$fitted_models$primary_model` exists. Locking adds Bootstrap's `disabled` class to the nav link (via `shinyjs::toggleClass`) with a tooltip on the parent `<li>`. Step 5's Run Model is gated only by the Tier 2 preflight.
+
+### Roles (`variable_roles`)
+One role per variable: `outcome_variable` and `exposure_variable` (single-select, radios), `candidate_covariates` and `cluster_variables` (multi-select, checkboxes). **No subject ID, time, or random-slope fields exist** — a subject ID is just a cluster. Each cluster variable is one random intercept; several = nested or crossed groupings. Any non-datetime column may be a cluster (Step 5 converts with `factor()` at fit time). Assigning clusters commits the analysis to a mixed model — a non-mixed model with clusters assigned is a preflight **error** (`PF_CLUSTERS_UNUSED`).
 
 ### Step 1 — role changes (`module_analysis_setup.R`)
-- A role change asks for confirmation ("Clear Analysis Results?") when anything downstream exists: `analysis_result` is non-NULL **or** Step 4's `covariate_confirmation$status` is not `"unconfirmed"`. Confirm → `reset_analysis_pipeline(shared_state, 1)` then apply the change.
+- `RADIO_ROLES` (outcome, exposure) / `MULTI_ROLES` (candidate, cluster). JS mirrors this: `.edark-role-radio` vs `.edark-role-checkbox`, both carrying `data-role`; checking any role clears the variable's other roles. Cluster cells render "—" for datetime columns.
+- A role change asks for confirmation ("Clear Analysis Results?") when anything downstream exists: `analysis_result` is non-NULL **or** `final_model_covariates` is non-empty. Confirm → `reset_analysis_pipeline(shared_state, 1)` then apply the change.
 - **Cancel undoes the click**: the table's inputs have already changed in the browser, so `.push_roles_to_table()` sends `roles_state` back via the `sync_roles` custom message and JS restores every radio/checkbox/ref-level. The same push runs after every applied change, and JS re-applies it when reactable remounts rows (search filter cleared).
-- `.sync_spec()` writes only when a Step 1-owned field actually changed. It sets `final_model_covariates` to `NULL` (covariates start unselected — deviation from PRD §5.5, which defaulted to all candidates) and resets `covariate_confirmation`.
-- New spec fields created at freeze: `specification_metadata$roles_version` (0), `specification_metadata$step1_roles` (Step 1's snapshot), and `covariate_confirmation = list(status = "unconfirmed", confirmed_at = NULL, stale = FALSE)`.
+- `.sync_spec()` writes only when a Step 1-owned field actually changed. It sets `final_model_covariates` to `NULL` (covariates start unselected — deviation from the original PRD, now updated).
+- Spec fields created at freeze: `specification_metadata$roles_version` (0) and `specification_metadata$step1_roles` (Step 1's snapshot).
 
-### Step 3 — guards (`module_analysis_varinvestigation.R`)
+### Step 3 — guards and exposure (`module_analysis_varinvestigation.R`, `service_analysis_variable_selection.R`)
 - No candidate covariates → red banner in the Univariable and Stepwise/LASSO pills, Run buttons disabled (`.has_candidates()`); Collinearity shows a placeholder. The selection services return `NULL` silently in that case, so the UI must guard.
-- Each Run click (univariable, stepwise, LASSO) increments `analysis_result$variable_investigation$run_seq` via `.bump_run_seq()`. Collinearity (auto-computed) and threshold edits do not.
+- **Exposure held** (exposure-outcome studies): stepwise uses `~ exposure` as the scope floor and null model; LASSO sets `penalty.factor = 0` on the exposure's columns. The exposure is never in `selected_variables`; results carry `held_variables` and the UI notes it. The univariable screen stays unadjusted (it is the "unadjusted" column of the Phase 7 combined table). Variable names are mapped from `terms()` labels / `model.matrix` `assign` — never `startsWith()` (a candidate that prefixes another name would steal its terms).
 
 ### Step 4 — Covariate Confirmation (`module_analysis_covariate_confirm.R`)
-- Layout: table in the main panel, right sidebar with status banner, Confirm button, Model/Sample counts (with a separate "If mixed model" row count) and Checks.
-- Role variables (outcome, exposure, subject ID, cluster, time) are locked, checked rows at the top; candidates start **unchecked** (deviation from PRD §9.7, which pre-checked all). Include header has **All** / **Clear**.
-- Row cost column: checked → rows the variable is costing now; unchecked → rows lost by adding it; subject ID/cluster/time → rows lost if a mixed model is used.
+- Layout: table in the main panel, right sidebar with Model/Sample counts (with a separate "If mixed model" row count when clusters exist) and Checks. **No Confirm button, no status/pending state.**
+- Role variables (outcome, exposure, each cluster) are locked, checked rows at the top; candidates start **unchecked**. Include header has **All** / **Clear**.
+- Row cost column: checked → rows the variable is costing now; unchecked → rows lost by adding it; cluster → rows lost to the mixed model.
 - Method columns (Univariable / Stepwise / LASSO): green ✓ suggested (univariable shows the smallest term p), pink — not suggested, grey not run / `n/a` excluded. Header **Add** only adds checks (no modal); **Replace** swaps the selection for the method's list (modal).
-- Reference-level dropdowns list only levels present in the complete rows for the current selection; a preferred level that drops out falls back to the first surviving level (amber icon). Subject ID / cluster are grouping factors and get no reference level.
-- **Confirm** writes `final_model_covariates`, `reference_levels` (outcome, exposure, time, checked covariates), `variable_selection_specification$selected_variables`, and `covariate_confirmation = list(status, confirmed_at, stale)`. If a model exists, a modal precedes `reset_analysis_pipeline(shared_state, 4)`.
-- Status (`"unconfirmed"` / `"pending"` / `"confirmed"`) is derived from staged vs. confirmed state and mirrored into `analysis_spec$covariate_confirmation$status`.
-- **Reset triggers**: Step 1 bumps `specification_metadata$roles_version` whenever a Step 1-owned field changes (compared against its own snapshot in `specification_metadata$step1_roles`, since Step 4 writes into `variable_roles` too) → Step 4 clears. Each Step 3 **Run** click bumps `analysis_result$variable_investigation$run_seq` → Step 4 keeps its checks but marks the confirmation `stale` (pending) so the user reviews the refreshed suggestions; Step 3 only informs the selection, it is not a true dependency. Univariable threshold edits re-flag suggestions without bumping `run_seq`.
+- Reference-level dropdowns list only levels present in the complete rows for the current selection; a preferred level that drops out falls back to the first surviving level (amber icon). Clusters are grouping factors and get no reference level.
+- **Live commit**: a commit observer writes `final_model_covariates`, `reference_levels` (outcome, exposure, checked covariates — effective levels), and `variable_selection_specification$selected_variables` whenever the staged selection or its surviving levels change. Errors are written anyway; Step 5's preflight blocks the model.
+- **Every edit goes through `.propose()`**. If a model exists, the first edit opens "Clear Model Results?"; Cancel re-sends the current patch (undoing the click in the browser), Clear & Continue runs `reset_analysis_pipeline(shared_state, 4)` then applies it. `patch()` is a reactive so Cancel can re-push it.
+- **Staged selection carries its `roles_key`** (`created_at` + `roles_version`). The reset observer clears the selection when the key changes; the commit observer only writes when `staged()$key` matches the current key. Without this, observer ordering after a Step 1 role change could write the old selection into the new spec.
+- Step 3 reruns no longer affect Step 4 beyond refreshing the suggestion columns (`run_seq` / `.bump_run_seq()` were removed).
 
 ### Validator (`service_analysis_validation.R`)
 `validate_analysis(spec, data, tier = "full", verbose = FALSE)` — pure function, no Shiny.
@@ -404,23 +410,27 @@ Returns `list(validity_flag, messages, display_messages)` where `validity_flag` 
 
 **Tier 1** (core data validity — runs before any analysis operation): `PF_NO_OUTCOME`, `PF_ZERO_COMPLETE`, `PF_OUTCOME_NO_VARIANCE_BINARY`, `PF_OUTCOME_NO_VARIANCE_CONTINUOUS`, `PF_FACTOR_SINGLE_LEVEL` (exposure only).
 
-**Tier 2** (model specification — adds to Tier 1, runs before multivariable model): errors: `PF_NO_PREDICTORS`, `PF_OUTCOME_MODEL_MISMATCH`, `PF_MIXED_NO_SUBJECT`, `PF_MIXED_SINGLE_CLUSTER`, `PF_FACTOR_SINGLE_LEVEL` (covariates, checked on the full-model complete cases); warnings: `PF_LOW_EPV_10`, `PF_LOW_EPV_5`, `PF_MISSING_ANY/GT20/GT50`, `PF_RARE_FACTOR_LEVEL`, `PF_HIGH_CORRELATION`, `PF_FEW_CLUSTERS`, `PF_UNBALANCED_CLUSTERS`, `PF_RARE_OUTCOME`, `PF_EXPOSURE_NOT_IN_MODEL`; notes (verbose only): `PF_SINGLE_COVARIATE`, `PF_SAMPLE_SUMMARY`, `PF_MODEL_SUMMARY`, `PF_DATA_STRUCTURE`, `PF_REFERENCE_LEVELS`.
+**Tier 2** (model specification — adds to Tier 1, runs before multivariable model): errors: `PF_NO_PREDICTORS`, `PF_OUTCOME_MODEL_MISMATCH`, `PF_MIXED_NO_CLUSTER`, `PF_MIXED_SINGLE_CLUSTER` (per cluster), `PF_CLUSTERS_UNUSED` (clusters assigned + non-mixed model), `PF_FACTOR_SINGLE_LEVEL` (covariates, checked on the full-model complete cases); warnings: `PF_LOW_EPV_10`, `PF_LOW_EPV_5`, `PF_MISSING_ANY/GT20/GT50`, `PF_RARE_FACTOR_LEVEL`, `PF_HIGH_CORRELATION`, `PF_FEW_CLUSTERS`, `PF_UNBALANCED_CLUSTERS` (both per cluster), `PF_CLUSTER_IDS_SHARED` (≥ 2 clusters: values of the finer one recur under several values of the coarser — merged clusters if IDs are only unique within the parent, harmless if crossed), `PF_RARE_OUTCOME`, `PF_EXPOSURE_NOT_IN_MODEL`; notes (verbose only): `PF_SINGLE_COVARIATE`, `PF_SAMPLE_SUMMARY`, `PF_MODEL_SUMMARY`, `PF_DATA_STRUCTURE`, `PF_REFERENCE_LEVELS`.
+
+Tier 1 complete-cases over outcome + exposure only. Tier 2 adds predictors, plus clusters only when the model is mixed.
 
 ### Pipeline reset (`service_analysis_pipeline.R`)
 `reset_analysis_pipeline(shared_state, from_step)` — called by modules after user confirms a destructive upstream change. Never shows its own modal.
 
 | `from_step` | Clears |
 |---|---|
-| `1` | Entire `analysis_result`; resets `variable_selection_specification` and `model_design` in spec; sets `final_model_covariates` to `NULL` and `covariate_confirmation` to unconfirmed |
+| `1` | Entire `analysis_result`; resets `variable_selection_specification` and `model_design` in spec; sets `final_model_covariates` to `NULL` |
 | `4` or `5` | Fitted model, run status, result tables/plots, inference summary, generated script from `analysis_result`; step 5 also resets `model_design` in spec |
 
 ### Model types and `model_type` values
-| UI label | `model_type` value | Outcome type | Subject ID required |
+| UI label | `model_type` value | Outcome type | Cluster variables |
 |---|---|---|---|
-| Linear regression | `"linear"` | continuous | No |
-| Logistic regression | `"logistic"` | binary factor (2 levels) | No |
-| Linear mixed model | `"linear_mixed"` | continuous | Yes |
-| Logistic mixed model | `"logistic_mixed"` | binary factor (2 levels) | Yes |
+| Linear regression | `"linear"` | continuous | must be none |
+| Logistic regression | `"logistic"` | binary factor (2 levels) | must be none |
+| Linear mixed model | `"linear_mixed"` | continuous | ≥ 1 required |
+| Logistic mixed model | `"logistic_mixed"` | binary factor (2 levels) | ≥ 1 required |
+
+Step 5 should pre-select the model from outcome type + whether clusters are assigned (decided before Phase 5).
 
 All CIs are Wald-based (`confint.default()`). All p-values are model-native (t-tests for lm, Wald z for glm/glmer, Satterthwaite df for lmerTest::lmer).
 
@@ -453,7 +463,7 @@ session$sendCustomMessage("edark_analysis_progress", list(frac = 0.5, detail = "
 ## What's not built yet
 
 #### In progress
-- **Analysis module** (Phases 1–9): Phases 0–3 complete; Phase 4 in testing; Steps 5–8 are placeholder stubs. See `PRD/EDARK_Analysis_Build_Plan.md` for phase definitions and acceptance criteria.
+- **Analysis module** (Phases 1–9): Phases 0–4 complete; Steps 5–8 are placeholder stubs. Phase 5 decisions already made: preflight re-runs on every spec change (plus tab entry / model change / button); R code generator (`service_analysis_codegen.R`) deferred — R Code Preview is a placeholder in Phase 5; Model Results stores tidy coefficients + fit stats only (gtsummary tables are Phase 7). See `PRD/EDARK_Analysis_Build_Plan.md` for phase definitions and acceptance criteria.
 
 #### High magnitude change
 - Alternative plot type options per variable combination (heat map, balloon plot, etc.)
@@ -474,6 +484,5 @@ session$sendCustomMessage("edark_analysis_progress", list(frac = 0.5, detail = "
 
 #### Analysis module debugging
 - Univariable screen flags a multi-level factor as suggested if *any* level term clears the threshold; an overall likelihood-ratio p per variable would be more correct (`service_analysis_variable_selection.R`).
-- Stepwise / LASSO do not force the exposure into the model, so in exposure-outcome studies they select covariates as if there were no exposure. Usual practice is to lock the exposure in.
 - collinearity plot base size should be similarly scaled to # of variables; still too small when theres just a few
 - **`postop_aki_stage` conflates "no AKI" with "missing"** — `NA` means the patient had no AKI, but every complete-case path reads it as missing. Including it as a covariate silently drops ~62% of rows and trips `PF_MISSING_GT50`. Consider splitting into a `has_aki` logical plus stage-among-those-with-AKI.
