@@ -48,17 +48,17 @@ R/
 ├── module_explore_output.R     Explore main panel — plot output + summary reactable + "Add to Custom Report" / "View Report" buttons
 ├── module_report.R             Report tab — Full Report pill (type selector, variable modal, download) + Custom Report pill (gallery, reorder, download)
 │
-├── module_analysis_main.R          Analyze tab — orchestrator; 8-step navset_pill + JS progress handler
-├── module_analysis_setup.R         Analyze › Step 1: Setup — dataset freeze, role assignment, study type (Phase 1)
+├── module_analysis_main.R          Analyze tab — orchestrator; 8-step navset_pill + JS progress handler + step gating
+├── module_analysis_setup.R         Analyze › Step 1: Setup — dataset freeze, role assignment, study type, reset modal with undo (Phase 1)
 ├── module_analysis_table1.R        Analyze › Step 2: Table 1 — gtsummary descriptive table (Phase 2)
 ├── module_analysis_varinvestigation.R   Analyze › Step 3: Variable Investigation — univariable screen, collinearity, stepwise/LASSO (Phase 3)
-├── module_analysis_covariate_confirm.R  Analyze › Step 4: Covariate Confirmation — final covariate selection (Phase 4)
+├── module_analysis_covariate_confirm.R  Analyze › Step 4: Covariate Confirmation — final covariates, reference levels, live missingness (Phase 4)
 ├── module_analysis_modelspec.R     Analyze › Step 5: Model Specification — model fitting, preflight, R code preview (Phase 5)
 ├── module_analysis_diagnostics.R   Analyze › Step 6: Diagnostics — residuals, influence, VIF, ROC (Phase 6)
 ├── module_analysis_results.R       Analyze › Step 7: Results — tables, forest plot, methods paragraph (Phase 7)
 ├── module_analysis_export.R        Analyze › Step 8: Export — zip assembly, preset selector, download (Phase 8)
 │
-├── analysis_utils.R                build_analysis_formula() / apply_reference_levels() / compute_complete_cases()
+├── analysis_utils.R                build_analysis_formula() / apply_reference_levels() / compute_complete_cases() / compute_covariate_sample()
 ├── service_analysis_pipeline.R     reset_analysis_pipeline(shared_state, from_step) — clears downstream state per PRD §8.6
 ├── service_analysis_validation.R   validate_analysis(spec, data, tier, verbose) — all Tier 1 + Tier 2 preflight checks
 ├── service_analysis_models.R       Model fitting engines: lm / glm / lmerTest::lmer / lme4::glmer (Phase 5)
@@ -210,6 +210,11 @@ strat_exp <- elig$exposure && isTRUE(input$strat_by_exposure)   # not the raw in
 ```
 This caused the Table 1 bug where switching exposure/outcome from factor to numeric still produced tables stratified by a numeric variable. Pure functions downstream (`build_table1()`) should guard independently too — see `.can_stratify()`.
 
+### Interactive inputs inside reactable cells: patch, don't re-render
+Steps 1 and 4 render raw HTML inputs in reactable cells and report changes via `Shiny.setInputValue`. Re-rendering the table on every click loses search text and scroll position, and reactable **remounts rows from their original HTML** when a search filter is cleared (so checkbox state silently resets). Pattern: render the table only on structural change (route the trigger through a `reactiveVal`, which ignores identical values — a plain reactive re-fires on every `analysis_spec` write); push live state with `session$sendCustomMessage`; in JS keep the last payload and re-apply it from a `MutationObserver` on a stable wrapper div. Guard every DOM write with a has-it-changed check so the observer doesn't loop.
+
+Two hard rules, because reactable converts cell tags into **React elements** (not HTML): (1) never use valueless attributes like `checked = NA` / `disabled = NA` / `selected = NA` — `NA` serialises to `null` and crashes reactable's renderer, unmounting the whole table (blank panel, error only in the browser console); use strings (`disabled = "disabled"`) and set state from the patch instead; (2) JS may only fill elements React rendered **empty** (e.g. an empty `<select>` or `<span>`) — replacing children React created breaks its next reconciliation. Server-side `testServer` cannot catch either; drive the app with `chromote` (installed) to see client errors. Step 1 uses the same push to undo a role click when the user cancels the reset modal.
+
 ### shinyjs needs `useShinyjs()` — it lives in the `page_navbar` header in `edark.R`
 Every shinyjs helper depends on it, including `shinyjs::disabled()`, which only adds a `shinyjs-disabled` CSS class that shinyjs's JS turns into a real `disabled` attribute. Remove that call and all disable/toggle logic silently stops working (buttons render clickable).
 
@@ -342,7 +347,7 @@ edark_report(liver_tx, report_type = "primary_vs_others",
 Tab 4 (`4 · Analyze`) — an 8-step guided workflow for fitting and reporting statistical models. Full spec: `PRD/EDARK_Analysis_Module_PRD.md`. Build sequence: `PRD/EDARK_Analysis_Build_Plan.md`.
 
 ### Current state
-Phases 0–2 complete (infrastructure, Setup, Table 1). Phase 3 (Variable Investigation) is built and in debugging — see "Analysis module debugging" below. Steps 4–8 are placeholder stubs pending Phases 4–8.
+Phases 0–3 complete (infrastructure, Setup, Table 1, Variable Investigation). Phase 4 (Covariate Confirmation) is built and in testing. Steps 5–8 are placeholder stubs pending Phases 5–8.
 
 ### Test data for Phase 3
 `liver_tx` (500 × 36) is built to exercise variable investigation. Regenerate via `Rscript data-raw/liver_tx_sample.R` (seeded).
@@ -367,6 +372,30 @@ Phases 0–2 complete (infrastructure, Setup, Table 1). Phase 3 (Variable Invest
 - `build_analysis_formula(spec)` — assembles formula from `variable_roles`; appends `(1 | subject_id)` or `(1 + slope | subject_id)` for mixed models
 - `apply_reference_levels(data, reference_levels)` — calls `stats::relevel()` per spec before any model fit
 - `compute_complete_cases(data, variables)` — returns `list(data, n_excluded)`; always uses `na.action = na.omit` logic
+- `compute_covariate_sample(data, outcome, exposure, covariates, candidates, mixed_vars)` — Step 4's live listwise-deletion summary: row counts (base / fixed / mixed), per-variable row cost, factor levels surviving in the complete rows, EPV, and `issues` (`error` blocks Confirm: outcome/exposure/checked covariate left with < 2 levels or no variation; `warning`: EPV < 10, > 20% rows dropped, subject/cluster/time with < 2 values)
+
+### Step gating (`module_analysis_main.R`)
+Steps 1–4 are always reachable (each shows its own guidance when Step 1 is incomplete). Step 5 opens once the dataset is frozen and an outcome is assigned — Table 1 and variable investigation are optional. Steps 6–8 open once `analysis_result$fitted_models$primary_model` exists. Locking adds Bootstrap's `disabled` class to the nav link (via `shinyjs::toggleClass`) with a tooltip on the parent `<li>`. Step 5's Run Model must additionally require `analysis_spec$covariate_confirmation$status == "confirmed"`.
+
+### Step 1 — role changes (`module_analysis_setup.R`)
+- A role change asks for confirmation ("Clear Analysis Results?") when anything downstream exists: `analysis_result` is non-NULL **or** Step 4's `covariate_confirmation$status` is not `"unconfirmed"`. Confirm → `reset_analysis_pipeline(shared_state, 1)` then apply the change.
+- **Cancel undoes the click**: the table's inputs have already changed in the browser, so `.push_roles_to_table()` sends `roles_state` back via the `sync_roles` custom message and JS restores every radio/checkbox/ref-level. The same push runs after every applied change, and JS re-applies it when reactable remounts rows (search filter cleared).
+- `.sync_spec()` writes only when a Step 1-owned field actually changed. It sets `final_model_covariates` to `NULL` (covariates start unselected — deviation from PRD §5.5, which defaulted to all candidates) and resets `covariate_confirmation`.
+- New spec fields created at freeze: `specification_metadata$roles_version` (0), `specification_metadata$step1_roles` (Step 1's snapshot), and `covariate_confirmation = list(status = "unconfirmed", confirmed_at = NULL, stale = FALSE)`.
+
+### Step 3 — guards (`module_analysis_varinvestigation.R`)
+- No candidate covariates → red banner in the Univariable and Stepwise/LASSO pills, Run buttons disabled (`.has_candidates()`); Collinearity shows a placeholder. The selection services return `NULL` silently in that case, so the UI must guard.
+- Each Run click (univariable, stepwise, LASSO) increments `analysis_result$variable_investigation$run_seq` via `.bump_run_seq()`. Collinearity (auto-computed) and threshold edits do not.
+
+### Step 4 — Covariate Confirmation (`module_analysis_covariate_confirm.R`)
+- Layout: table in the main panel, right sidebar with status banner, Confirm button, Model/Sample counts (with a separate "If mixed model" row count) and Checks.
+- Role variables (outcome, exposure, subject ID, cluster, time) are locked, checked rows at the top; candidates start **unchecked** (deviation from PRD §9.7, which pre-checked all). Include header has **All** / **Clear**.
+- Row cost column: checked → rows the variable is costing now; unchecked → rows lost by adding it; subject ID/cluster/time → rows lost if a mixed model is used.
+- Method columns (Univariable / Stepwise / LASSO): green ✓ suggested (univariable shows the smallest term p), pink — not suggested, grey not run / `n/a` excluded. Header **Add** only adds checks (no modal); **Replace** swaps the selection for the method's list (modal).
+- Reference-level dropdowns list only levels present in the complete rows for the current selection; a preferred level that drops out falls back to the first surviving level (amber icon). Subject ID / cluster are grouping factors and get no reference level.
+- **Confirm** writes `final_model_covariates`, `reference_levels` (outcome, exposure, time, checked covariates), `variable_selection_specification$selected_variables`, and `covariate_confirmation = list(status, confirmed_at, stale)`. If a model exists, a modal precedes `reset_analysis_pipeline(shared_state, 4)`.
+- Status (`"unconfirmed"` / `"pending"` / `"confirmed"`) is derived from staged vs. confirmed state and mirrored into `analysis_spec$covariate_confirmation$status`.
+- **Reset triggers**: Step 1 bumps `specification_metadata$roles_version` whenever a Step 1-owned field changes (compared against its own snapshot in `specification_metadata$step1_roles`, since Step 4 writes into `variable_roles` too) → Step 4 clears. Each Step 3 **Run** click bumps `analysis_result$variable_investigation$run_seq` → Step 4 keeps its checks but marks the confirmation `stale` (pending) so the user reviews the refreshed suggestions; Step 3 only informs the selection, it is not a true dependency. Univariable threshold edits re-flag suggestions without bumping `run_seq`.
 
 ### Validator (`service_analysis_validation.R`)
 `validate_analysis(spec, data, tier = "full", verbose = FALSE)` — pure function, no Shiny.
@@ -382,7 +411,7 @@ Returns `list(validity_flag, messages, display_messages)` where `validity_flag` 
 
 | `from_step` | Clears |
 |---|---|
-| `1` | Entire `analysis_result`; resets `variable_selection_specification` and `model_design` in spec; resets `final_model_covariates` to `candidate_covariates` |
+| `1` | Entire `analysis_result`; resets `variable_selection_specification` and `model_design` in spec; sets `final_model_covariates` to `NULL` and `covariate_confirmation` to unconfirmed |
 | `4` or `5` | Fitted model, run status, result tables/plots, inference summary, generated script from `analysis_result`; step 5 also resets `model_design` in spec |
 
 ### Model types and `model_type` values
@@ -424,7 +453,7 @@ session$sendCustomMessage("edark_analysis_progress", list(frac = 0.5, detail = "
 ## What's not built yet
 
 #### In progress
-- **Analysis module** (Phases 1–9): Phases 0–2 complete; Phase 3 in debugging; Steps 4–8 are placeholder stubs. See `PRD/EDARK_Analysis_Build_Plan.md` for phase definitions and acceptance criteria.
+- **Analysis module** (Phases 1–9): Phases 0–3 complete; Phase 4 in testing; Steps 5–8 are placeholder stubs. See `PRD/EDARK_Analysis_Build_Plan.md` for phase definitions and acceptance criteria.
 
 #### High magnitude change
 - Alternative plot type options per variable combination (heat map, balloon plot, etc.)
@@ -444,5 +473,7 @@ session$sendCustomMessage("edark_analysis_progress", list(frac = 0.5, detail = "
 - **Bug — center tables in PPT + HTML reports**: `flextable::set_table_properties(align = "center")` is set in both `.style_dataset_summary_ft()` and `.style_section_ft()` in `generate_report.R` but tables still appear left-aligned in PPT and HTML output. DOCX may work. Investigate `officer` slide content alignment for PPT and the Rmd template's table rendering for HTML.
 
 #### Analysis module debugging
+- Univariable screen flags a multi-level factor as suggested if *any* level term clears the threshold; an overall likelihood-ratio p per variable would be more correct (`service_analysis_variable_selection.R`).
+- Stepwise / LASSO do not force the exposure into the model, so in exposure-outcome studies they select covariates as if there were no exposure. Usual practice is to lock the exposure in.
 - collinearity plot base size should be similarly scaled to # of variables; still too small when theres just a few
 - **`postop_aki_stage` conflates "no AKI" with "missing"** — `NA` means the patient had no AKI, but every complete-case path reads it as missing. Including it as a covariate silently drops ~62% of rows and trips `PF_MISSING_GT50`. Consider splitting into a `has_aki` logical plus stage-among-those-with-AKI.
