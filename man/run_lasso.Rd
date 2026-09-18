@@ -12,7 +12,8 @@ run_lasso(data, spec)
 \item{spec}{A named list conforming to the \code{analysis_spec} structure.}
 }
 \value{
-A named list: \code{selected_variables}, \code{lambda_type},
+A named list: \code{selected_variables}, \code{held_variables}
+(the exposure, or empty), \code{lambda_type},
 \code{lambda_selected}, \code{coef_data}, \code{cv_fit}, plus
 \code{excluded_variables}, \code{n_used} and \code{n_total} (as for
 \code{\link{run_stepwise}}). On a fit error, \code{error} holds the
@@ -21,5 +22,7 @@ message. Returns \code{NULL} when no outcome or candidates are assigned.
 \description{
 Applies \code{glmnet::cv.glmnet} with alpha = 1 (LASSO). Factor variables
 are expanded via \code{model.matrix()}; a factor is included in the
-suggested list if any of its dummies has a non-zero coefficient.
+suggested list if any of its dummies has a non-zero coefficient. When an
+exposure is assigned its columns get \code{penalty.factor = 0}, so it is
+never shrunk out and never offered for selection.
 }

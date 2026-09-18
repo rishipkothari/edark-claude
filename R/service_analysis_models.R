@@ -3,8 +3,472 @@
 #' Fitting engines for all four model types: linear regression
 #' (\code{stats::lm}), logistic regression (\code{stats::glm}), linear mixed
 #' model (\code{lmerTest::lmer}), and logistic mixed model
-#' (\code{lme4::glmer}). See PRD §7.2\enc{–}{-}7.5 for full specifications.
-#' Implemented in Phase 5 of the build plan.
+#' (\code{lme4::glmer}), plus the rules for which model a spec can use.
+#' Pure functions — no Shiny. See PRD §4.4 and §7.1\enc{–}{-}7.5.
+#'
+#' All confidence intervals are Wald (estimate \eqn{\pm} 1.96 SE, computed
+#' from the fixed-effect estimates and their variance, which is what
+#' \code{confint.default()} does for lm/glm). P-values are model-native:
+#' t-tests (lm), Wald z (glm, glmer), Satterthwaite df (lmerTest).
+#'
+#' @importFrom magrittr %>%
 #'
 #' @name service_analysis_models
 NULL
+
+
+.ANALYSIS_MODEL_LABELS <- c(
+  linear         = "Linear regression",
+  logistic       = "Logistic regression",
+  linear_mixed   = "Linear mixed model",
+  logistic_mixed = "Logistic mixed model"
+)
+
+.ANALYSIS_OPTIMIZERS <- c("bobyqa", "Nelder_Mead", "nlminbwrap")
+
+
+#' Classify an outcome column for model selection
+#'
+#' @param x The outcome column.
+#' @return \code{"continuous"} (numeric), \code{"binary"} (factor with exactly
+#'   two observed levels) or \code{"unsupported"}.
+#' @export
+analysis_outcome_type <- function(x) {
+  if (is.null(x)) return("unsupported")
+  if (is.numeric(x)) return("continuous")
+  if (is.factor(x) && nlevels(droplevels(x[!is.na(x)])) == 2L) return("binary")
+  "unsupported"
+}
+
+
+#' Which model types a spec can use
+#'
+#' The outcome type picks the family (linear / logistic); whether cluster
+#' variables are assigned picks mixed vs. standard. Exactly one type is
+#' available for a supported outcome.
+#'
+#' @param spec An \code{analysis_spec} list.
+#' @param data The frozen analysis dataset.
+#'
+#' @return A \code{data.frame(model_type, label, available, reason)} with one
+#'   row per model type; \code{reason} is \code{""} for available types.
+#'   \code{attr(, "recommended")} holds the available type, or \code{NULL}.
+#' @export
+analysis_model_options <- function(spec, data) {
+  roles    <- spec$variable_roles
+  outcome  <- roles$outcome_variable
+  clusters <- intersect(roles$cluster_variables, names(data))
+
+  kind <- if (is.null(outcome) || is.null(data) || !outcome %in% names(data)) {
+    "none"
+  } else {
+    analysis_outcome_type(data[[outcome]])
+  }
+  has_clusters <- length(clusters) > 0L
+
+  types  <- names(.ANALYSIS_MODEL_LABELS)
+  family <- c(linear = "continuous", logistic = "binary",
+              linear_mixed = "continuous", logistic_mixed = "binary")
+  mixed  <- c(linear = FALSE, logistic = FALSE, linear_mixed = TRUE, logistic_mixed = TRUE)
+
+  reason <- vapply(types, function(t) {
+    if (kind == "none") return("Assign an outcome variable in Step 1")
+    if (kind == "unsupported") return("Outcome must be numeric or a two-level factor")
+    if (family[[t]] != kind) {
+      return(if (kind == "continuous") "Outcome is continuous" else "Outcome is binary")
+    }
+    if (mixed[[t]] && !has_clusters) return("No cluster variable assigned in Step 1")
+    if (!mixed[[t]] && has_clusters) return("Cluster variables assigned; use a mixed model")
+    ""
+  }, character(1))
+
+  out <- data.frame(
+    model_type = types,
+    label      = unname(.ANALYSIS_MODEL_LABELS[types]),
+    available  = reason == "",
+    reason     = unname(reason),
+    stringsAsFactors = FALSE
+  )
+  rec <- out$model_type[out$available]
+  attr(out, "recommended") <- if (length(rec) == 1L) rec else NULL
+  out
+}
+
+
+#' Which outcome level a logistic model treats as the event
+#'
+#' \code{glm}/\code{glmer} model the probability of the second factor level;
+#' the first level is the reference. With the spec's reference level applied,
+#' the event is the other level.
+#'
+#' @param spec An \code{analysis_spec} list.
+#' @param data The frozen analysis dataset.
+#' @return \code{list(variable, event, reference)} for a binary outcome,
+#'   else \code{NULL}.
+#' @export
+analysis_outcome_event <- function(spec, data) {
+  outcome <- spec$variable_roles$outcome_variable
+  if (is.null(outcome) || is.null(data) || !outcome %in% names(data)) return(NULL)
+  y <- data[[outcome]]
+  if (analysis_outcome_type(y) != "binary") return(NULL)
+  lv  <- levels(droplevels(y[!is.na(y)]))
+  ref <- spec$variable_roles$reference_levels[[outcome]]
+  if (is.null(ref) || !ref %in% lv) ref <- lv[1L]
+  list(variable = outcome, event = setdiff(lv, ref), reference = ref)
+}
+
+
+# The parts of the spec a fitted model depends on.
+.model_inputs <- function(spec) {
+  vr    <- spec$variable_roles
+  vars  <- c(vr$outcome_variable, vr$exposure_variable, vr$final_model_covariates)
+  refs  <- vr$reference_levels[intersect(sort(names(vr$reference_levels)), vars)]
+  list(outcome    = vr$outcome_variable,
+       exposure   = vr$exposure_variable,
+       covariates = sort(as.character(vr$final_model_covariates)),
+       clusters   = sort(as.character(vr$cluster_variables)),
+       references = refs,
+       model_type = spec$model_design$model_type,
+       optimizer  = spec$model_design$optimizer)
+}
+
+#' Has the spec changed since the model was fitted?
+#'
+#' @param spec The current \code{analysis_spec}.
+#' @param result The \code{analysis_result}; its \code{specification_snapshot}
+#'   is the spec the model was fitted with.
+#' @return \code{TRUE} when a fitted model exists and any model input
+#'   (roles, covariates, reference levels, model type, optimizer) differs.
+#' @export
+analysis_fit_is_stale <- function(spec, result) {
+  if (is.null(result$fitted_models$primary_model)) return(FALSE)
+  snap <- result$specification_snapshot
+  if (is.null(snap)) return(TRUE)
+  !identical(.model_inputs(spec), .model_inputs(snap))
+}
+
+
+#' Fit the analysis model described by a spec
+#'
+#' Builds the model data (complete cases over the model variables, clusters
+#' included only for mixed models; ordered factors converted to unordered so
+#' every factor uses treatment contrasts; reference levels applied; unused
+#' levels dropped; cluster variables converted to factors), fits the model
+#' named by \code{spec$model_design$model_type}, and extracts coefficients,
+#' fit statistics and fitted values. Warnings and messages raised while
+#' fitting are captured, never thrown.
+#'
+#' @param spec An \code{analysis_spec} list.
+#' @param data The frozen analysis dataset.
+#'
+#' @return A named list: \code{status} (\code{"success"} / \code{"failed"}),
+#'   \code{error}, \code{model_type}, \code{model} (the fitted object),
+#'   \code{formula}, \code{coefficients} (data.frame: variable, term, level,
+#'   estimate, std.error, statistic, p.value, conf.low, conf.high, effect,
+#'   effect.low, effect.high, effect_measure), \code{fit_statistics}
+#'   (data.frame: key, label, value, format), \code{predicted_values},
+#'   \code{n_total}, \code{n_used}, \code{outcome_event} (binary outcomes:
+#'   list(variable, event, reference)), \code{reference_levels} (factor
+#'   predictors actually used), and \code{messages}
+#'   (data.frame: level, stage, message).
+#' @export
+fit_analysis_model <- function(spec, data) {
+  roles      <- spec$variable_roles
+  model_type <- spec$model_design$model_type
+  outcome    <- roles$outcome_variable
+  exposure   <- roles$exposure_variable
+  preds      <- .safe_preds(exposure, roles$final_model_covariates)
+  is_mixed   <- isTRUE(model_type %in% c("linear_mixed", "logistic_mixed"))
+  is_logit   <- isTRUE(model_type %in% c("logistic", "logistic_mixed"))
+  clusters   <- if (is_mixed) intersect(roles$cluster_variables, names(data)) else character(0)
+  optimizer  <- spec$model_design$optimizer
+  if (is.null(optimizer) || !optimizer %in% .ANALYSIS_OPTIMIZERS) optimizer <- "bobyqa"
+
+  msgs <- data.frame(level = character(0), stage = character(0),
+                     message = character(0), stringsAsFactors = FALSE)
+  .msg <- function(level, stage, text) {
+    msgs[nrow(msgs) + 1L, ] <<- list(level, stage, text)
+  }
+  .fail <- function(err) {
+    .msg("error", "fit", err)
+    list(status = "failed", error = err, model_type = model_type, model = NULL,
+         formula = NULL, coefficients = NULL, fit_statistics = NULL,
+         predicted_values = NULL, n_total = nrow(data), n_used = NA_integer_,
+         outcome_event = NULL, reference_levels = list(), messages = msgs)
+  }
+
+  if (is.null(model_type) || !model_type %in% names(.ANALYSIS_MODEL_LABELS)) {
+    return(.fail("No model type selected."))
+  }
+  if (is.null(outcome) || !outcome %in% names(data)) {
+    return(.fail("No outcome variable assigned."))
+  }
+
+  # ── Model data ────────────────────────────────────────────────────────────
+  vars    <- unique(c(outcome, preds, clusters))
+  missing <- setdiff(vars, names(data))
+  if (length(missing) > 0L) {
+    return(.fail(paste("Not in the analysis dataset:", paste(missing, collapse = ", "))))
+  }
+  keep <- intersect(c(vars, ".edark_row_id"), names(data))
+  cc   <- compute_complete_cases(data[, keep, drop = FALSE], vars)$data
+  n_total <- nrow(data)
+  n_used  <- nrow(cc)
+  if (n_used == 0L) return(.fail("No complete cases remain."))
+
+  # Ordered factors (e.g. from Auto-factor / cut-points) would get polynomial
+  # contrasts; clinical tables expect each level against a reference.
+  for (v in c(outcome, preds)) {
+    if (is.ordered(cc[[v]])) cc[[v]] <- factor(cc[[v]], levels = levels(cc[[v]]), ordered = FALSE)
+  }
+  cc <- apply_reference_levels(cc, roles$reference_levels)
+  for (v in c(outcome, preds)) {
+    if (is.factor(cc[[v]])) cc[[v]] <- droplevels(cc[[v]])
+  }
+  for (cl in clusters) cc[[cl]] <- factor(cc[[cl]])
+
+  outcome_event <- NULL
+  if (is_logit) {
+    y <- cc[[outcome]]
+    if (!is.factor(y) || nlevels(y) != 2L) {
+      return(.fail(sprintf("Logistic models need a two-level factor outcome; '%s' is not.", outcome)))
+    }
+    outcome_event <- list(variable = outcome, event = levels(y)[2L], reference = levels(y)[1L])
+  } else if (!is.numeric(cc[[outcome]])) {
+    return(.fail(sprintf("Linear models need a numeric outcome; '%s' is not.", outcome)))
+  }
+
+  .msg("note", "data", sprintf("%d of %d rows used (%d excluded for missing data).",
+                               n_used, n_total, n_total - n_used))
+
+  fmla <- build_analysis_formula(spec)
+
+  # ── Fit ───────────────────────────────────────────────────────────────────
+  warns <- character(0)
+  notes <- character(0)
+  err   <- NULL
+  model <- withCallingHandlers(
+    tryCatch(
+      switch(model_type,
+        linear   = stats::lm(fmla, data = cc),
+        logistic = stats::glm(fmla, data = cc, family = stats::binomial()),
+        linear_mixed = lmerTest::lmer(
+          fmla, data = cc, control = lme4::lmerControl(optimizer = optimizer)),
+        logistic_mixed = lme4::glmer(
+          fmla, data = cc, family = stats::binomial(),
+          control = lme4::glmerControl(optimizer = optimizer))
+      ),
+      error = function(e) { err <<- conditionMessage(e); NULL }
+    ),
+    warning = function(w) {
+      warns <<- c(warns, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    },
+    message = function(m) {
+      notes <<- c(notes, trimws(conditionMessage(m)))
+      invokeRestart("muffleMessage")
+    }
+  )
+  if (is.null(model)) return(.fail(paste("Model fitting failed:", err)))
+
+  for (w in unique(warns)) .msg("warning", "fit", .explain_fit_warning(w))
+  singular <- is_mixed && isTRUE(lme4::isSingular(model))
+  notes <- notes[!grepl("singular", notes, ignore.case = TRUE)]
+  for (n in unique(notes)) .msg("note", "fit", n)
+  if (singular) {
+    .msg("warning", "fit", paste(
+      "Singular fit: a random-effect variance is estimated at or near zero.",
+      "The random-effects structure may be too complex for the data \u2014",
+      "consider removing a cluster variable."))
+  }
+
+  # ── Extract ───────────────────────────────────────────────────────────────
+  coefs <- tryCatch(.coef_table(model, cc, is_mixed, is_logit), error = function(e) {
+    .msg("warning", "extract", paste("Coefficient table failed:", conditionMessage(e)))
+    NULL
+  })
+  stats_tbl <- tryCatch(.fit_statistics(model, model_type, cc, outcome, clusters),
+                        error = function(e) {
+    .msg("warning", "extract", paste("Fit statistics failed:", conditionMessage(e)))
+    NULL
+  })
+  predicted <- tryCatch({
+    pv <- data.frame(
+      .edark_row_id = if (".edark_row_id" %in% names(cc)) cc$.edark_row_id else seq_len(n_used),
+      .fitted       = as.numeric(stats::fitted(model)),
+      .resid        = as.numeric(stats::residuals(model, type = "response"))
+    )
+    if (model_type == "logistic_mixed") {
+      pv$.fitted_marginal <- as.numeric(stats::predict(model, type = "response", re.form = NA))
+    }
+    pv
+  }, error = function(e) NULL)
+
+  ref_levels <- list()
+  for (v in preds) if (is.factor(cc[[v]])) ref_levels[[v]] <- levels(cc[[v]])[1L]
+
+  list(
+    status           = "success",
+    error            = NULL,
+    model_type       = model_type,
+    model            = model,
+    formula          = fmla,
+    coefficients     = coefs,
+    fit_statistics   = stats_tbl,
+    predicted_values = predicted,
+    n_total          = n_total,
+    n_used           = n_used,
+    outcome_event    = outcome_event,
+    reference_levels = ref_levels,
+    messages         = msgs
+  )
+}
+
+
+# Add a plain-language hint to the fitting warnings users most often see.
+.explain_fit_warning <- function(w) {
+  if (grepl("converge", w, ignore.case = TRUE)) {
+    return(paste0(w, " \u2014 The estimates may not be reliable. Try a different ",
+                  "optimizer under Advanced; if the estimates agree, the warning can ",
+                  "usually be ignored."))
+  }
+  if (grepl("fitted probabilities numerically 0 or 1", w, fixed = TRUE)) {
+    return(paste0(w, " \u2014 Usually (quasi-)separation: a predictor perfectly ",
+                  "predicts the outcome for some rows. Check sparse factor levels."))
+  }
+  if (grepl("algorithm did not converge", w, fixed = TRUE)) {
+    return(paste0(w, " \u2014 Often caused by separation or very sparse data."))
+  }
+  w
+}
+
+
+# Fixed-effect coefficient table with Wald CIs. Works for lm, glm,
+# lmerModLmerTest and glmerMod: summary()$coefficients holds the estimate,
+# SE, test statistic and native p-value for each; the term → variable map
+# comes from the model matrix's "assign" attribute.
+.coef_table <- function(model, data, is_mixed, is_logit) {
+  sm <- summary(model)$coefficients
+  stat_col <- grep("value$", colnames(sm))[1L]
+  p_col    <- grep("^Pr", colnames(sm))[1L]
+
+  if (is_mixed) {
+    X      <- lme4::getME(model, "X")
+    labels <- attr(stats::terms(model, fixed.only = TRUE), "term.labels")
+  } else {
+    X      <- stats::model.matrix(model)
+    labels <- attr(stats::terms(model), "term.labels")
+  }
+  col_var <- c("(Intercept)", labels)[attr(X, "assign") + 1L]
+  names(col_var) <- colnames(X)
+
+  terms <- rownames(sm)
+  var   <- unname(col_var[terms])
+  level <- vapply(seq_along(terms), function(i) {
+    v <- var[i]
+    if (is.na(v) || !v %in% names(data) || !is.factor(data[[v]])) return(NA_character_)
+    sub(paste0("^", .regex_escape(v)), "", terms[i])
+  }, character(1))
+
+  z   <- stats::qnorm(0.975)
+  est <- unname(sm[, 1L])
+  se  <- unname(sm[, 2L])
+  lo  <- est - z * se
+  hi  <- est + z * se
+
+  data.frame(
+    variable       = var,
+    term           = terms,
+    level          = level,
+    estimate       = est,
+    std.error      = se,
+    statistic      = if (!is.na(stat_col)) unname(sm[, stat_col]) else NA_real_,
+    p.value        = if (!is.na(p_col)) unname(sm[, p_col]) else NA_real_,
+    conf.low       = lo,
+    conf.high      = hi,
+    effect         = if (is_logit) exp(est) else est,
+    effect.low     = if (is_logit) exp(lo) else lo,
+    effect.high    = if (is_logit) exp(hi) else hi,
+    effect_measure = if (is_logit) "odds_ratio" else "coefficient",
+    stringsAsFactors = FALSE,
+    row.names = NULL
+  )
+}
+
+.regex_escape <- function(x) gsub("([.|()\\^{}+$*?\\[\\]\\\\])", "\\\\\\1", x)
+
+
+# Fit statistics per model type (PRD §7.2–7.5) as a long table so the UI and
+# export can show them without knowing the model type.
+.fit_statistics <- function(model, model_type, data, outcome, clusters) {
+  rows <- list()
+  .add <- function(key, label, value, format = "number") {
+    if (is.null(value) || length(value) == 0L) return()
+    value <- suppressWarnings(as.numeric(value[1L]))
+    if (is.na(value)) return()
+    rows[[length(rows) + 1L]] <<- data.frame(key = key, label = label, value = value,
+                                             format = format, stringsAsFactors = FALSE)
+  }
+  .quiet <- function(expr) suppressWarnings(suppressMessages(tryCatch(expr, error = function(e) NULL)))
+
+  n <- stats::nobs(model)
+  .add("n_obs", "Observations", n, "integer")
+
+  if (model_type %in% c("linear_mixed", "logistic_mixed")) {
+    ng <- lme4::ngrps(model)
+    for (cl in names(ng)) .add(paste0("n_groups_", cl), sprintf("Clusters (%s)", cl), ng[[cl]], "integer")
+  }
+
+  if (model_type %in% c("logistic", "logistic_mixed")) {
+    y <- data[[outcome]]
+    n_events <- sum(y == levels(y)[2L])
+    .add("n_events", sprintf("Events (%s = %s)", outcome, levels(y)[2L]), n_events, "integer")
+    .add("event_rate", "Event rate", n_events / n, "percent")
+  }
+
+  if (model_type == "linear") {
+    s <- summary(model)
+    .add("r2", "R\u00b2", s$r.squared)
+    .add("adj_r2", "Adjusted R\u00b2", s$adj.r.squared)
+    .add("rmse", "Residual SE", stats::sigma(model))
+    if (!is.null(s$fstatistic)) {
+      f <- s$fstatistic
+      .add("f_stat", "F statistic", f[["value"]])
+      .add("f_p", "F-test p-value",
+           stats::pf(f[["value"]], f[["numdf"]], f[["dendf"]], lower.tail = FALSE), "pvalue")
+    }
+  }
+
+  if (model_type == "logistic") {
+    dev  <- model$deviance
+    ndev <- model$null.deviance
+    .add("r2_mcfadden", "Pseudo R\u00b2 (McFadden)", 1 - dev / ndev)
+    cs   <- 1 - exp((dev - ndev) / n)
+    .add("r2_nagelkerke", "Pseudo R\u00b2 (Nagelkerke)", cs / (1 - exp(-ndev / n)))
+  }
+
+  if (model_type %in% c("linear_mixed", "logistic_mixed")) {
+    r2 <- .quiet(performance::r2_nakagawa(model))
+    if (!is.null(r2)) {
+      .add("r2_marginal", "Marginal R\u00b2", r2$R2_marginal)
+      .add("r2_conditional", "Conditional R\u00b2", r2$R2_conditional)
+    }
+    icc <- .quiet(performance::icc(model))
+    if (!is.null(icc)) .add("icc", "ICC (adjusted)", icc$ICC_adjusted)
+
+    vc <- as.data.frame(lme4::VarCorr(model))
+    for (i in seq_len(nrow(vc))) {
+      if (vc$grp[i] == "Residual") {
+        .add("sd_residual", "Residual SD", vc$sdcor[i])
+      } else {
+        .add(paste0("sd_", vc$grp[i]), sprintf("Random intercept SD (%s)", vc$grp[i]), vc$sdcor[i])
+      }
+    }
+  }
+
+  .add("aic", "AIC", stats::AIC(model))
+  .add("bic", "BIC", stats::BIC(model))
+  .add("loglik", "Log-likelihood", as.numeric(stats::logLik(model)))
+
+  do.call(rbind, rows)
+}

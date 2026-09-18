@@ -18,47 +18,36 @@ NULL
 .setup_role_js <- function(ns) {
   shiny::tags$script(shiny::HTML(paste0("
 (function() {
-  var RADIO_ROLES = ['outcome', 'exposure', 'subject_id', 'cluster', 'time'];
+  // One role per variable. Outcome and exposure are single-select (radios);
+  // candidate and cluster are multi-select (checkboxes).
   var NS = '", ns(""), "';
+
+  function varSel(varName) { return '[data-var=\"' + CSS.escape(varName) + '\"]'; }
+
+  // Uncheck every role input for this variable except `keep`
+  function clearOtherRoles(varName, keep) {
+    document.querySelectorAll(
+      '.edark-role-radio' + varSel(varName) + ', .edark-role-checkbox' + varSel(varName)
+    ).forEach(function(el) { if (el !== keep) el.checked = false; });
+  }
 
   // Radio role changed
   $(document).on('change', '.edark-role-radio', function() {
     if (!this.checked) return;
-    var role    = $(this).data('role');
     var varName = $(this).data('var');
-
-    // Uncheck other radio roles for this variable (cross-role exclusivity)
-    RADIO_ROLES.forEach(function(r) {
-      if (r !== role) {
-        document.querySelectorAll(
-          '.edark-role-radio[data-role=\"' + r + '\"][data-var=\"' + CSS.escape(varName) + '\"]'
-        ).forEach(function(el) { el.checked = false; });
-      }
-    });
-
-    // Uncheck candidate for this variable
-    document.querySelectorAll(
-      '.edark-role-checkbox[data-var=\"' + CSS.escape(varName) + '\"]'
-    ).forEach(function(el) { el.checked = false; });
-
+    clearOtherRoles(varName, this);
     Shiny.setInputValue(NS + 'role_change',
-      { var: varName, role: role, value: true },
+      { var: varName, role: $(this).data('role'), value: true },
       { priority: 'event' }
     );
   });
 
-  // Candidate checkbox changed
+  // Checkbox role (candidate / cluster) changed
   $(document).on('change', '.edark-role-checkbox', function() {
     var varName = $(this).data('var');
-    if (this.checked) {
-      RADIO_ROLES.forEach(function(r) {
-        document.querySelectorAll(
-          '.edark-role-radio[data-role=\"' + r + '\"][data-var=\"' + CSS.escape(varName) + '\"]'
-        ).forEach(function(el) { el.checked = false; });
-      });
-    }
+    if (this.checked) clearOtherRoles(varName, this);
     Shiny.setInputValue(NS + 'role_change',
-      { var: varName, role: 'candidate', value: this.checked },
+      { var: varName, role: $(this).data('role'), value: this.checked },
       { priority: 'event' }
     );
   });
@@ -76,32 +65,56 @@ NULL
   $(document).on('click', '.edark-clear-role', function(e) {
     e.preventDefault();
     var role = $(this).data('role');
-    if (role === 'candidate') {
-      document.querySelectorAll('.edark-role-checkbox').forEach(function(el) {
-        el.checked = false;
-      });
-    } else {
-      document.querySelectorAll(
-        '.edark-role-radio[data-role=\"' + role + '\"]'
-      ).forEach(function(el) { el.checked = false; });
-    }
+    document.querySelectorAll(
+      '.edark-role-radio[data-role=\"' + role + '\"], .edark-role-checkbox[data-role=\"' + role + '\"]'
+    ).forEach(function(el) { el.checked = false; });
     Shiny.setInputValue(NS + 'role_change',
       { var: '__clear__', role: role, value: false },
       { priority: 'event' }
     );
   });
 
+  // Server-pushed role state: make every input match it
+  var lastRoles = null;
+  function applyRoles(rows) {
+    if (!rows) return;
+    rows.forEach(function(r) {
+      var sel = varSel(r.var);
+      document.querySelectorAll(
+        '.edark-role-radio' + sel + ', .edark-role-checkbox' + sel
+      ).forEach(function(el) {
+        var want = el.getAttribute('data-role') === r.role;
+        if (el.checked !== want) el.checked = want;
+      });
+      document.querySelectorAll('.edark-role-reflevel' + sel).forEach(function(el) {
+        if (r.ref && el.value !== r.ref) el.value = r.ref;
+      });
+    });
+  }
+  Shiny.addCustomMessageHandler(NS + 'sync_roles', function(rows) {
+    lastRoles = rows;
+    applyRoles(rows);
+  });
+  $(function() {
+    var wrap = document.getElementById(NS + 'main_content');
+    if (!wrap) return;
+    var pending = false;
+    new MutationObserver(function() {
+      if (pending) return;
+      pending = true;
+      requestAnimationFrame(function() { pending = false; applyRoles(lastRoles); });
+    }).observe(wrap, { childList: true, subtree: true });
+  });
+
   // Select All candidates button clicked
   $(document).on('click', '.edark-select-all-candidates', function(e) {
     e.preventDefault();
-    document.querySelectorAll('.edark-role-checkbox').forEach(function(el) {
-      var varName = el.getAttribute('data-var');
-      var hasRadioRole = RADIO_ROLES.some(function(r) {
-        return Array.from(document.querySelectorAll(
-          '.edark-role-radio[data-role=\"' + r + '\"][data-var=\"' + CSS.escape(varName) + '\"]'
-        )).some(function(radio) { return radio.checked; });
-      });
-      if (!hasRadioRole) el.checked = true;
+    document.querySelectorAll('.edark-role-checkbox[data-role=\"candidate\"]').forEach(function(el) {
+      var sel = varSel(el.getAttribute('data-var'));
+      var hasOtherRole = Array.from(document.querySelectorAll(
+        '.edark-role-radio' + sel + ', .edark-role-checkbox' + sel
+      )).some(function(other) { return other !== el && other.checked; });
+      if (!hasOtherRole) el.checked = true;
     });
     Shiny.setInputValue(NS + 'role_change',
       { var: '__select_all_candidates__', role: 'candidate', value: true },
@@ -146,7 +159,11 @@ analysis_setup_server <- function(id, shared_state) {
     ns <- session$ns
 
     # ── Local state ──────────────────────────────────────────────────────────
-    RADIO_ROLES <- c("outcome", "exposure", "subject_id", "cluster", "time")
+    # Each variable holds at most one role. Radio roles are single-select
+    # (one variable each); multi roles can be held by many variables.
+    RADIO_ROLES <- c("outcome", "exposure")
+    MULTI_ROLES <- c("candidate", "cluster")
+    ALL_ROLES   <- c(RADIO_ROLES, MULTI_ROLES)
 
     # Named list keyed by variable name; each entry is a role assignment list.
     roles_state    <- shiny::reactiveVal(NULL)
@@ -157,8 +174,7 @@ analysis_setup_server <- function(id, shared_state) {
 
     .empty_role <- function() {
       list(outcome = FALSE, exposure = FALSE, candidate = FALSE,
-           subject_id = FALSE, cluster = FALSE, time = FALSE,
-           reference_level = NULL)
+           cluster = FALSE, reference_level = NULL)
     }
 
     # ── Dataset freeze ───────────────────────────────────────────────────────
@@ -167,6 +183,19 @@ analysis_setup_server <- function(id, shared_state) {
       if (is.null(wd) || nrow(wd) == 0) return()
 
       sig <- digest::digest(wd, algo = "sha256")
+
+      # One-time read of the Prepare stage, so the Step 5 summary (and later
+      # the R script / export) can describe how this dataset was produced.
+      orig <- shiny::isolate(shared_state$dataset_original)
+      prepare_snapshot <- c(
+        shiny::isolate(shared_state$last_applied_specs),
+        list(
+          original_columns = names(orig),
+          original_dims    = if (!is.null(orig)) c(rows = nrow(orig), cols = ncol(orig)),
+          working_dims     = c(rows = nrow(wd), cols = ncol(wd))
+        )
+      )
+
       wd[[".edark_row_id"]] <- seq_len(nrow(wd))
 
       reset_analysis_pipeline(shared_state, from_step = 1L)
@@ -177,7 +206,9 @@ analysis_setup_server <- function(id, shared_state) {
         specification_metadata = list(
           study_type        = "descriptive",
           created_at        = Sys.time(),
-          dataset_signature = sig
+          dataset_signature = sig,
+          roles_version     = 0L,  # bumped on every Step 1 role write
+          prepare_snapshot  = prepare_snapshot
         ),
         variable_roles = list(
           outcome_variable       = NULL,
@@ -186,9 +217,7 @@ analysis_setup_server <- function(id, shared_state) {
           table1_variables       = NULL,
           univariable_test_pool  = NULL,
           final_model_covariates = NULL,
-          subject_id_variable    = NULL,
-          cluster_variable       = NULL,
-          time_variable          = NULL,
+          cluster_variables      = NULL,
           reference_levels       = list()
         ),
         table1_specification = list(
@@ -207,14 +236,7 @@ analysis_setup_server <- function(id, shared_state) {
           lasso_lambda            = "lambda.1se",
           selected_variables      = NULL
         ),
-        model_design = list(
-          model_type                 = NULL,
-          random_intercept_variable  = NULL,
-          random_slope_variable      = NULL,
-          confidence_interval_level  = 0.95,
-          optimizer                  = "bobyqa",
-          linked_model_specification = NULL
-        ),
+        model_design = .default_model_design(),
         analysis_options = list(
           missing_data_handling = "complete_case",
           interaction_terms     = list()
@@ -284,16 +306,20 @@ analysis_setup_server <- function(id, shared_state) {
     shiny::observeEvent(input$role_change, {
       ev     <- input$role_change
       result <- shiny::isolate(shared_state$analysis_result)
+      covs   <- shiny::isolate(shared_state$analysis_spec)$variable_roles$final_model_covariates
 
-      if (!is.null(result)) {
+      # Anything downstream worth protecting: results, or a Step 4 selection
+      has_downstream <- !is.null(result) || length(covs) > 0L
+
+      if (has_downstream) {
         # Downstream results exist — ask for confirmation before applying
         pending_change(ev)
         shiny::showModal(shiny::modalDialog(
           title = "Clear Analysis Results?",
-          shiny::p("Changing role assignments will clear all downstream results (Table 1, variable investigation, model, diagnostics, and results)."),
+          shiny::p("Changing role assignments will clear all downstream work: Table 1, variable investigation, covariate selection, and any model results."),
           shiny::tags$small(
             class = "text-muted",
-            "If you click Cancel, undo your change in the table manually."
+            "Cancel undoes your change and keeps everything as it was."
           ),
           footer = shiny::tagList(
             shiny::actionButton(ns("cancel_role_change"),  "Cancel",         class = "btn-secondary"),
@@ -317,7 +343,24 @@ analysis_setup_server <- function(id, shared_state) {
     shiny::observeEvent(input$cancel_role_change, {
       shiny::removeModal()
       pending_change(NULL)
+      .push_roles_to_table()   # the click already changed the DOM; put it back
     }, ignoreInit = TRUE)
+
+    # Send roles_state to the browser so the table's inputs match it. JS keeps
+    # the last payload and re-applies it when reactable remounts rows (e.g.
+    # after a search filter is cleared, which renders inputs from scratch).
+    .push_roles_to_table <- function() {
+      rs <- shiny::isolate(roles_state())
+      if (is.null(rs)) return()
+      payload <- lapply(names(rs), function(v) {
+        r    <- rs[[v]]
+        role <- ALL_ROLES[vapply(ALL_ROLES, function(k) isTRUE(r[[k]]), logical(1))]
+        list(var  = v,
+             role = if (length(role) > 0) role[1] else "",
+             ref  = if (is.null(r$reference_level)) "" else r$reference_level)
+      })
+      session$sendCustomMessage(ns("sync_roles"), payload)
+    }
 
     # ── Apply a role change event to roles_state and sync spec ───────────────
     .apply_role_change <- function(ev) {
@@ -328,36 +371,29 @@ analysis_setup_server <- function(id, shared_state) {
       current <- roles_state()
       if (is.null(current)) return()
 
+      .has_role <- function(v) any(vapply(ALL_ROLES, function(r) isTRUE(current[[v]][[r]]), logical(1)))
+
       if (var == "__clear__") {
-        for (v in names(current)) {
-          if (role %in% RADIO_ROLES) {
-            current[[v]][[role]] <- FALSE
-          } else if (role == "candidate") {
-            current[[v]][["candidate"]] <- FALSE
-          }
+        if (role %in% ALL_ROLES) {
+          for (v in names(current)) current[[v]][[role]] <- FALSE
         }
       } else if (var == "__select_all_candidates__") {
         for (v in names(current)) {
-          has_radio <- any(vapply(RADIO_ROLES, function(r) isTRUE(current[[v]][[r]]), logical(1)))
-          if (!has_radio) current[[v]][["candidate"]] <- TRUE
+          if (!.has_role(v)) current[[v]][["candidate"]] <- TRUE
         }
       } else {
         if (!var %in% names(current)) return()
 
-        if (role %in% RADIO_ROLES && isTRUE(value)) {
-          for (v in names(current)) {
-            if (v != var) current[[v]][[role]] <- FALSE
-          }
-          for (r in RADIO_ROLES) {
-            if (r != role) current[[var]][[r]] <- FALSE
-          }
-          current[[var]][["candidate"]] <- FALSE
-          current[[var]][[role]] <- TRUE
-        } else if (role == "candidate") {
+        if (role %in% ALL_ROLES) {
           if (isTRUE(value)) {
-            for (r in RADIO_ROLES) current[[var]][[r]] <- FALSE
+            # A radio role is held by one variable only
+            if (role %in% RADIO_ROLES) {
+              for (v in names(current)) current[[v]][[role]] <- FALSE
+            }
+            # A variable holds one role only
+            for (r in ALL_ROLES) current[[var]][[r]] <- FALSE
           }
-          current[[var]][["candidate"]] <- isTRUE(value)
+          current[[var]][[role]] <- isTRUE(value)
         } else if (role == "reference_level") {
           current[[var]][["reference_level"]] <- value
         }
@@ -365,6 +401,7 @@ analysis_setup_server <- function(id, shared_state) {
 
       roles_state(current)
       .sync_spec(current)
+      .push_roles_to_table()
     }
 
     # ── Sync roles_state → analysis_spec ─────────────────────────────────────
@@ -372,18 +409,13 @@ analysis_setup_server <- function(id, shared_state) {
       spec <- shiny::isolate(shared_state$analysis_spec)
       if (is.null(spec)) return()
 
-      outcome_vars    <- names(which(vapply(rs, function(r) isTRUE(r$outcome),     logical(1))))
-      exposure_vars   <- names(which(vapply(rs, function(r) isTRUE(r$exposure),    logical(1))))
-      candidates      <- names(which(vapply(rs, function(r) isTRUE(r$candidate),   logical(1))))
-      subject_id_vars <- names(which(vapply(rs, function(r) isTRUE(r$subject_id),  logical(1))))
-      cluster_vars    <- names(which(vapply(rs, function(r) isTRUE(r$cluster),     logical(1))))
-      time_vars       <- names(which(vapply(rs, function(r) isTRUE(r$time),        logical(1))))
+      outcome_vars  <- names(which(vapply(rs, function(r) isTRUE(r$outcome),   logical(1))))
+      exposure_vars <- names(which(vapply(rs, function(r) isTRUE(r$exposure),  logical(1))))
+      candidates    <- names(which(vapply(rs, function(r) isTRUE(r$candidate), logical(1))))
+      cluster_vars  <- names(which(vapply(rs, function(r) isTRUE(r$cluster),   logical(1))))
 
-      outcome_var  <- if (length(outcome_vars)    > 0) outcome_vars[1]    else NULL
-      exposure_var <- if (length(exposure_vars)   > 0) exposure_vars[1]   else NULL
-      subject_var  <- if (length(subject_id_vars) > 0) subject_id_vars[1] else NULL
-      cluster_var  <- if (length(cluster_vars)    > 0) cluster_vars[1]    else NULL
-      time_var     <- if (length(time_vars)       > 0) time_vars[1]       else NULL
+      outcome_var  <- if (length(outcome_vars)  > 0) outcome_vars[1]  else NULL
+      exposure_var <- if (length(exposure_vars) > 0) exposure_vars[1] else NULL
 
       study_type <- if (!is.null(exposure_var) && !is.null(outcome_var)) {
         "exposure_outcome"
@@ -403,9 +435,8 @@ analysis_setup_server <- function(id, shared_state) {
       t1_strat_exp <- study_type %in% c("exposure_outcome", "descriptive_exposure") && exp_is_factor
       t1_strat_out <- study_type == "risk_factor" && out_is_factor
 
-      radio_assigned <- Filter(Negate(is.null),
-                               list(outcome_var, exposure_var, subject_var, cluster_var, time_var))
-      candidates <- setdiff(candidates, unlist(radio_assigned))
+      candidates   <- setdiff(candidates, c(outcome_var, exposure_var))
+      cluster_vars <- setdiff(cluster_vars, c(outcome_var, exposure_var, candidates))
 
       t1_vars <- unique(c(exposure_var, outcome_var, candidates))
       t1_vars <- t1_vars[!vapply(t1_vars, is.null, logical(1))]
@@ -413,24 +444,32 @@ analysis_setup_server <- function(id, shared_state) {
 
       ref_levels <- Filter(Negate(is.null), lapply(rs, `[[`, "reference_level"))
 
-      old_spec <- spec
+      # Step 4 writes final covariates and reference levels into the same
+      # variable_roles list, so compare against Step 1's own last write rather
+      # than the live spec — otherwise any Step 1 event would look like a change.
+      step1_roles <- list(
+        outcome_var, exposure_var, candidates, cluster_vars, ref_levels
+      )
+      if (identical(step1_roles, spec$specification_metadata$step1_roles)) return()
+
+      prev_version <- spec$specification_metadata$roles_version
+      spec$specification_metadata$step1_roles    <- step1_roles
+      spec$specification_metadata$roles_version  <-
+        (if (is.null(prev_version)) 0L else prev_version) + 1L
       spec$specification_metadata$study_type     <- study_type
       spec$variable_roles$outcome_variable        <- outcome_var
       spec$variable_roles$exposure_variable       <- exposure_var
       spec$variable_roles$candidate_covariates    <- if (length(candidates) > 0) candidates else NULL
       spec$variable_roles$table1_variables        <- if (length(t1_vars) > 0) t1_vars else NULL
       spec$variable_roles$univariable_test_pool   <- if (length(candidates) > 0) candidates else NULL
-      spec$variable_roles$final_model_covariates  <- if (length(candidates) > 0) candidates else NULL
-      spec$variable_roles$subject_id_variable     <- subject_var
-      spec$variable_roles$cluster_variable        <- cluster_var
-      spec$variable_roles$time_variable           <- time_var
+      # Covariates start unselected; Step 4 writes them as the user checks
+      spec$variable_roles$final_model_covariates  <- NULL
+      spec$variable_roles$cluster_variables       <- if (length(cluster_vars) > 0) cluster_vars else NULL
       spec$variable_roles$reference_levels        <- ref_levels
       spec$table1_specification$stratify_by_exposure <- t1_strat_exp
       spec$table1_specification$stratify_by_outcome  <- t1_strat_out
 
-      if (!identical(old_spec, spec)) {
-        shared_state$analysis_spec <- spec
-      }
+      shared_state$analysis_spec <- spec
     }
 
     # ── Main content (pre-freeze vs post-freeze) ──────────────────────────────
@@ -540,9 +579,7 @@ analysis_setup_server <- function(id, shared_state) {
         exposure   = FALSE,
         outcome    = FALSE,
         candidate  = FALSE,
-        subject_id = FALSE,
         cluster    = FALSE,
-        time       = FALSE,
         stringsAsFactors = FALSE,
         row.names  = NULL
       )
@@ -637,20 +674,38 @@ analysis_setup_server <- function(id, shared_state) {
               )
             }
           ),
-          subject_id = reactable::colDef(
-            header   = .clear_header("Subject ID", "subject_id"),
-            minWidth = 90,
-            cell     = .radio_cell("subject_id")
-          ),
           cluster = reactable::colDef(
-            header   = .clear_header("Cluster", "cluster"),
+            header = htmltools::tags$div(
+              class = "d-flex flex-column align-items-center",
+              htmltools::tags$span(
+                style = "font-size:0.75rem; cursor:help;",
+                title = paste(
+                  "Grouping variables (e.g. patient ID, centre). Each becomes a",
+                  "random intercept in a mixed model. Check more than one for",
+                  "nested or crossed groupings."),
+                "Cluster"
+              ),
+              htmltools::tags$button(
+                "Clear",
+                class       = "edark-clear-role btn btn-link btn-sm p-0 text-muted",
+                style       = "font-size:0.7rem; line-height:1;",
+                `data-role` = "cluster"
+              )
+            ),
             minWidth = 70,
-            cell     = .radio_cell("cluster")
-          ),
-          time = reactable::colDef(
-            header   = .clear_header("Time", "time"),
-            minWidth = 60,
-            cell     = .radio_cell("time")
+            cell = function(value, index) {
+              v <- vars[index]
+              # Any column can identify groups except a timestamp
+              if (!is.null(ctypes) && v %in% names(ctypes) && ctypes[[v]] == "datetime") {
+                return(htmltools::tags$span("\u2014", class = "text-muted"))
+              }
+              htmltools::tags$input(
+                type        = "checkbox",
+                class       = "edark-role-checkbox form-check-input",
+                `data-var`  = v,
+                `data-role` = "cluster"
+              )
+            }
           )
         )
       )
@@ -720,7 +775,7 @@ analysis_setup_server <- function(id, shared_state) {
       outcome    <- names(which(vapply(rs, function(r) isTRUE(r$outcome),    logical(1))))
       exposure   <- names(which(vapply(rs, function(r) isTRUE(r$exposure),   logical(1))))
       candidates <- names(which(vapply(rs, function(r) isTRUE(r$candidate),  logical(1))))
-      subject_id <- names(which(vapply(rs, function(r) isTRUE(r$subject_id), logical(1))))
+      clusters   <- names(which(vapply(rs, function(r) isTRUE(r$cluster),    logical(1))))
 
       .row <- function(label, display) {
         shiny::div(
@@ -743,9 +798,9 @@ analysis_setup_server <- function(id, shared_state) {
                              shiny::span("\u2014", class = "text-muted fw-normal")
                            else sprintf("%d variable%s", length(candidates),
                                         if (length(candidates) != 1L) "s" else "")),
-        .row("Subject ID", if (length(subject_id) == 0)
+        .row("Clusters",   if (length(clusters) == 0)
                              shiny::span("\u2014", class = "text-muted fw-normal")
-                           else subject_id[1])
+                           else paste(clusters, collapse = ", "))
       )
     })
 
@@ -785,9 +840,7 @@ analysis_setup_server <- function(id, shared_state) {
         vr$outcome_variable,
         vr$exposure_variable,
         vr$candidate_covariates,
-        vr$subject_id_variable,
-        vr$cluster_variable,
-        vr$time_variable
+        vr$cluster_variables
       )))
       selected_vars <- intersect(selected_vars, names(adata))
 

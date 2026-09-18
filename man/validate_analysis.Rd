@@ -27,6 +27,9 @@ A named list:
 \item{messages}{All messages (errors + warnings + notes).}
 \item{display_messages}{Filtered messages suitable for UI display:
 errors and warnings always; notes only when \code{verbose = TRUE}.}
+\item{checks_run}{Character. Codes of the checks that were evaluated.}
+\item{passed}{Messages (level \code{"pass"}) for checks that ran and
+raised nothing.}
 }
 Each message is a list with fields \code{code}, \code{level}, and
 \code{message}.

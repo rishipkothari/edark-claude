@@ -12,8 +12,9 @@ run_stepwise(data, spec)
 \item{spec}{A named list conforming to the \code{analysis_spec} structure.}
 }
 \value{
-A named list: \code{selected_variables}, \code{direction},
-\code{criterion}, \code{final_formula}, \code{step_trace}, plus
+A named list: \code{selected_variables}, \code{held_variables}
+(the exposure, or empty), \code{direction}, \code{criterion},
+\code{final_formula}, \code{step_trace}, plus
 \code{excluded_variables} (\code{data.frame(variable, reason)} of
 candidates that could not be modelled on the complete rows),
 \code{n_used} and \code{n_total}. On a fit error, \code{error} holds the
@@ -23,4 +24,6 @@ no outcome or candidates are assigned.
 \description{
 Applies \code{stats::step()} using backward or forward direction with BIC
 or AIC criterion. Uses the candidate pool from \code{univariable_test_pool}.
+When an exposure is assigned it is held in every model (the lower bound of
+the search scope) and never offered for selection.
 }

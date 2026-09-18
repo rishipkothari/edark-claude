@@ -86,6 +86,8 @@ analysis_main_ui <- function(id) {
 analysis_main_server <- function(id, shared_state) {
   shiny::moduleServer(id, function(input, output, session) {
 
+    ns <- session$ns
+
     # Wire all step sub-modules — each is a sibling, none calls another's server.
     analysis_setup_server("setup",                       shared_state)
     analysis_table1_server("table1",                     shared_state)
@@ -95,5 +97,50 @@ analysis_main_server <- function(id, shared_state) {
     analysis_diagnostics_server("diagnostics",           shared_state)
     analysis_results_server("results",                   shared_state)
     analysis_export_server("export",                     shared_state)
+
+    # ── Step gating ──────────────────────────────────────────────────────────
+    # Steps 1–4 are always reachable (each shows its own guidance when Step 1
+    # is incomplete). Table 1 and variable investigation are optional, so
+    # Step 5 opens as soon as Step 1 has a frozen dataset and an outcome;
+    # Step 5's Run Model is gated only by its preflight.
+    step_unlocked <- shiny::reactive({
+      spec   <- shared_state$analysis_spec
+      ready  <- !is.null(shared_state$analysis_data) && !is.null(spec) &&
+                !is.null(spec$variable_roles$outcome_variable)
+      fitted <- !is.null(shared_state$analysis_result$fitted_models$primary_model)
+      c(step1 = TRUE, step2 = TRUE, step3 = TRUE, step4 = TRUE,
+        step5 = ready, step6 = fitted, step7 = fitted, step8 = fitted)
+    })
+
+    lock_reason <- c(
+      step5 = "Start the analysis and assign an outcome in Step 1 first.",
+      step6 = "Fit a model in Step 5 first.",
+      step7 = "Fit a model in Step 5 first.",
+      step8 = "Fit a model in Step 5 first."
+    )
+
+    shiny::observe({
+      unlocked <- step_unlocked()
+      tabs_sel <- paste0("#", ns("analysis_steps"))
+
+      for (step in names(unlocked)) {
+        link <- sprintf("%s a[data-value='%s']", tabs_sel, step)
+        shinyjs::toggleClass(selector = link, class = "disabled",
+                             condition = !unlocked[[step]])
+        # Tooltip on the <li>: the disabled link itself has pointer-events: none
+        tip <- if (unlocked[[step]]) "" else lock_reason[[step]]
+        shinyjs::runjs(sprintf("$(\"%s\").parent().attr('title', %s);",
+                               link, jsonlite::toJSON(tip, auto_unbox = TRUE)))
+      }
+
+      # If the current step just became locked, fall back to the furthest open step
+      current <- shiny::isolate(input$analysis_steps)
+      if (!is.null(current) && current %in% names(unlocked) && !unlocked[[current]]) {
+        open_steps <- names(unlocked)[unlocked]
+        open_steps <- open_steps[match(open_steps, names(unlocked)) <
+                                 match(current, names(unlocked))]
+        bslib::nav_select("analysis_steps", selected = utils::tail(open_steps, 1))
+      }
+    })
   })
 }

@@ -71,6 +71,27 @@ NULL
   )
 }
 
+# The exposure, when one is assigned and present in `data` — else
+# character(0). Stepwise and LASSO hold it in every model so that covariates
+# are chosen for what they add alongside the exposure, which is how the final
+# model uses them (a confounder matters because of its link to the exposure).
+.held_exposure <- function(roles, data) {
+  exposure <- roles$exposure_variable
+  if (is.null(exposure) || !nzchar(exposure) || !exposure %in% names(data)) {
+    return(character(0))
+  }
+  exposure
+}
+
+# Error message when the held exposure cannot be modelled on the complete
+# rows, else NULL.
+.held_exposure_error <- function(data_cc, exposure) {
+  if (length(exposure) == 0L || nrow(data_cc) == 0L) return(NULL)
+  bad <- .partition_modelable(data_cc, exposure)$excluded
+  if (nrow(bad) == 0L) return(NULL)
+  sprintf("The exposure (%s) has %s.", exposure, bad$reason[1])
+}
+
 
 #' Run univariable regression screen
 #'
@@ -308,12 +329,15 @@ compute_collinearity <- function(data, candidates) {
 #'
 #' Applies \code{stats::step()} using backward or forward direction with BIC
 #' or AIC criterion. Uses the candidate pool from \code{univariable_test_pool}.
+#' When an exposure is assigned it is held in every model (the lower bound of
+#' the search scope) and never offered for selection.
 #'
 #' @param data A \code{data.frame}.
 #' @param spec A named list conforming to the \code{analysis_spec} structure.
 #'
-#' @return A named list: \code{selected_variables}, \code{direction},
-#'   \code{criterion}, \code{final_formula}, \code{step_trace}, plus
+#' @return A named list: \code{selected_variables}, \code{held_variables}
+#'   (the exposure, or empty), \code{direction}, \code{criterion},
+#'   \code{final_formula}, \code{step_trace}, plus
 #'   \code{excluded_variables} (\code{data.frame(variable, reason)} of
 #'   candidates that could not be modelled on the complete rows),
 #'   \code{n_used} and \code{n_total}. On a fit error, \code{error} holds the
@@ -330,66 +354,58 @@ run_stepwise <- function(data, spec) {
 
   if (is.null(outcome) || is.null(candidates) || length(candidates) == 0L) return(NULL)
 
-  cc      <- compute_complete_cases(data, c(outcome, candidates))
-  data_cc <- apply_reference_levels(cc$data, roles$reference_levels)
+  exposure <- .held_exposure(roles, data)
+  cc       <- compute_complete_cases(data, c(outcome, exposure, candidates))
+  data_cc  <- apply_reference_levels(cc$data, roles$reference_levels)
 
-  cands_present <- intersect(candidates, names(data_cc))
+  cands_present <- setdiff(intersect(candidates, names(data_cc)), exposure)
   if (length(cands_present) == 0L) return(NULL)
 
   prep <- .prepare_selection_data(data, data_cc, cands_present)
   .fail <- function(msg) {
-    c(list(selected_variables = character(0), direction = direction,
-           criterion = criterion, final_formula = NULL, error = msg),
+    c(list(selected_variables = character(0), held_variables = exposure,
+           direction = direction, criterion = criterion, final_formula = NULL,
+           error = msg),
       prep$run_info)
   }
   if (!is.null(prep$error)) return(.fail(prep$error))
+  exp_err <- .held_exposure_error(prep$data, exposure)
+  if (!is.null(exp_err)) return(.fail(exp_err))
   cands_present <- prep$keep
-  data_cc       <- prep$data
+  data_cc       <- .droplevels_cols(prep$data, exposure)
 
   out_col   <- data_cc[[outcome]]
   is_binary <- is.factor(out_col) && length(levels(droplevels(out_col))) == 2L
   n         <- nrow(data_cc)
   k         <- if (criterion == "BIC") log(n) else 2
 
+  # Scope: the exposure (if any) is the floor, the full candidate set the ceiling
+  lower_rhs <- if (length(exposure) > 0L) exposure else "1"
   full_fmla <- stats::as.formula(
-    paste(outcome, "~", paste(cands_present, collapse = " + "))
+    paste(outcome, "~", paste(c(exposure, cands_present), collapse = " + "))
   )
-  null_fmla <- stats::as.formula(paste(outcome, "~ 1"))
+  null_fmla <- stats::as.formula(paste(outcome, "~", lower_rhs))
+  scope     <- list(lower = stats::as.formula(paste("~", lower_rhs)),
+                    upper = stats::as.formula(
+                      paste("~", paste(c(exposure, cands_present), collapse = " + "))))
+
+  .fit <- function(fmla) {
+    if (is_binary) stats::glm(fmla, data = data_cc, family = stats::binomial())
+    else stats::lm(fmla, data = data_cc)
+  }
 
   tryCatch({
-    if (is_binary) {
-      full_fit <- stats::glm(full_fmla, data = data_cc, family = stats::binomial())
-    } else {
-      full_fit <- stats::lm(full_fmla, data = data_cc)
-    }
+    start_fit    <- .fit(if (direction == "backward") full_fmla else null_fmla)
+    selected_fit <- stats::step(start_fit, scope = scope, direction = direction,
+                                k = k, trace = 0)
 
-    if (direction == "backward") {
-      selected_fit <- stats::step(full_fit, direction = "backward", k = k, trace = 0)
-    } else {
-      if (is_binary) {
-        null_fit <- stats::glm(null_fmla, data = data_cc, family = stats::binomial())
-      } else {
-        null_fit <- stats::lm(null_fmla, data = data_cc)
-      }
-      selected_fit <- stats::step(
-        null_fit,
-        scope     = list(lower = null_fmla, upper = full_fmla),
-        direction = "forward",
-        k         = k,
-        trace     = 0
-      )
-    }
-
+    # term.labels are the variable names themselves (not dummy columns)
     selected_terms <- attr(stats::terms(selected_fit), "term.labels")
-    # Map terms back to original variable names (handles factor dummy expansion)
-    selected_vars <- unique(unlist(lapply(selected_terms, function(t) {
-      matches <- cands_present[vapply(cands_present,
-        function(cv) startsWith(t, cv), logical(1))]
-      if (length(matches) > 0L) matches[1L] else t
-    })))
+    selected_vars  <- intersect(cands_present, selected_terms)
 
     c(list(
       selected_variables = selected_vars,
+      held_variables     = exposure,
       direction          = direction,
       criterion          = criterion,
       final_formula      = stats::formula(selected_fit),
@@ -403,12 +419,15 @@ run_stepwise <- function(data, spec) {
 #'
 #' Applies \code{glmnet::cv.glmnet} with alpha = 1 (LASSO). Factor variables
 #' are expanded via \code{model.matrix()}; a factor is included in the
-#' suggested list if any of its dummies has a non-zero coefficient.
+#' suggested list if any of its dummies has a non-zero coefficient. When an
+#' exposure is assigned its columns get \code{penalty.factor = 0}, so it is
+#' never shrunk out and never offered for selection.
 #'
 #' @param data A \code{data.frame}.
 #' @param spec A named list conforming to the \code{analysis_spec} structure.
 #'
-#' @return A named list: \code{selected_variables}, \code{lambda_type},
+#' @return A named list: \code{selected_variables}, \code{held_variables}
+#'   (the exposure, or empty), \code{lambda_type},
 #'   \code{lambda_selected}, \code{coef_data}, \code{cv_fit}, plus
 #'   \code{excluded_variables}, \code{n_used} and \code{n_total} (as for
 #'   \code{\link{run_stepwise}}). On a fit error, \code{error} holds the
@@ -423,60 +442,63 @@ run_lasso <- function(data, spec) {
 
   if (is.null(outcome) || is.null(candidates) || length(candidates) == 0L) return(NULL)
 
-  cc      <- compute_complete_cases(data, c(outcome, candidates))
-  data_cc <- apply_reference_levels(cc$data, roles$reference_levels)
+  exposure <- .held_exposure(roles, data)
+  cc       <- compute_complete_cases(data, c(outcome, exposure, candidates))
+  data_cc  <- apply_reference_levels(cc$data, roles$reference_levels)
 
-  cands_present <- intersect(candidates, names(data_cc))
+  cands_present <- setdiff(intersect(candidates, names(data_cc)), exposure)
   if (length(cands_present) == 0L) return(NULL)
 
   prep <- .prepare_selection_data(data, data_cc, cands_present)
   .fail <- function(msg) {
-    c(list(selected_variables = character(0), lambda_type = lambda_sel,
-           lambda_selected = NULL, coef_data = NULL, cv_fit = NULL,
-           error = msg),
+    c(list(selected_variables = character(0), held_variables = exposure,
+           lambda_type = lambda_sel, lambda_selected = NULL, coef_data = NULL,
+           cv_fit = NULL, error = msg),
       prep$run_info)
   }
   if (!is.null(prep$error)) return(.fail(prep$error))
+  exp_err <- .held_exposure_error(prep$data, exposure)
+  if (!is.null(exp_err)) return(.fail(exp_err))
   cands_present <- prep$keep
-  data_cc       <- prep$data
+  data_cc       <- .droplevels_cols(prep$data, exposure)
 
   out_col   <- data_cc[[outcome]]
   is_binary <- is.factor(out_col) && length(levels(droplevels(out_col))) == 2L
   family    <- if (is_binary) "binomial" else "gaussian"
 
   tryCatch({
-    x_fmla <- stats::as.formula(paste("~", paste(cands_present, collapse = " + ")))
-    x      <- stats::model.matrix(x_fmla, data = data_cc)[, -1L, drop = FALSE]
+    x_vars <- c(exposure, cands_present)
+    x_fmla <- stats::as.formula(paste("~", paste(x_vars, collapse = " + ")))
+    mm     <- stats::model.matrix(x_fmla, data = data_cc)
+    # Variable behind each (dummy) column, from model.matrix's term index
+    col_var <- x_vars[attr(mm, "assign")[-1L]]
+    x      <- mm[, -1L, drop = FALSE]
     y      <- if (is_binary) as.numeric(out_col) - 1L else as.numeric(out_col)
 
-    cv_fit <- glmnet::cv.glmnet(x, y, family = family, alpha = 1, nfolds = 10)
+    # Exposure columns are unpenalised: always in the model, never selected
+    pf <- ifelse(col_var %in% exposure, 0, 1)
+
+    cv_fit <- glmnet::cv.glmnet(x, y, family = family, alpha = 1, nfolds = 10,
+                                penalty.factor = pf)
 
     chosen_lambda <- if (lambda_sel == "lambda.min") cv_fit$lambda.min else cv_fit$lambda.1se
 
-    coefs    <- glmnet::coef.glmnet(cv_fit$glmnet.fit, s = chosen_lambda)
-    coef_vec <- as.numeric(coefs)
-    terms    <- rownames(coefs)
+    coefs <- glmnet::coef.glmnet(cv_fit$glmnet.fit, s = chosen_lambda)
 
     coef_df <- data.frame(
-      term     = terms,
-      estimate = coef_vec,
+      term     = rownames(coefs)[-1L],
+      variable = col_var,
+      estimate = as.numeric(coefs)[-1L],
       stringsAsFactors = FALSE
     ) %>%
-      dplyr::filter(.data$term != "(Intercept)", .data$estimate != 0)
+      dplyr::filter(.data$estimate != 0, !.data$variable %in% exposure)
 
-    # Map non-zero dummies back to original variable names
-    selected_vars <- if (nrow(coef_df) > 0L) {
-      unique(unlist(lapply(coef_df$term, function(t) {
-        matches <- cands_present[vapply(cands_present,
-          function(cv) startsWith(t, cv), logical(1))]
-        if (length(matches) > 0L) matches[1L] else t
-      })))
-    } else {
-      character(0)
-    }
+    # A factor is selected if any of its dummies is non-zero
+    selected_vars <- intersect(cands_present, coef_df$variable)
 
     c(list(
       selected_variables = selected_vars,
+      held_variables     = exposure,
       lambda_type        = lambda_sel,
       lambda_selected    = chosen_lambda,
       coef_data          = coef_df,

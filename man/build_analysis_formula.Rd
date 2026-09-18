@@ -18,5 +18,5 @@ Assembles an R \code{formula} object from the variable roles and model
 design stored in \code{analysis_spec}. The outcome is placed on the
 left-hand side; the exposure (if assigned) is first on the right-hand
 side, followed by the confirmed covariates (deduped). For mixed models,
-the appropriate random-effects term is appended.
+one random intercept \code{(1 | cluster)} is appended per cluster variable.
 }

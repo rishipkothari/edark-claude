@@ -7,6 +7,12 @@
 Fitting engines for all four model types: linear regression
 (\code{stats::lm}), logistic regression (\code{stats::glm}), linear mixed
 model (\code{lmerTest::lmer}), and logistic mixed model
-(\code{lme4::glmer}). See PRD §7.2\enc{–}{-}7.5 for full specifications.
-Implemented in Phase 5 of the build plan.
+(\code{lme4::glmer}), plus the rules for which model a spec can use.
+Pure functions — no Shiny. See PRD §4.4 and §7.1\enc{–}{-}7.5.
+}
+\details{
+All confidence intervals are Wald (estimate \eqn{\pm} 1.96 SE, computed
+from the fixed-effect estimates and their variance, which is what
+\code{confint.default()} does for lm/glm). P-values are model-native:
+t-tests (lm), Wald z (glm, glmer), Satterthwaite df (lmerTest).
 }

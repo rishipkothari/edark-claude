@@ -10,7 +10,7 @@ reset_analysis_pipeline(shared_state, from_step)
 \item{shared_state}{A Shiny \code{reactiveValues} object.}
 
 \item{from_step}{Integer. The step that triggered the reset: \code{1}
-(role assignment change), \code{4} (covariate re-confirmation), or
+(role assignment change), \code{4} (covariate change after a fit), or
 \code{5} (model type change).}
 }
 \value{

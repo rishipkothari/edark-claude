@@ -53,7 +53,7 @@ R/
 ├── module_analysis_table1.R        Analyze › Step 2: Table 1 — gtsummary descriptive table (Phase 2)
 ├── module_analysis_varinvestigation.R   Analyze › Step 3: Variable Investigation — univariable screen, collinearity, stepwise/LASSO (Phase 3)
 ├── module_analysis_covariate_confirm.R  Analyze › Step 4: Covariate Confirmation — final covariates, reference levels, live missingness; writes to spec on every change (Phase 4)
-├── module_analysis_modelspec.R     Analyze › Step 5: Model Specification — model fitting, preflight, R code preview (Phase 5)
+├── module_analysis_modelspec.R     Analyze › Step 5: Model Specification — Summary tab (audit) + Run Model tab (auto model type, optimizer, live preflight, fit, results) (Phase 5)
 ├── module_analysis_diagnostics.R   Analyze › Step 6: Diagnostics — residuals, influence, VIF, ROC (Phase 6)
 ├── module_analysis_results.R       Analyze › Step 7: Results — tables, forest plot, methods paragraph (Phase 7)
 ├── module_analysis_export.R        Analyze › Step 8: Export — zip assembly, preset selector, download (Phase 8)
@@ -61,7 +61,8 @@ R/
 ├── analysis_utils.R                build_analysis_formula() / apply_reference_levels() / compute_complete_cases() / compute_covariate_sample()
 ├── service_analysis_pipeline.R     reset_analysis_pipeline(shared_state, from_step) — clears downstream state per PRD §8.6
 ├── service_analysis_validation.R   validate_analysis(spec, data, tier, verbose) — all Tier 1 + Tier 2 preflight checks
-├── service_analysis_models.R       Model fitting engines: lm / glm / lmerTest::lmer / lme4::glmer (Phase 5)
+├── service_analysis_models.R       Model fitting engines: lm / glm / lmerTest::lmer / lme4::glmer; model options, outcome event, stale check (Phase 5)
+├── service_analysis_summary.R      build_analysis_summary() — Step 5 Summary sections, pure, reusable by export (Phase 5)
 ├── service_analysis_diagnostics.R  Post-fit diagnostic computation (Phase 6)
 ├── service_analysis_tables.R       gtsummary table generation — Table 1, results, combined table (Phases 2, 7)
 ├── service_analysis_plots.R        ggplot figure generation — forest plot, residuals, ROC, etc. (Phases 6, 7)
@@ -347,7 +348,7 @@ edark_report(liver_tx, report_type = "primary_vs_others",
 Tab 4 (`4 · Analyze`) — an 8-step guided workflow for fitting and reporting statistical models. Full spec: `PRD/EDARK_Analysis_Module_PRD.md`. Build sequence: `PRD/EDARK_Analysis_Build_Plan.md`.
 
 ### Current state
-Phases 0–4 complete (infrastructure, Setup, Table 1, Variable Investigation, Covariate Confirmation), including the pre-Phase 5 refactor: subject ID and time roles removed in favour of a multi-select **cluster** role, random slopes removed, Step 4's Confirm button removed (live writes), Step 3 stepwise/LASSO hold the exposure. Steps 5–8 are placeholder stubs pending Phases 5–8. The PRD is updated for all of this; the build plan's Phase 4/5 acceptance criteria still describe the old Confirm/pending flow and random slopes — the PRD wins.
+Phases 0–5 complete (infrastructure, Setup, Table 1, Variable Investigation, Covariate Confirmation, Model Specification), including the pre-Phase 5 refactor: subject ID and time roles removed in favour of a multi-select **cluster** role, random slopes removed, Step 4's Confirm button removed (live writes), Step 3 stepwise/LASSO hold the exposure. Steps 6–8 are placeholder stubs. The R code generator (`service_analysis_codegen.R`) is deferred. The PRD is updated for all of this; the build plan's Phase 4/5 sections still describe the old Confirm/pending flow, accordions, warning modal and random slopes — the PRD wins.
 
 ### Test data for Phase 3
 `liver_tx` (500 × 36) is built to exercise variable investigation. Regenerate via `Rscript data-raw/liver_tx_sample.R` (seeded).
@@ -403,6 +404,25 @@ One role per variable: `outcome_variable` and `exposure_variable` (single-select
 - **Staged selection carries its `roles_key`** (`created_at` + `roles_version`). The reset observer clears the selection when the key changes; the commit observer only writes when `staged()$key` matches the current key. Without this, observer ordering after a Step 1 role change could write the old selection into the new spec.
 - Step 3 reruns no longer affect Step 4 beyond refreshing the suggestion columns (`run_seq` / `.bump_run_seq()` were removed).
 
+### Step 5 — Model Specification (`module_analysis_modelspec.R`)
+- Two tabs (`navset_underline`): **Summary** (first) and **Run Model**.
+- **Model type is automatic**: `analysis_model_options(spec, data)` returns all four types with `available` / `reason`; exactly one is available for a supported outcome (family from `analysis_outcome_type()`, mixed iff clusters assigned). An observer writes it to `model_design$model_type` (NULL for an unsupported outcome). The dropdown is display-only — others are disabled via `.disable_choice()` with the reason in their label.
+- **Optimizer** (mixed only, Advanced accordion) is the only Step 5 setting. Changing it after a fit does **not** clear the model — `analysis_fit_is_stale(spec, result)` compares model inputs against `analysis_result$specification_snapshot` and the UI shows a stale banner.
+- **Preflight is live** (`validate_analysis(verbose = TRUE)` on every spec change). Sidebar shows errors + warnings; the Summary tab shows everything including passes. No Run Preflight button, no verbose checkbox, **no warning modal** on Run.
+- **Pulse**: Bootstrap gives disabled buttons `pointer-events: none`, so a click on disabled Run Model lands on its wrapper `#run_wrap`; JS adds `.edark-pulse` to `#preflight_box`.
+- **Run**: `fit_analysis_model(spec, data)` inside the blocking progress modal → `reset_analysis_pipeline(shared_state, 4)` (clears the previous fit and anything downstream) → writes `specification_snapshot`, `run_status` (status, fitted_at, error, n_used, n_total, formula, outcome_event, reference_levels, preflight warnings, run_messages), `fitted_models$primary_model`, `inference_summary$coefficients / fit_statistics / predicted_values`. A failed fit stores `status = "failed"` and no model.
+- `.analysis_progress_modal()` lives in `module_analysis_varinvestigation.R` and is shared.
+
+### Model fitting (`service_analysis_models.R`)
+- Model data: complete cases over outcome + predictors (+ clusters if mixed) → **ordered factors made unordered** (treatment contrasts, not `.L`/`.Q` polynomial terms — Auto-factor and cut-point transforms produce ordered factors) → reference levels → `droplevels` → clusters `factor()`.
+- Coefficients come from `summary(model)$coefficients` for all four engines; Wald CI = est ± 1.96·SE. **Don't use `confint.default()` on a merMod** — `coef()` of a merMod is per-group, not the fixed effects. Terms map to variables via the model matrix `assign` attribute (`lme4::getME(model, "X")` for mixed), never by name prefix.
+- `summary()` of an `lmerTest::lmer` fit gives Satterthwaite p-values only because lmerTest's S3 method is registered — always fit linear mixed models with `lmerTest::lmer`, not `lme4::lmer`.
+- Warnings/messages are captured with `withCallingHandlers` + `tryCatch`, never thrown. Convergence and separation warnings get plain-language hints (`.explain_fit_warning()`); lme4's "boundary (singular) fit" message is replaced by our own singular-fit warning.
+- `analysis_outcome_event(spec, data)` → the event level for a binary outcome (the non-reference level) — drives "Modelling: ead = TRUE (vs FALSE)".
+
+### Summary (`service_analysis_summary.R`)
+`build_analysis_summary(spec, result, data, validation)` → list of sections `list(id, title, rows)`, each row `list(label, value, items, level)`. Current state only (not a click log). Data preparation comes from `specification_metadata$prepare_snapshot`, which Step 1 copies from `shared_state$last_applied_specs` (+ original columns/dims, working dims) at freeze — the only time Analysis reads Prepare state.
+
 ### Validator (`service_analysis_validation.R`)
 `validate_analysis(spec, data, tier = "full", verbose = FALSE)` — pure function, no Shiny.
 
@@ -412,7 +432,11 @@ Returns `list(validity_flag, messages, display_messages)` where `validity_flag` 
 
 **Tier 2** (model specification — adds to Tier 1, runs before multivariable model): errors: `PF_NO_PREDICTORS`, `PF_OUTCOME_MODEL_MISMATCH`, `PF_MIXED_NO_CLUSTER`, `PF_MIXED_SINGLE_CLUSTER` (per cluster), `PF_CLUSTERS_UNUSED` (clusters assigned + non-mixed model), `PF_FACTOR_SINGLE_LEVEL` (covariates, checked on the full-model complete cases); warnings: `PF_LOW_EPV_10`, `PF_LOW_EPV_5`, `PF_MISSING_ANY/GT20/GT50`, `PF_RARE_FACTOR_LEVEL`, `PF_HIGH_CORRELATION`, `PF_FEW_CLUSTERS`, `PF_UNBALANCED_CLUSTERS` (both per cluster), `PF_CLUSTER_IDS_SHARED` (≥ 2 clusters: values of the finer one recur under several values of the coarser — merged clusters if IDs are only unique within the parent, harmless if crossed), `PF_RARE_OUTCOME`, `PF_EXPOSURE_NOT_IN_MODEL`; notes (verbose only): `PF_SINGLE_COVARIATE`, `PF_SAMPLE_SUMMARY`, `PF_MODEL_SUMMARY`, `PF_DATA_STRUCTURE`, `PF_REFERENCE_LEVELS`.
 
+Also Tier 2: error `PF_OUTCOME_UNSUPPORTED` (outcome neither numeric nor 2-level factor); warning `PF_LOOKS_CATEGORICAL` (numeric outcome/predictor with ≤ 10 distinct whole-number values, `.PF_CATEGORICAL_MAX_VALUES`; the app never factors silently).
+
 Tier 1 complete-cases over outcome + exposure only. Tier 2 adds predictors, plus clusters only when the model is mixed.
+
+Return value also has `checks_run` and `passed` (pass messages from `.PF_PASS_LABELS`). **Adding a check**: call `.ran("PF_CODE")` where it is evaluated, add a pass label to `.PF_PASS_LABELS`, and if it is a stricter variant of another code map it in `.PF_GROUP_HEAD`.
 
 ### Pipeline reset (`service_analysis_pipeline.R`)
 `reset_analysis_pipeline(shared_state, from_step)` — called by modules after user confirms a destructive upstream change. Never shows its own modal.
@@ -430,7 +454,7 @@ Tier 1 complete-cases over outcome + exposure only. Tier 2 adds predictors, plus
 | Linear mixed model | `"linear_mixed"` | continuous | ≥ 1 required |
 | Logistic mixed model | `"logistic_mixed"` | binary factor (2 levels) | ≥ 1 required |
 
-Step 5 should pre-select the model from outcome type + whether clusters are assigned (decided before Phase 5).
+Step 5 selects the model automatically from outcome type + whether clusters are assigned.
 
 All CIs are Wald-based (`confint.default()`). All p-values are model-native (t-tests for lm, Wald z for glm/glmer, Satterthwaite df for lmerTest::lmer).
 
@@ -463,7 +487,7 @@ session$sendCustomMessage("edark_analysis_progress", list(frac = 0.5, detail = "
 ## What's not built yet
 
 #### In progress
-- **Analysis module** (Phases 1–9): Phases 0–4 complete; Steps 5–8 are placeholder stubs. Phase 5 decisions already made: preflight re-runs on every spec change (plus tab entry / model change / button); R code generator (`service_analysis_codegen.R`) deferred — R Code Preview is a placeholder in Phase 5; Model Results stores tidy coefficients + fit stats only (gtsummary tables are Phase 7). See `PRD/EDARK_Analysis_Build_Plan.md` for phase definitions and acceptance criteria.
+- **Analysis module** (Phases 1–9): Phases 0–5 complete; Steps 6–8 are placeholder stubs. R code generator (`service_analysis_codegen.R`) deferred — Step 5's R Code Preview is a placeholder; it should consume `prepare_snapshot` + the spec. Step 5 stores coefficients + fit stats only (gtsummary tables are Phase 7). See `PRD/EDARK_Analysis_Build_Plan.md` for phase definitions and acceptance criteria.
 
 #### High magnitude change
 - Alternative plot type options per variable combination (heat map, balloon plot, etc.)
@@ -485,4 +509,6 @@ session$sendCustomMessage("edark_analysis_progress", list(frac = 0.5, detail = "
 #### Analysis module debugging
 - Univariable screen flags a multi-level factor as suggested if *any* level term clears the threshold; an overall likelihood-ratio p per variable would be more correct (`service_analysis_variable_selection.R`).
 - collinearity plot base size should be similarly scaled to # of variables; still too small when theres just a few
+- **EPV is computed two ways**: Step 4 / Summary (`compute_covariate_sample`) divides events by *parameters* (a 3-level factor = 2); the validator's `PF_LOW_EPV_*` divides by *predictors* (a factor = 1), so the validator is more lenient. Pick one (parameters is the usual convention).
+- **`PF_LOOKS_CATEGORICAL` may be noisy** on genuine small counts (e.g. transfusion units 0–8). Threshold is `.PF_CATEGORICAL_MAX_VALUES` (10) in `service_analysis_validation.R`.
 - **`postop_aki_stage` conflates "no AKI" with "missing"** — `NA` means the patient had no AKI, but every complete-case path reads it as missing. Including it as a covariate silently drops ~62% of rows and trips `PF_MISSING_GT50`. Consider splitting into a `has_aki` logical plus stage-among-those-with-AKI.

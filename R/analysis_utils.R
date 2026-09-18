@@ -16,7 +16,7 @@ NULL
 #' design stored in \code{analysis_spec}. The outcome is placed on the
 #' left-hand side; the exposure (if assigned) is first on the right-hand
 #' side, followed by the confirmed covariates (deduped). For mixed models,
-#' the appropriate random-effects term is appended.
+#' one random intercept \code{(1 | cluster)} is appended per cluster variable.
 #'
 #' @param spec A named list conforming to the \code{analysis_spec} structure
 #'   (see PRD §3.5).
@@ -28,6 +28,7 @@ build_analysis_formula <- function(spec) {
   outcome    <- roles$outcome_variable
   exposure   <- roles$exposure_variable
   covariates <- roles$final_model_covariates
+  clusters   <- roles$cluster_variables
   model_type <- spec$model_design$model_type
 
   if (is.null(outcome) || !nzchar(outcome)) {
@@ -41,17 +42,11 @@ build_analysis_formula <- function(spec) {
 
   rhs <- if (length(preds) == 0) "1" else paste(preds, collapse = " + ")
 
-  # Random-effects term for mixed models
+  # Random intercepts for mixed models — one per cluster variable
   if (!is.null(model_type) && model_type %in% c("linear_mixed", "logistic_mixed")) {
-    subject_id <- roles$subject_id_variable
-    if (!is.null(subject_id) && nzchar(subject_id)) {
-      slope_var <- spec$model_design$random_slope_variable
-      re_term <- if (!is.null(slope_var) && nzchar(slope_var)) {
-        paste0("(1 + ", slope_var, " | ", subject_id, ")")
-      } else {
-        paste0("(1 | ", subject_id, ")")
-      }
-      rhs <- paste(rhs, "+", re_term)
+    clusters <- clusters[nzchar(clusters)]
+    if (length(clusters) > 0L) {
+      rhs <- paste(rhs, "+", paste0("(1 | ", clusters, ")", collapse = " + "))
     }
   }
 
@@ -116,5 +111,185 @@ compute_complete_cases <- function(data, variables) {
   list(
     data       = data[complete_idx, , drop = FALSE],
     n_excluded = n_excluded
+  )
+}
+
+
+#' Summarise the complete-case sample for a covariate selection
+#'
+#' Listwise deletion across the outcome, exposure and selected covariates
+#' decides which rows reach the model — and which factor levels survive.
+#' This computes everything Step 4 needs to show that live as covariates are
+#' checked and unchecked: row counts, per-variable row cost, the factor levels
+#' present in the surviving rows, and the checks that block or warn.
+#'
+#' @param data A \code{data.frame} (the frozen analysis dataset).
+#' @param outcome Character. Outcome variable name.
+#' @param exposure Character or \code{NULL}. Exposure variable name.
+#' @param covariates Character vector. Currently selected covariates.
+#' @param candidates Character vector. All candidate covariates (selected or
+#'   not); each gets a row cost and a level set.
+#' @param cluster_vars Character vector. Cluster variables, used only by mixed
+#'   models as random intercepts. Counted separately so a plain
+#'   \code{lm}/\code{glm} is not charged for their missingness.
+#'
+#' @return A named list: \code{n_total}, \code{n_base} (outcome + exposure),
+#'   \code{n_fixed} (+ selected covariates), \code{n_mixed} (+ cluster vars,
+#'   or \code{NA} when there are none), \code{outcome_counts} (named integer,
+#'   for a factor outcome), \code{n_params}, \code{epv}, \code{row_cost} (named
+#'   integer over \code{candidates} and \code{cluster_vars}), \code{levels}
+#'   (named list of levels present, factor variables only), and \code{issues}
+#'   (\code{data.frame(level, variable, message)}; level is
+#'   \code{"error"}, \code{"warning"} or \code{"note"}).
+#' @export
+compute_covariate_sample <- function(data, outcome, exposure = NULL,
+                                     covariates = character(0),
+                                     candidates = character(0),
+                                     cluster_vars = character(0)) {
+  n_total      <- nrow(data)
+  exposure     <- exposure[!is.null(exposure) & nzchar(exposure)]
+  covariates   <- intersect(covariates, names(data))
+  candidates   <- intersect(candidates, names(data))
+  cluster_vars <- intersect(cluster_vars, names(data))
+
+  all_true <- rep(TRUE, n_total)
+  .ok   <- function(v) !is.na(data[[v]])
+  .rows <- function(vars) Reduce(`&`, lapply(vars, .ok), all_true)
+
+  base_vars  <- c(outcome, exposure)
+  model_vars <- unique(c(base_vars, covariates))
+  ok_base    <- .rows(base_vars)
+  ok_fixed   <- .rows(model_vars)
+  ok_mixed   <- if (length(cluster_vars) > 0L) ok_fixed & .rows(cluster_vars) else NULL
+
+  n_fixed <- sum(ok_fixed)
+
+  # Row cost: checked covariates → rows they are costing now;
+  # unchecked candidates and cluster vars → rows lost by adding them.
+  cost_vars <- unique(c(candidates, cluster_vars))
+  row_cost  <- vapply(cost_vars, function(v) {
+    if (v %in% covariates) {
+      sum(.rows(setdiff(model_vars, v))) - n_fixed
+    } else {
+      n_fixed - sum(ok_fixed & .ok(v))
+    }
+  }, integer(1))
+
+  # Factor levels present in the rows each variable would be modelled on
+  .present <- function(v, rows) {
+    col <- data[[v]]
+    if (!is.factor(col)) return(NULL)
+    levels(droplevels(col[rows]))
+  }
+  lv <- list()
+  for (v in model_vars) lv[[v]] <- .present(v, ok_fixed)
+  for (v in setdiff(candidates, covariates)) lv[[v]] <- .present(v, ok_fixed & .ok(v))
+  for (v in cluster_vars) lv[[v]] <- .present(v, ok_mixed)
+  lv <- Filter(Negate(is.null), lv)
+
+  .issue <- function(level, variable, message) {
+    data.frame(level = level, variable = variable, message = message,
+               stringsAsFactors = FALSE)
+  }
+  issues <- list()
+
+  # Variables the model cannot estimate on the surviving rows → error row or NULL
+  .check_variation <- function(v, label) {
+    x <- data[[v]][ok_fixed]
+    x <- x[!is.na(x)]
+    n_distinct <- length(unique(x))
+    if (n_distinct >= 2L) return(NULL)
+    what <- if (is.factor(x)) {
+      if (n_distinct == 1L) sprintf("has only one level (%s)", as.character(x[1]))
+      else "has no levels"
+    } else {
+      "has no variation"
+    }
+    .issue("error", v, sprintf("%s %s %s in the %d complete rows.",
+                               label, v, what, n_fixed))
+  }
+
+  outcome_counts <- NULL
+  if (n_fixed == 0L) {
+    issues <- c(issues, list(.issue("error", NA_character_,
+      "No rows are complete across the outcome, exposure and selected covariates.")))
+  } else {
+    issues <- c(issues,
+                list(.check_variation(outcome, "Outcome")),
+                lapply(exposure,   .check_variation, label = "Exposure"),
+                lapply(covariates, .check_variation, label = "Covariate"))
+
+    y <- data[[outcome]]
+    if (is.factor(y) || is.logical(y)) {
+      y <- if (is.factor(y)) droplevels(y[ok_fixed]) else factor(y[ok_fixed])
+      outcome_counts <- table(y)
+      outcome_counts <- stats::setNames(as.integer(outcome_counts), names(outcome_counts))
+    }
+  }
+
+  # Parameters: 1 per numeric/logical term, (levels − 1) per factor term
+  pred_vars <- c(exposure, covariates)
+  n_params <- sum(vapply(pred_vars, function(v) {
+    if (is.factor(data[[v]])) max(length(lv[[v]]) - 1L, 0L) else 1L
+  }, integer(1)))
+
+  epv <- NA_real_
+  if (length(outcome_counts) == 2L && n_params > 0L) {
+    epv <- min(outcome_counts) / n_params
+    if (epv < 5) {
+      issues <- c(issues, list(.issue("warning", outcome, sprintf(
+        "Only %.1f events per parameter (EPV < 5) \u2014 estimates are likely unstable.", epv))))
+    } else if (epv < 10) {
+      issues <- c(issues, list(.issue("warning", outcome, sprintf(
+        "%.1f events per parameter (EPV < 10) \u2014 consider fewer covariates.", epv))))
+    }
+  }
+
+  if (n_total > 0L && n_fixed > 0L && (n_total - n_fixed) / n_total > 0.2) {
+    issues <- c(issues, list(.issue("warning", NA_character_, sprintf(
+      "%d of %d rows (%d%%) are dropped for missing data.",
+      n_total - n_fixed, n_total, round((n_total - n_fixed) / n_total * 100)))))
+  }
+
+  # Cluster structure: warn only — Step 5 preflight blocks the mixed model
+  for (v in if (n_fixed > 0L) cluster_vars else character(0)) {
+    x <- data[[v]][ok_mixed]
+    n_distinct <- length(unique(x[!is.na(x)]))
+    if (n_distinct < 2L) {
+      issues <- c(issues, list(.issue("warning", v, sprintf(
+        "%s has %d distinct value%s in the complete rows \u2014 mixed models will be unavailable.",
+        v, n_distinct, if (n_distinct == 1L) "" else "s"))))
+    }
+  }
+
+  # Levels present in the full data but lost to listwise deletion
+  for (v in intersect(model_vars, names(lv))) {
+    lost <- setdiff(levels(droplevels(data[[v]])), lv[[v]])
+    if (length(lost) > 0L && length(lv[[v]]) >= 2L) {
+      issues <- c(issues, list(.issue("note", v, sprintf(
+        "%s: level%s %s not present in the complete rows.",
+        v, if (length(lost) > 1L) "s" else "", paste(lost, collapse = ", ")))))
+    }
+  }
+
+  issues <- Filter(Negate(is.null), issues)
+  issues <- if (length(issues) > 0L) {
+    do.call(rbind, issues)
+  } else {
+    data.frame(level = character(0), variable = character(0),
+               message = character(0), stringsAsFactors = FALSE)
+  }
+
+  list(
+    n_total        = n_total,
+    n_base         = sum(ok_base),
+    n_fixed        = n_fixed,
+    n_mixed        = if (is.null(ok_mixed)) NA_integer_ else sum(ok_mixed),
+    outcome_counts = outcome_counts,
+    n_params       = n_params,
+    epv            = epv,
+    row_cost       = row_cost,
+    levels         = lv,
+    issues         = issues
   )
 }

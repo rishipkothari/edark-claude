@@ -17,7 +17,7 @@ NULL
 #'
 #' @param shared_state A Shiny \code{reactiveValues} object.
 #' @param from_step Integer. The step that triggered the reset: \code{1}
-#'   (role assignment change), \code{4} (covariate re-confirmation), or
+#'   (role assignment change), \code{4} (covariate change after a fit), or
 #'   \code{5} (model type change).
 #'
 #' @return \code{invisible(NULL)}
@@ -41,22 +41,14 @@ reset_analysis_pipeline <- function(shared_state, from_step) {
         lasso_lambda            = "lambda.1se",
         selected_variables      = NULL
       )
-      shared_state$analysis_spec$model_design <- list(
-        model_type                 = NULL,
-        random_intercept_variable  = NULL,
-        random_slope_variable      = NULL,
-        confidence_interval_level  = 0.95,
-        optimizer                  = "bobyqa",
-        linked_model_specification = NULL
-      )
-      # Reset final covariates back to the full candidate pool
-      cands <- shared_state$analysis_spec$variable_roles$candidate_covariates
-      shared_state$analysis_spec$variable_roles$final_model_covariates <- cands
+      shared_state$analysis_spec$model_design <- .default_model_design()
+      # Covariates start unselected; Step 4 starts over
+      shared_state$analysis_spec$variable_roles$final_model_covariates <- NULL
     }
 
   } else if (from_step %in% c(4L, 5L)) {
-    # Covariate re-confirmation or model type change invalidates the fitted
-    # model, diagnostics, and results — but leaves Table 1 and variable
+    # A covariate change or model type change invalidates the fitted model,
+    # diagnostics, and results — but leaves Table 1 and variable
     # investigation intact.
     if (!is.null(shared_state$analysis_result)) {
       res <- shared_state$analysis_result
@@ -92,16 +84,21 @@ reset_analysis_pipeline <- function(shared_state, from_step) {
     # When the model type itself changes (Step 5), also clear the model_design
     # in the spec so the new selection is treated as a fresh configuration.
     if (from_step == 5L && !is.null(shared_state$analysis_spec)) {
-      shared_state$analysis_spec$model_design <- list(
-        model_type                 = NULL,
-        random_intercept_variable  = NULL,
-        random_slope_variable      = NULL,
-        confidence_interval_level  = 0.95,
-        optimizer                  = "bobyqa",
-        linked_model_specification = NULL
-      )
+      shared_state$analysis_spec$model_design <- .default_model_design()
     }
   }
 
   invisible(NULL)
+}
+
+
+# Fresh model_design block for analysis_spec (PRD §3.5). Random intercepts
+# come from variable_roles$cluster_variables, so there is no field for them.
+.default_model_design <- function() {
+  list(
+    model_type                 = NULL,
+    confidence_interval_level  = 0.95,
+    optimizer                  = "bobyqa",
+    linked_model_specification = NULL
+  )
 }

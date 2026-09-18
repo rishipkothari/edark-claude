@@ -24,15 +24,28 @@ NULL
     ))
   }
   val <- validate_analysis(spec, data, tier = "tier1")
-  if (val$validity_flag != "invalid") return(NULL)
-  errors <- Filter(function(m) m$level == "error", val$display_messages)
+  errors <- if (val$validity_flag == "invalid") {
+    vapply(Filter(function(m) m$level == "error", val$display_messages),
+           `[[`, character(1), "message")
+  } else character(0)
+  if (!.has_candidates(spec)) {
+    errors <- c(errors,
+      "No candidate covariates selected. Assign covariates in Step 1 to run variable investigation.")
+  }
+  if (length(errors) == 0L) return(NULL)
   shiny::div(
     class = "alert alert-danger mb-2",
     shiny::tags$ul(
       class = "mb-0 ps-3",
-      lapply(errors, function(m) shiny::tags$li(m$message))
+      lapply(errors, shiny::tags$li)
     )
   )
+}
+
+
+# TRUE when Step 1 assigned at least one candidate covariate
+.has_candidates <- function(spec) {
+  length(spec$variable_roles$univariable_test_pool) > 0L
 }
 
 
@@ -213,7 +226,7 @@ analysis_varinvestigation_server <- function(id, shared_state) {
       adata <- shared_state$analysis_data
       if (is.null(spec) || is.null(adata)) return(FALSE)
       val <- validate_analysis(spec, adata, tier = "tier1")
-      val$validity_flag != "invalid"
+      val$validity_flag != "invalid" && .has_candidates(spec)
     })
 
     # Enable / disable run buttons based on Tier 1
@@ -471,6 +484,13 @@ analysis_varinvestigation_server <- function(id, shared_state) {
         return(shiny::div(
           class = "text-center text-muted mt-5",
           shiny::tags$p("Assign candidates in Step 1 first.")
+        ))
+      }
+
+      if (!.has_candidates(spec)) {
+        return(shiny::div(
+          class = "text-center text-muted mt-5",
+          shiny::tags$p("No candidate covariates selected. Assign covariates in Step 1.")
         ))
       }
 
@@ -763,6 +783,15 @@ analysis_varinvestigation_server <- function(id, shared_state) {
         },
         .excluded_vars_alert(result$excluded_variables,
                              "Excluded from selection:"),
+        if (length(result$held_variables) > 0L) {
+          shiny::tags$p(
+            class = "text-muted small mb-2",
+            shiny::icon("thumbtack"),
+            sprintf(" The exposure (%s) was held in every model, so covariates are",
+                    paste(result$held_variables, collapse = ", ")),
+            "chosen for what they add alongside it. It is not part of the selection."
+          )
+        },
         bslib::card(
           bslib::card_header("Suggested Variables"),
           bslib::card_body(
