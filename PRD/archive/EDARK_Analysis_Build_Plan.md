@@ -279,7 +279,21 @@ which also clears `analysis_result$diagnostics`.
 
 ---
 
-## Phase 7 — Step 7: Results
+## Phase 7 — Step 7: Results — ✅ COMPLETE
+
+Built per the decisions below (PRD §5.3 Step 7 and §6.9 updated to match). Deviation from the
+original plan: the results table is **built by EDARK, not `gtsummary::tbl_regression()`** —
+that needs the broom.helpers package and would re-process our numbers; one data.frame now feeds
+both the gt table (app) and the flextable (Word export).
+
+### What was built
+- `service_analysis_models.R` — `fit_unadjusted_models(result)` (one model per variable, model's own rows, same engine)
+- `service_analysis_tables.R` — `build_results_table()`, `results_table_gt()`, `results_table_flextable()`, `build_fit_statistics_table()`
+- `service_analysis_plots.R` — `build_forest_plot()` (patchwork: labels | CIs | OR (95% CI) and p)
+- `service_analysis_summary.R` — `build_methods_paragraph()` (with R / EDARK / package versions)
+- `stats_inference.R` — `edark_format_est()` / `edark_format_ci()` (one number format; "to" when a limit is negative)
+- `module_analysis_results.R` — outputs catalogue `.RESULTS_OUTPUTS`, Generate, Summary + per-output tabs
+- `reset_analysis_pipeline()` (steps 4/5) also clears `fit_statistics`, `univariable_models`, `results_generation`
 
 ### Decisions (agreed 2026-09-18, before build)
 - ✅ **Done ahead of Phase 7 — one statistics layer app-wide** (`R/stats_inference.R`, PRD §4.2, CLAUDE.md "Statistical methods registry"): Wald-type CIs whose critical value matches the p-value (t / Satterthwaite t / z); Step 3's univariable screen and Step 5 use the same `edark_coef_table()`; Table 1 and the Report use the same group tests (`edark_group_test()`); one p-value format (`edark_format_p()`); one footnote sentence per model type (`edark_inference_note()`). Step 7 must use these — no new CI/p code.
@@ -287,13 +301,17 @@ which also clears `analysis_result$diagnostics`.
 - **Summary tab:** key numbers only, no prose.
 - **Forest plot:** every model term (exposure + all covariates), adjusted estimates.
 - **Methods paragraph:** no variable-selection description; include R and package versions.
-- **Output selection:** keep a way to include/exclude each output (e.g. no forest plot).
-- **gtsummary is a formatter only.** Pass `tbl_regression()` a `tidy_fun` that returns our coefficient table — its default recomputes `glm` CIs by profile likelihood, which would contradict Step 5 and the "Wald" footnote.
+- **Output selection:** the checkboxes decide what is **generated**; unticked outputs are not created and cannot be exported in Step 8. More outputs will be added to the list later.
+- **Forest plot** shows OR (95% CI) and p beside each row. Scaling continuous variables is the user's responsibility.
+- **Unadjusted fits with a warning** are shown with † and a footnote; a failed fit shows "—" with ‡.
+- **Results table built by EDARK** (not gtsummary): no broom.helpers dependency, and no re-processing of our numbers.
 - **Unadjusted column is refit in Step 7** (not taken from Step 3): one model per variable (exposure + final covariates), on the **final model's complete-case sample** so both columns share one n, with the **same engine** as the final model — mixed models get univariable mixed models with the same cluster intercepts.
 - **Summary tab** is a reactive render of what `analysis_result` already holds (no computation, no checkbox).
 - Footnote text lives in PRD §4.2 (the Step 7 cross-reference pointed at itself).
 
-### What to build
+### Original plan
+
+#### What to build
 - `module_analysis_results.R` — full implementation per §5.3 Step 7 and §6.9
 - Extend `service_analysis_tables.R` — results tables, combined table via `tbl_merge()`, methods paragraph generation
 - Extend `service_analysis_plots.R` — forest plot

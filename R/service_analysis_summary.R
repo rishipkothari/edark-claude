@@ -342,3 +342,145 @@ build_analysis_summary <- function(spec, result, data, validation = NULL) {
   })
   .ssection("checks", "Preflight checks", rows)
 }
+
+
+# ── Step 7: methods paragraph ─────────────────────────────────────────────────
+
+#' Build the methods paragraph
+#'
+#' Plain text describing the fitted model, in the past tense, for a
+#' manuscript's statistical methods section. Describes the model as fitted —
+#' not how the covariates were chosen. The CI / p-value sentence comes from
+#' the same definitions as every table footnote (\code{.EDARK_INFERENCE}), and
+#' the software sentence reports the R and package versions actually loaded.
+#'
+#' @param result The \code{analysis_result} (fitted model, snapshot,
+#'   \code{run_status}; \code{diagnostics} when Step 6 was run).
+#' @param include_unadjusted Logical: whether the results include unadjusted
+#'   estimates.
+#' @return A single character string (paragraphs separated by blank lines).
+#' @export
+build_methods_paragraph <- function(result, include_unadjusted = FALSE) {
+  spec  <- result$specification_snapshot
+  vr    <- spec$variable_roles
+  md    <- spec$model_design
+  mt    <- md$model_type
+  rs    <- result$run_status
+  logit <- mt %in% c("logistic", "logistic_mixed")
+  mixed <- mt %in% c("linear_mixed", "logistic_mixed")
+  outcome  <- vr$outcome_variable
+  exposure <- vr$exposure_variable
+  covs     <- vr$final_model_covariates
+  clusters <- vr$cluster_variables
+  .list <- function(x) {
+    x <- as.character(x)
+    if (length(x) <= 1L) return(x)
+    if (length(x) == 2L) return(paste(x, collapse = " and "))
+    paste0(paste(x[-length(x)], collapse = ", "), ", and ", x[length(x)])
+  }
+
+  model_label <- tolower(.ANALYSIS_MODEL_LABELS[[mt]])
+  ev <- rs$outcome_event
+  outcome_txt <- if (logit) {
+    sprintf("%s (modelling the odds of %s = %s versus %s)", outcome, outcome, ev$event, ev$reference)
+  } else outcome
+
+  s <- character(0)
+  s <- c(s, if (!is.null(exposure)) {
+    sprintf("The association between %s and %s was estimated with %s %s.",
+            exposure, outcome_txt, if (grepl("^[aeiou]", model_label)) "an" else "a", model_label)
+  } else {
+    sprintf("Factors associated with %s were examined with %s %s.",
+            outcome_txt, if (grepl("^[aeiou]", model_label)) "an" else "a", model_label)
+  })
+  s <- c(s, if (length(covs) > 0L) {
+    sprintf("The model %s %s.", if (!is.null(exposure)) "was adjusted for" else "included", .list(covs))
+  } else if (!is.null(exposure)) {
+    "The model included the exposure only (no covariates)."
+  })
+  if (mixed) {
+    s <- c(s, if (length(clusters) == 1L) {
+      sprintf("A random intercept for %s accounted for clustering of observations within %s.",
+              clusters, clusters)
+    } else {
+      sprintf("Random intercepts for %s accounted for clustering of observations within each grouping.",
+              .list(clusters))
+    })
+    s <- c(s, if (mt == "linear_mixed") {
+      sprintf("The model was fitted by restricted maximum likelihood (REML) using the %s optimizer.",
+              md$optimizer %||% "bobyqa")
+    } else {
+      sprintf("The model was fitted by maximum likelihood (Laplace approximation) using the %s optimizer.",
+              md$optimizer %||% "bobyqa")
+    })
+  }
+  refs <- rs$reference_levels
+  if (length(refs) > 0L) {
+    s <- c(s, sprintf("Categorical variables were compared with a reference category (%s).",
+                      paste(sprintf("%s: %s", names(refs), unlist(refs)), collapse = "; ")))
+  }
+  pct <- if (isTRUE(rs$n_total > 0)) round(100 * rs$n_used / rs$n_total, 1) else NA
+  s <- c(s, sprintf(
+    "The analysis was restricted to complete cases: %d of %d observations (%s%%) had no missing values in any model variable.",
+    rs$n_used, rs$n_total, format(pct, nsmall = 1)))
+  if (isTRUE(include_unadjusted)) {
+    s <- c(s, sprintf(
+      "Unadjusted estimates came from separate models containing one variable at a time, fitted to the same %d observations%s.",
+      rs$n_used, if (mixed) " with the same random intercepts" else ""))
+  }
+  inf <- .EDARK_INFERENCE[[mt]]
+  s <- c(s, sprintf("Results are reported as %s with %s; p-values are from %s.%s",
+                    if (logit) "odds ratios" else "regression coefficients",
+                    sub(", exponentiated to odds ratios$", "", inf$ci),
+                    inf$p,
+                    if (!is.null(inf$caution)) paste0(" ", inf$caution) else ""))
+
+  diag_txt <- .methods_diagnostics(result$diagnostics)
+  para1 <- paste(c(s, diag_txt), collapse = " ")
+  paste(para1, .methods_software(mt, result$diagnostics), sep = "\n\n")
+}
+
+.methods_diagnostics <- function(dg) {
+  if (is.null(dg) || length(dg$checks) == 0L) return(NULL)
+  .join <- function(x) {
+    if (length(x) == 1L) return(x)
+    if (length(x) == 2L) return(paste(x, collapse = " and "))
+    paste0(paste(x[-length(x)], collapse = ", "), ", and ", x[length(x)])
+  }
+  assumptions <- c(
+    residuals      = if (identical(dg$residuals$type, "binned")) "binned residual plots"
+                     else if (identical(dg$residuals$type, "standard")) "residual plots and the Breusch-Pagan test"
+                     else "residual plots",
+    influence      = "Cook's distance and leverage",
+    vif            = "variance inflation factors",
+    separation     = "a check for separation",
+    random_effects = "the distribution of the random intercepts")
+  prediction <- c(
+    discrimination   = "the area under the ROC curve",
+    calibration      = if (identical(dg$model_type, "logistic") || identical(dg$model_type, "logistic_mixed"))
+                         "calibration by decile and the Brier score" else "observed versus predicted values",
+    prediction_error = "the root mean squared and mean absolute error")
+  a <- unname(assumptions[intersect(dg$checks, names(assumptions))])
+  p <- unname(prediction[intersect(dg$checks, names(prediction))])
+  c(if (length(a)) sprintf("Model assumptions were assessed with %s.", .join(a)),
+    if (length(p)) sprintf("Apparent (in-sample) predictive performance was summarised with %s%s.",
+                           .join(p), if (identical(dg$prediction$basis, "marginal"))
+                             ", using predictions from the fixed effects only" else ""))
+}
+
+.methods_software <- function(mt, dg) {
+  pkgs <- c(
+    if (mt %in% c("linear_mixed", "logistic_mixed")) "lme4",
+    if (mt == "linear_mixed") "lmerTest",
+    if (!is.null(dg)) "performance",
+    if (!is.null(dg$residuals$bp)) "lmtest",
+    if (!is.null(dg$separation)) "detectseparation",
+    if (!is.null(dg$prediction$auc)) "pROC")
+  ver <- function(p) tryCatch(as.character(utils::packageVersion(p)), error = function(e) "?")
+  edark_v <- ver("edark")
+  pk <- if (length(pkgs) > 0L) {
+    paste0(" and the R packages ", paste(sprintf("%s %s", pkgs, vapply(pkgs, ver, character(1))), collapse = ", "))
+  } else ""
+  sprintf("Analyses were performed in %s using EDARK %s%s.",
+          sub("^R version ([0-9.]+).*$", "R \\1", R.version.string), edark_v, pk)
+}

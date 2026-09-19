@@ -76,6 +76,50 @@ edark_format_p <- function(p) {
 }
 
 
+#' Format estimates and confidence intervals for display
+#'
+#' One rule for every estimate in the app: 1 decimal from 100, 2 decimals
+#' from 0.1, otherwise 3 significant digits (so per-unit effects such as
+#' 0.00031 stay readable).
+#'
+#' @param x Numeric vector.
+#' @return Character vector; \code{NA} gives \code{"—"}.
+#' @export
+edark_format_est <- function(x) {
+  x <- suppressWarnings(as.numeric(x))
+  out <- ifelse(abs(x) >= 100, sprintf("%.1f", x),
+         ifelse(abs(x) >= 0.1, sprintf("%.2f", x),
+                formatC(signif(x, 3), format = "fg", digits = 3)))
+  out[!is.na(x) & x == 0] <- "0.00"
+  out[is.na(x)] <- "\u2014"
+  out
+}
+
+#' @rdname edark_format_est
+#' @param est,low,high Numeric vectors: estimate and CI limits.
+#' @return \code{edark_format_ci()}: \code{"est (low–high)"}, or
+#'   \code{"est (low to high)"} when a limit is negative.
+#' @export
+edark_format_ci <- function(est, low, high) {
+  sep <- ifelse(!is.na(low) & !is.na(high) & (low < 0 | high < 0), " to ", "\u2013")
+  out <- sprintf("%s (%s%s%s)", edark_format_est(est), edark_format_est(low), sep,
+                 edark_format_est(high))
+  out[is.na(est)] <- "\u2014"
+  out
+}
+
+
+# Levels of a categorical predictor as a model sees them: factor levels,
+# sorted unique values for character, FALSE/TRUE for logical. NULL when the
+# variable is numeric.
+.edark_var_levels <- function(x) {
+  if (is.factor(x)) return(levels(x))
+  if (is.character(x)) return(sort(unique(x[!is.na(x)])))
+  if (is.logical(x)) return(c("FALSE", "TRUE"))
+  NULL
+}
+
+
 # The reference distribution of a model's coefficient tests: list(dist, df),
 # where df is per coefficient (Satterthwaite) or a single residual df.
 .edark_test_distribution <- function(model, sm) {
@@ -131,7 +175,7 @@ edark_coef_table <- function(model, data) {
   var   <- unname(col_var[terms])
   level <- vapply(seq_along(terms), function(i) {
     v <- var[i]
-    if (is.na(v) || !v %in% names(data) || !is.factor(data[[v]])) return(NA_character_)
+    if (is.na(v) || !v %in% names(data) || is.null(.edark_var_levels(data[[v]]))) return(NA_character_)
     sub(paste0("^", .regex_escape(v)), "", terms[i])
   }, character(1))
 

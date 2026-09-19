@@ -54,7 +54,8 @@ reset_analysis_pipeline <- function(shared_state, from_step) {
     if (!is.null(shared_state$analysis_result)) {
       res <- shared_state$analysis_result
 
-      res$fitted_models$primary_model <- NULL
+      res$fitted_models$primary_model      <- NULL
+      res$fitted_models$univariable_models <- NULL
       res$run_status <- list(
         status       = NULL,
         fitted_at    = NULL,
@@ -65,6 +66,7 @@ reset_analysis_pipeline <- function(shared_state, from_step) {
         )
       )
       res$result_tables$main_results       <- NULL
+      res$result_tables$fit_statistics     <- NULL
       res$result_tables$diagnostic_summary <- NULL
       res$result_plots$coefficient_plot    <- NULL
       res$result_plots$diagnostic_plots    <- lapply(
@@ -79,6 +81,7 @@ reset_analysis_pipeline <- function(shared_state, from_step) {
       res$diagnostics        <- NULL
       res$generated_r_script <- NULL
       res$methods_paragraph  <- NULL
+      res$results_generation <- NULL
 
       shared_state$analysis_result <- res
     }

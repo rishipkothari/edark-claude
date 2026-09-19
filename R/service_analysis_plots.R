@@ -226,3 +226,93 @@ NULL
                   x = "Predicted value", y = sprintf("Observed %s", outcome)) +
     .ap_theme()
 }
+
+
+# ── Step 7: forest plot ───────────────────────────────────────────────────────
+
+#' Forest plot of the adjusted estimates
+#'
+#' Three aligned panels (patchwork): labels | estimates with 95\% CIs |
+#' "OR (95\% CI)" and p. Built from \code{build_results_table()} so the plot
+#' shows exactly the numbers in the table. Logistic models use a log-scale OR
+#' axis with a reference line at 1; linear models a line at 0. The exposure is
+#' highlighted.
+#'
+#' @param tbl Output of \code{build_results_table()}.
+#' @return A patchwork object; \code{attr(, "n_rows")} is the number of rows
+#'   (for choosing a plot height).
+#' @export
+build_forest_plot <- function(tbl) {
+  logit   <- identical(attr(tbl, "measure"), "OR")
+  measure <- attr(tbl, "measure")
+  n  <- nrow(tbl)
+  df <- tbl
+  df$y     <- rev(seq_len(n))
+  df$shown <- df$row_type %in% c("level", "continuous") & !is.na(df$adj_est)
+  df$label_x <- ifelse(df$row_type %in% c("level", "reference"), 0.06, 0)
+  df$face  <- ifelse(df$is_exposure & df$row_type %in% c("header", "continuous"), "bold",
+               ifelse(df$row_type == "reference", "italic", "plain"))
+  df$colour <- ifelse(df$is_exposure, .AP_PRIMARY, "grey25")
+  df$ci_txt <- ifelse(df$row_type == "reference", "Reference",
+               ifelse(df$shown, edark_format_ci(df$adj_est, df$adj_low, df$adj_high), ""))
+  df$p_txt  <- ifelse(df$shown, edark_format_p(df$adj_p), "")
+
+  ylim  <- c(0.5, n + 1.2)
+  blank <- ggplot2::theme_void() +
+    ggplot2::theme(plot.margin = ggplot2::margin(4, 2, 4, 2))
+  header <- function(x, text, hjust) {
+    ggplot2::annotate("text", x = x, y = n + 1, label = text, hjust = hjust,
+                      fontface = "bold", size = 3.6)
+  }
+
+  # Row stripes to guide the eye across panels
+  stripes <- df[df$y %% 2 == 0, , drop = FALSE]
+  stripe_layer <- function() {
+    ggplot2::geom_rect(data = stripes, ggplot2::aes(ymin = .data$y - 0.5, ymax = .data$y + 0.5),
+                       xmin = -Inf, xmax = Inf, fill = "grey95", inherit.aes = FALSE)
+  }
+
+  p_lab <- ggplot2::ggplot(df, ggplot2::aes(y = .data$y)) +
+    stripe_layer() +
+    ggplot2::geom_text(ggplot2::aes(x = .data$label_x, label = .data$label, fontface = .data$face),
+                       hjust = 0, size = 3.6, colour = "grey15") +
+    header(0, "Variable", 0) +
+    ggplot2::scale_x_continuous(limits = c(0, 1)) +
+    ggplot2::scale_y_continuous(limits = ylim, expand = c(0, 0)) +
+    blank
+
+  pts <- df[df$shown, , drop = FALSE]
+  null_x <- if (logit) 1 else 0
+  p_mid <- ggplot2::ggplot(pts, ggplot2::aes(x = .data$adj_est, y = .data$y)) +
+    stripe_layer() +
+    ggplot2::geom_vline(xintercept = null_x, linetype = "dashed", colour = "grey55") +
+    ggplot2::geom_errorbar(ggplot2::aes(xmin = .data$adj_low, xmax = .data$adj_high, colour = .data$colour),
+                           width = 0.25, linewidth = 0.6, orientation = "y") +
+    ggplot2::geom_point(ggplot2::aes(colour = .data$colour), shape = 15, size = 2.6) +
+    ggplot2::scale_colour_identity() +
+    ggplot2::scale_y_continuous(limits = ylim, expand = c(0, 0)) +
+    ggplot2::labs(x = if (logit) "Odds ratio (95% CI, log scale)" else sprintf("%s (95%% CI)", measure),
+                  y = NULL) +
+    ggplot2::theme_minimal(base_size = 11) +
+    ggplot2::theme(axis.text.y = ggplot2::element_blank(), panel.grid.major.y = ggplot2::element_blank(),
+                   axis.text.x = ggplot2::element_text(size = 10),
+                   panel.grid.minor = ggplot2::element_blank(),
+                   plot.margin = ggplot2::margin(4, 6, 4, 6))
+  if (logit) p_mid <- p_mid + ggplot2::scale_x_log10()
+
+  p_txt <- ggplot2::ggplot(df, ggplot2::aes(y = .data$y)) +
+    stripe_layer() +
+    ggplot2::geom_text(ggplot2::aes(x = 0, label = .data$ci_txt,
+                                    fontface = ifelse(.data$row_type == "reference", "italic", "plain")),
+                       hjust = 0, size = 3.5, colour = "grey15") +
+    ggplot2::geom_text(ggplot2::aes(x = 1, label = .data$p_txt), hjust = 1, size = 3.5, colour = "grey15") +
+    header(0, sprintf("%s (95%% CI)", measure), 0) +
+    header(1, "p", 1) +
+    ggplot2::scale_x_continuous(limits = c(0, 1)) +
+    ggplot2::scale_y_continuous(limits = ylim, expand = c(0, 0)) +
+    blank
+
+  out <- patchwork::wrap_plots(p_lab, p_mid, p_txt, nrow = 1, widths = c(1.1, 1.6, 1.1))
+  attr(out, "n_rows") <- n
+  out
+}

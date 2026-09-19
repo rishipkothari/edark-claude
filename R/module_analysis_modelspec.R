@@ -493,10 +493,7 @@ analysis_modelspec_server <- function(id, shared_state) {
   edark_format_p(p)
 }
 
-.ms_fmt_est <- function(x) {
-  if (is.na(x)) return("\u2014")
-  if (abs(x) >= 100) sprintf("%.1f", x) else if (abs(x) >= 1) sprintf("%.2f", x) else sprintf("%.3f", x)
-}
+.ms_fmt_est <- function(x) edark_format_est(x)
 
 .ms_term_label <- function(row, refs) {
   if (is.na(row$level)) return(row$variable)

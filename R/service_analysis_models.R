@@ -422,3 +422,114 @@ fit_analysis_model <- function(spec, data) {
 
   do.call(rbind, rows)
 }
+
+
+#' Fit the unadjusted (one-variable) models for Step 7
+#'
+#' One model per predictor of the fitted primary model (exposure first, then
+#' covariates), each containing that predictor alone. Every model is fitted
+#' to the primary model's own rows (its model frame), so both columns of the
+#' results table share one n, and uses the same engine: mixed models keep the
+#' same random intercepts and optimizer. Estimates come from
+#' \code{edark_coef_table()}, like every other model in the app.
+#'
+#' @param result The \code{analysis_result} holding \code{primary_model} and
+#'   its \code{specification_snapshot}.
+#' @param progress_fn Optional \code{function(fraction, detail)}.
+#'
+#' @return \code{list(coefficients, status, models)}: \code{coefficients} is
+#'   the stacked \code{edark_coef_table()} output (intercepts removed);
+#'   \code{status} is a data.frame(variable, status, message) with status
+#'   \code{"ok"}, \code{"warning"} (fitted, with a convergence / singular-fit
+#'   or other warning) or \code{"failed"}; \code{models} is a named list of
+#'   the fitted models.
+#' @export
+fit_unadjusted_models <- function(result, progress_fn = NULL) {
+  model <- result$fitted_models$primary_model
+  if (is.null(model)) stop("No fitted model.")
+  spec       <- result$specification_snapshot
+  roles      <- spec$variable_roles
+  model_type <- spec$model_design$model_type
+  outcome    <- roles$outcome_variable
+  preds      <- .safe_preds(roles$exposure_variable, roles$final_model_covariates)
+  is_mixed   <- model_type %in% c("linear_mixed", "logistic_mixed")
+  clusters   <- if (is_mixed) roles$cluster_variables else character(0)
+  optimizer  <- spec$model_design$optimizer
+  if (is.null(optimizer) || !optimizer %in% .ANALYSIS_OPTIMIZERS) optimizer <- "bobyqa"
+
+  mf <- stats::model.frame(model)
+  coefs  <- list()
+  status <- data.frame(variable = character(0), status = character(0),
+                       message = character(0), stringsAsFactors = FALSE)
+  models <- list()
+
+  for (i in seq_along(preds)) {
+    v <- preds[i]
+    if (is.function(progress_fn)) {
+      progress_fn(0.1 + 0.8 * (i - 1) / length(preds), sprintf("Unadjusted model: %s\u2026", v))
+    }
+    dat <- mf[, intersect(c(outcome, v, clusters), names(mf)), drop = FALSE]
+    if (is.factor(dat[[v]])) dat[[v]] <- droplevels(dat[[v]])
+    rhs  <- paste(c(v, if (is_mixed) paste0("(1 | ", clusters, ")")), collapse = " + ")
+    fmla <- stats::as.formula(paste(outcome, "~", rhs))
+
+    warns <- character(0)
+    notes <- character(0)
+    err   <- NULL
+    fit <- withCallingHandlers(
+      tryCatch(
+        switch(model_type,
+          linear   = stats::lm(fmla, data = dat),
+          logistic = stats::glm(fmla, data = dat, family = stats::binomial()),
+          linear_mixed = lmerTest::lmer(
+            fmla, data = dat, control = lme4::lmerControl(optimizer = optimizer)),
+          logistic_mixed = lme4::glmer(
+            fmla, data = dat, family = stats::binomial(),
+            control = lme4::glmerControl(optimizer = optimizer))
+        ),
+        error = function(e) { err <<- conditionMessage(e); NULL }
+      ),
+      warning = function(w) { warns <<- c(warns, conditionMessage(w)); invokeRestart("muffleWarning") },
+      message = function(m) { notes <<- c(notes, trimws(conditionMessage(m))); invokeRestart("muffleMessage") }
+    )
+
+    if (is.null(fit)) {
+      status[nrow(status) + 1L, ] <- list(v, "failed", .short_fit_warning(err))
+      next
+    }
+    if (is_mixed && isTRUE(lme4::isSingular(fit))) {
+      warns <- c(warns, "Singular fit: a random-effect variance is estimated at or near zero.")
+    }
+    ct <- tryCatch(edark_coef_table(fit, dat), error = function(e) { err <<- conditionMessage(e); NULL })
+    if (is.null(ct)) {
+      status[nrow(status) + 1L, ] <- list(v, "failed", .short_fit_warning(err))
+      next
+    }
+    coefs[[v]]  <- ct[ct$variable != "(Intercept)", , drop = FALSE]
+    models[[v]] <- fit
+    warns <- unique(vapply(warns, .short_fit_warning, character(1)))
+    status[nrow(status) + 1L, ] <- if (length(warns) > 0L) {
+      list(v, "warning", paste(warns, collapse = "; "))
+    } else {
+      list(v, "ok", NA_character_)
+    }
+  }
+
+  list(
+    coefficients = if (length(coefs) > 0L) do.call(rbind, unname(coefs)) else NULL,
+    status       = status,
+    models       = models
+  )
+}
+
+
+# One short phrase per fitting warning, for table footnotes.
+.short_fit_warning <- function(w) {
+  if (is.null(w) || is.na(w)) return("unknown problem")
+  w <- gsub("\\s+", " ", w)
+  if (grepl("failed to converge|did not converge", w, ignore.case = TRUE)) return("did not converge")
+  if (grepl("singular", w, ignore.case = TRUE)) return("singular fit (a random-effect variance near zero)")
+  if (grepl("unidentifiable|Rescale variables", w)) return("a predictor on a very large scale (consider rescaling)")
+  if (grepl("fitted probabilities numerically 0 or 1", w, fixed = TRUE)) return("possible separation")
+  if (nchar(w) > 120) paste0(substr(w, 1, 117), "...") else w
+}

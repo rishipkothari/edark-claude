@@ -156,3 +156,239 @@ build_table1 <- function(data,
 
   list(overall = overall, by_exposure = by_exposure, by_outcome = by_outcome)
 }
+
+
+# ── Step 7: results table ─────────────────────────────────────────────────────
+
+#' Build the Step 7 results table
+#'
+#' One data frame holds every number and label in the table; the screen
+#' (\code{results_table_gt()}) and the Word export
+#' (\code{results_table_flextable()}) only format it. Rows: each predictor of
+#' the fitted model (exposure first, then covariates). A factor gets a header
+#' row, then one row per level with its reference level marked. Adjusted
+#' values are the Step 5 coefficients; unadjusted values come from
+#' \code{fit_unadjusted_models()}. No intercept.
+#'
+#' @param result The \code{analysis_result} (fitted model, snapshot,
+#'   \code{inference_summary$coefficients}, \code{run_status}).
+#' @param unadjusted Output of \code{fit_unadjusted_models()}, or \code{NULL}
+#'   to leave out the unadjusted column.
+#'
+#' @return A data.frame with columns \code{row_type} (\code{"continuous"},
+#'   \code{"header"}, \code{"level"}, \code{"reference"}), \code{variable},
+#'   \code{level}, \code{label}, \code{is_exposure}, \code{adj_est},
+#'   \code{adj_low}, \code{adj_high}, \code{adj_p}, \code{unadj_est},
+#'   \code{unadj_low}, \code{unadj_high}, \code{unadj_p}, \code{unadj_status}.
+#'   Attributes: \code{model_type}, \code{measure} ("OR" / "β"),
+#'   \code{n_used}, \code{include_unadjusted}, \code{footnotes} (character).
+#' @export
+build_results_table <- function(result, unadjusted = NULL) {
+  spec  <- result$specification_snapshot
+  roles <- spec$variable_roles
+  mt    <- spec$model_design$model_type
+  logit <- mt %in% c("logistic", "logistic_mixed")
+  mixed <- mt %in% c("linear_mixed", "logistic_mixed")
+  exposure <- roles$exposure_variable
+  preds <- .safe_preds(exposure, roles$final_model_covariates)
+  adj   <- result$inference_summary$coefficients
+  mf    <- stats::model.frame(result$fitted_models$primary_model)
+  refs  <- result$run_status$reference_levels
+  un    <- unadjusted$coefficients
+  st    <- unadjusted$status
+
+  .vals <- function(tbl, v, lvl) {
+    if (is.null(tbl)) return(c(NA, NA, NA, NA))
+    r <- tbl[tbl$variable %in% v & (if (is.na(lvl)) is.na(tbl$level) else tbl$level %in% lvl), , drop = FALSE]
+    if (nrow(r) == 0L) return(c(NA, NA, NA, NA))
+    c(r$effect[1L], r$effect.low[1L], r$effect.high[1L], r$p.value[1L])
+  }
+  .row <- function(type, v, lvl, label) {
+    a <- if (type %in% c("level", "continuous")) .vals(adj, v, lvl) else rep(NA, 4)
+    u <- if (type %in% c("level", "continuous")) .vals(un, v, lvl) else rep(NA, 4)
+    s <- if (is.null(st)) NA_character_ else {
+      x <- st$status[st$variable == v]
+      if (length(x)) x else NA_character_
+    }
+    data.frame(row_type = type, variable = v, level = lvl, label = label,
+               is_exposure = identical(v, exposure),
+               adj_est = a[1], adj_low = a[2], adj_high = a[3], adj_p = a[4],
+               unadj_est = u[1], unadj_low = u[2], unadj_high = u[3], unadj_p = u[4],
+               unadj_status = s, stringsAsFactors = FALSE)
+  }
+
+  rows <- list()
+  for (v in preds) {
+    lv <- .edark_var_levels(mf[[v]])
+    if (is.null(lv)) {
+      rows[[length(rows) + 1L]] <- .row("continuous", v, NA_character_, v)
+    } else {
+      ref <- refs[[v]] %||% lv[1L]
+      rows[[length(rows) + 1L]] <- .row("header", v, NA_character_, v)
+      for (l in lv) {
+        rows[[length(rows) + 1L]] <- .row(if (identical(l, ref)) "reference" else "level", v, l, l)
+      }
+    }
+  }
+  out <- do.call(rbind, rows)
+
+  # ── Footnotes ──
+  ev <- result$run_status$outcome_event
+  fn <- c(
+    if (logit) sprintf("OR = odds ratio for %s = %s (vs %s).", ev$variable, ev$event, ev$reference)
+    else "\u03b2 = regression coefficient (difference in the outcome).",
+    if (any(out$row_type == "continuous")) "Continuous variables: per 1-unit increase.",
+    sprintf("Adjusted: one model including all variables shown%s (n = %d).",
+            if (mixed) paste0(", with random intercepts for ", paste(roles$cluster_variables, collapse = ", ")) else "",
+            nrow(mf)),
+    if (!is.null(unadjusted)) {
+      sprintf("Unadjusted: a separate model for each variable, fitted to the same %d observations%s.",
+              nrow(mf), if (mixed) " with the same random intercepts" else "")
+    },
+    edark_inference_note(mt)
+  )
+  if (!is.null(st)) {
+    w <- st[st$status == "warning", , drop = FALSE]
+    f <- st[st$status == "failed", , drop = FALSE]
+    if (nrow(w) > 0L) {
+      fn <- c(fn, paste0("\u2020 Unadjusted model fitted with a warning \u2014 ",
+                         paste(sprintf("%s: %s", w$variable, w$message), collapse = "; "), "."))
+    }
+    if (nrow(f) > 0L) {
+      fn <- c(fn, paste0("\u2021 Unadjusted model could not be fitted \u2014 ",
+                         paste(sprintf("%s: %s", f$variable, f$message), collapse = "; "), "."))
+    }
+  }
+
+  attr(out, "model_type")         <- mt
+  attr(out, "measure")            <- if (logit) "OR" else "\u03b2"
+  attr(out, "n_used")             <- nrow(mf)
+  attr(out, "include_unadjusted") <- !is.null(unadjusted)
+  attr(out, "footnotes")          <- fn
+  out
+}
+
+
+# Display strings for the results table (shared by gt and flextable).
+.results_display <- function(tbl) {
+  est_cell <- function(prefix) {
+    e <- tbl[[paste0(prefix, "_est")]]
+    x <- edark_format_ci(e, tbl[[paste0(prefix, "_low")]], tbl[[paste0(prefix, "_high")]])
+    x[tbl$row_type == "header"]    <- ""
+    x[tbl$row_type == "reference"] <- "Reference"
+    x
+  }
+  p_cell <- function(prefix) {
+    x <- edark_format_p(tbl[[paste0(prefix, "_p")]])
+    x[tbl$row_type %in% c("header", "reference")] <- ""
+    x
+  }
+  d <- data.frame(label = tbl$label, adj_est = est_cell("adj"), adj_p = p_cell("adj"),
+                  stringsAsFactors = FALSE)
+  if (isTRUE(attr(tbl, "include_unadjusted"))) {
+    u <- est_cell("unadj")
+    mark <- ifelse(tbl$unadj_status %in% "warning", "\u2020",
+                   ifelse(tbl$unadj_status %in% "failed", "\u2021", ""))
+    show <- tbl$row_type %in% c("level", "continuous")
+    u[show] <- paste0(u[show], mark[show])
+    d <- data.frame(label = d$label, unadj_est = u, unadj_p = p_cell("unadj"),
+                    adj_est = d$adj_est, adj_p = d$adj_p, stringsAsFactors = FALSE)
+  }
+  d
+}
+
+
+#' Render the results table
+#'
+#' @param tbl Output of \code{build_results_table()}.
+#' @return \code{results_table_gt()}: a \code{gt} table for the app.
+#' @export
+results_table_gt <- function(tbl) {
+  d <- .results_display(tbl)
+  measure <- attr(tbl, "measure")
+  est_lab <- sprintf("%s (95%% CI)", measure)
+  unadj   <- isTRUE(attr(tbl, "include_unadjusted"))
+
+  g <- gt::gt(d) %>%
+    gt::cols_label(label = "", adj_est = est_lab, adj_p = "p") %>%
+    gt::cols_align("right", columns = setdiff(names(d), "label")) %>%
+    gt::tab_spanner(sprintf("Adjusted (n = %d)", attr(tbl, "n_used")), columns = c("adj_est", "adj_p"))
+  if (unadj) {
+    g <- g %>%
+      gt::cols_label(unadj_est = est_lab, unadj_p = "p") %>%
+      gt::tab_spanner("Unadjusted", columns = c("unadj_est", "unadj_p"))
+  }
+  lvl_rows <- which(tbl$row_type %in% c("level", "reference"))
+  ref_rows <- which(tbl$row_type == "reference")
+  exp_rows <- which(tbl$is_exposure & tbl$row_type %in% c("header", "continuous"))
+  if (length(lvl_rows)) {
+    g <- gt::tab_style(g, gt::cell_text(indent = gt::px(18)), gt::cells_body(columns = "label", rows = lvl_rows))
+  }
+  if (length(ref_rows)) {
+    g <- gt::tab_style(g, gt::cell_text(style = "italic", color = "#6c757d"), gt::cells_body(rows = ref_rows))
+  }
+  if (length(exp_rows)) {
+    g <- gt::tab_style(g, gt::cell_text(weight = "bold"), gt::cells_body(columns = "label", rows = exp_rows))
+  }
+  for (f in attr(tbl, "footnotes")) g <- gt::tab_source_note(g, f)
+  g %>% gt::tab_options(table.font.size = gt::px(14), data_row.padding = gt::px(4),
+                        source_notes.font.size = gt::px(12))
+}
+
+
+#' @rdname results_table_gt
+#' @return \code{results_table_flextable()}: a \code{flextable} for Word export.
+#' @export
+results_table_flextable <- function(tbl) {
+  d <- .results_display(tbl)
+  measure <- attr(tbl, "measure")
+  est_lab <- sprintf("%s (95%% CI)", measure)
+  unadj   <- isTRUE(attr(tbl, "include_unadjusted"))
+
+  ft <- flextable::flextable(d)
+  ft <- flextable::set_header_labels(ft, values = c(
+    list(label = "", adj_est = est_lab, adj_p = "p"),
+    if (unadj) list(unadj_est = est_lab, unadj_p = "p")))
+  ft <- flextable::add_header_row(
+    ft, colwidths = if (unadj) c(1, 2, 2) else c(1, 2),
+    values = c("", if (unadj) "Unadjusted", sprintf("Adjusted (n = %d)", attr(tbl, "n_used"))))
+  lvl_rows <- which(tbl$row_type %in% c("level", "reference"))
+  ref_rows <- which(tbl$row_type == "reference")
+  exp_rows <- which(tbl$is_exposure & tbl$row_type %in% c("header", "continuous"))
+  if (length(lvl_rows)) ft <- flextable::padding(ft, i = lvl_rows, j = 1, padding.left = 14)
+  if (length(ref_rows)) ft <- flextable::italic(ft, i = ref_rows)
+  if (length(exp_rows)) ft <- flextable::bold(ft, i = exp_rows, j = 1)
+  ft <- flextable::align(ft, j = seq(2, ncol(d)), align = "right", part = "all")
+  for (f in attr(tbl, "footnotes")) ft <- flextable::add_footer_lines(ft, f)
+  ft <- flextable::fontsize(ft, size = 9, part = "footer")
+  flextable::autofit(flextable::theme_booktabs(ft))
+}
+
+
+#' Format fit statistics for display and export
+#'
+#' @param result The \code{analysis_result}. Adds the AUC (and its 95\% CI)
+#'   when Step 6 computed it.
+#' @return A data.frame(Statistic, Value) of display strings, or \code{NULL}.
+#' @export
+build_fit_statistics_table <- function(result) {
+  fs <- result$inference_summary$fit_statistics
+  if (is.null(fs) || nrow(fs) == 0L) return(NULL)
+  val <- vapply(seq_len(nrow(fs)), function(i) .fmt_fit_stat(fs$value[i], fs$format[i]), character(1))
+  out <- data.frame(Statistic = fs$label, Value = val, stringsAsFactors = FALSE)
+  pr <- result$diagnostics$prediction
+  if (!is.null(pr$auc)) {
+    out <- rbind(out, data.frame(
+      Statistic = if (identical(pr$basis, "marginal")) "AUC (marginal predictions, apparent)" else "AUC (apparent)",
+      Value = edark_format_ci(pr$auc, pr$auc_low, pr$auc_high), stringsAsFactors = FALSE))
+  }
+  out
+}
+
+.fmt_fit_stat <- function(value, format) {
+  switch(format,
+    integer = format(round(value), big.mark = ","),
+    percent = sprintf("%.1f%%", value * 100),
+    pvalue  = edark_format_p(value),
+    edark_format_est(value))
+}

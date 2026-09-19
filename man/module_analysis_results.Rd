@@ -16,8 +16,18 @@ analysis_results_server(id, shared_state)
 \item{shared_state}{A Shiny \code{reactiveValues} object.}
 }
 \description{
-UI and server for Step 7 of the Analysis workflow: combined
-univariable + multivariable results table, fit statistics, forest plot,
-and auto-generated methods paragraph.
-Full implementation: Phase 7 of the build plan.
+UI and server for Step 7 of the Analysis workflow. The sidebar lists the
+outputs that can be generated — results table (with an optional
+unadjusted column), fit statistics, forest plot, methods paragraph — and
+one Generate Outputs button. Ticked outputs are created and stored in
+\code{analysis_result}; unticked ones are not created, so Step 8 cannot
+export them. The Summary tab (key numbers, no prose) is always shown and
+reads what already exists.
+}
+\details{
+Stored: \code{result_tables$main_results} (\code{build_results_table()}),
+\code{result_tables$fit_statistics}, \code{result_plots$coefficient_plot},
+\code{methods_paragraph}, \code{fitted_models$univariable_models} and
+\code{results_generation} (what was generated, when). Every value comes
+from \code{stats_inference.R} via the services — no statistics here.
 }

@@ -310,7 +310,8 @@ analysis_result <- list(
     table1_by_exposure  = NULL,
     table1_by_outcome   = NULL,
     univariable_screen  = NULL,
-    main_results        = NULL,
+    main_results        = NULL,   # Step 7: build_results_table() data.frame (display + export)
+    fit_statistics      = NULL,   # Step 7: formatted fit statistics data.frame
     diagnostic_summary  = NULL
   ),
 
@@ -354,6 +355,8 @@ analysis_result <- list(
 
   generated_r_script  = NULL,  # character string; cached from Step 5
   methods_paragraph   = NULL,  # character string; cached from Step 7
+  results_generation  = NULL,  # Step 7: generated_at, outputs (ids), include_unadjusted,
+                               # unadjusted_status (variable, status, message)
 
   linked_model_result = NULL   # reserved for PS (v1.5)
 )
@@ -644,11 +647,19 @@ Variables: exposure + outcome + all candidates, fixed order. Placeholders for un
 
 **Module file:** `R/module_analysis_results.R` | **Service files:** `R/service_analysis_tables.R`, `R/service_analysis_plots.R`
 
-**Layout:** `layout_sidebar(position = "left")` — sidebar: output checkboxes + generate button; main panel: `navset_card_tab`.
+**Layout:** `layout_sidebar(position = "left")` — sidebar: output checkboxes + Generate Outputs; main panel: model header + `navset_card_tab`.
 
-**Outputs:** Summary (always, auto-generated), Results table (combined univariable+multivariable default), Fit statistics, Forest plot, Methods paragraph. Generate Selected Outputs button.
+**Outputs** (catalogue `.RESULTS_OUTPUTS` — add future outputs there): Results table (sub-option: include unadjusted estimates), Fit statistics, Forest plot, Methods paragraph. All ticked by default. **Only ticked outputs are created and stored; unticked ones are not created, so Step 8 cannot export them.** Each Generate replaces the previous set. The **Summary** tab is always shown, has no checkbox, and computes nothing — key numbers only, no prose (exposure estimates, model, sample, fit, checks, which outputs exist).
 
-**Table footnotes** per model type — all Wald-based. Footnote text per model type is in §4.2.
+**Results table** (`build_results_table()` → one data.frame; `results_table_gt()` for the app, `results_table_flextable()` for Word): rows = exposure then final covariates (never unchosen candidates, so every cell is filled); a factor gets a header row, a *Reference* row and one row per other level; no intercept; random effects not shown (Fit statistics only). Columns: Unadjusted and Adjusted (n), each "OR (95% CI)" or "β (95% CI)" plus p. Exposure bold, reference rows italic. Footnotes: measure (and event), per-unit note, what "adjusted" and "unadjusted" mean, `edark_inference_note()`, and † / ‡ for unadjusted models fitted with a warning / not fitted. Built as our own table, not `tbl_regression()` — that needs broom.helpers and would re-process our numbers.
+
+**Unadjusted estimates** (`fit_unadjusted_models()`): one model per variable, fitted to the final model's own rows (its model frame) with the same engine, random intercepts and optimizer; estimates from `edark_coef_table()`.
+
+**Forest plot** (`build_forest_plot()`): every model term, adjusted estimates; three aligned panels — labels | estimates with 95% CI | "OR (95% CI)" and p; log-scale OR axis with a line at 1 (logistic) or a line at 0 (linear); exposure highlighted. Scaling continuous variables is the user's responsibility (Prepare).
+
+**Methods paragraph** (`build_methods_paragraph()`): the model as fitted — design, outcome (event), exposure, covariates, random intercepts and estimation method (REML / Laplace, optimizer), reference categories, complete-case n, unadjusted models (if generated), CI and p-value methods, diagnostics run in Step 6 (assumptions and apparent prediction performance, separately), then a software sentence with R, EDARK and package versions. It does not describe variable selection.
+
+**Table footnotes** per model type — Footnote text per model type is in §4.2.
 
 **Step complete when:** outputs generated at least once.
 
@@ -778,7 +789,7 @@ Prediction      [if run] apparent-performance note, metrics, plots
 
 **Module file:** `R/module_analysis_results.R`
 
-Sidebar: checkboxes (Summary, Results table + combined sub-checkbox, Fit statistics, Forest plot, Methods paragraph), generate button. Main: `navset_card_tab`.
+Sidebar: "Outputs" checkboxes (Results table + indented "Include unadjusted estimates", Fit statistics, Forest plot, Methods paragraph — each with a one-line description), Generate Outputs (`btn-primary w-100`), note that only created outputs can be exported. Main: model header (type, formula, time generated), `navset_card_tab`: Summary (always) then one tab per created output. Methods tab has a Copy button.
 
 ### 6.10 Step 8 — Export
 
@@ -810,7 +821,7 @@ Two-column full-width. Left: presets, checklists with step-of-origin subheadings
 
 **Warning capture:** `withCallingHandlers()` wraps all fitting. Warnings stored in `run_status$run_messages`.
 
-**gtsummary integration:** `gtsummary::tbl_regression()` for publication tables. Raw tidy tibble → `inference_summary$coefficients`. gtsummary object → `result_tables$main_results`.
+**Publication tables:** Step 7 builds the results table itself from `edark_coef_table()` output (`build_results_table()` → `result_tables$main_results`); gtsummary is used for Table 1 only.
 
 ### 7.2 Linear Regression
 
@@ -904,7 +915,7 @@ Two-column full-width. Left: presets, checklists with step-of-origin subheadings
 
 Batch execution: one `lm` or `glm` per candidate. Always standard (non-mixed). Output: tibble (variable, estimate, CI, p-value) sorted by p-value. Stored in `result_tables$univariable_screen` and `fitted_models$univariable_models`.
 
-**Combined table:** `gtsummary::tbl_merge()` for side-by-side unadjusted + adjusted. Variables excluded from multivariable show "—" in adjusted columns.
+**Combined table (Step 7):** side-by-side unadjusted + adjusted for the final model's variables only. The Step 3 screen is not reused: Step 7 refits each unadjusted model on the final model's rows with the same engine (§5.3 Step 7).
 
 ### 7.7 Stepwise Selection
 
