@@ -87,6 +87,7 @@ inst/
 
 ### UI princples.md 
 - available in .claude folder to guide UI development so it's not reinventing the wheel every time, for internal consistency
+- `PRD/UI_Redesign_Plan.md` — the UI assessment and staged redesign plan (tri-pane + step-rail shell, component library, IA restructure). Read it before any UI work; it has a stage status table at the top.
 
 ---
 
@@ -552,6 +553,7 @@ session$sendCustomMessage("edark_analysis_progress", list(frac = 0.5, detail = "
 #### In progress
 - **Analysis module** (Phases 1–9): Phases 0–7 and 6b complete; Step 6 (Export) is a placeholder stub. R code generator (`service_analysis_codegen.R`) deferred — Step 5's R Code Preview is a placeholder; it should consume `prepare_snapshot` + the spec (incl. `purpose_specification`). See `PRD/EDARK_Analysis_Build_Plan.md` for phase definitions and acceptance criteria.
 - **Performance validation follow-ups** (Phase 7b built 2026-09-19): optional shrunk-coefficient output from the bootstrap calibration slope; decision curve analysis; CV / bootstrap for mixed models with several cluster variables groups by the first one only.
+- **UI redesign** (Stages 0–6, none started): full UI assessment and staged redesign — a persistent step rail plus a standard config / canvas / status tri-pane on every page, a shared component library (`R/ui_helpers.R`), an SCSS token layer, and an IA restructure that promotes Report to a top-level stage and flattens the tab nesting. Spec, rationale and stage status table: `PRD/UI_Redesign_Plan.md`. Work one stage per session and tick off its status table.
 
 #### High magnitude change
 - Alternative plot type options per variable combination (heat map, balloon plot, etc.)

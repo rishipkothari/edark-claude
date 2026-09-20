@@ -16,6 +16,7 @@ This file is the **index**: where to find things, the rules that must never be b
 | [PRD_3_Analyze.md](PRD_3_Analyze.md) | §A | The 9-step analysis workflow: roles and model purpose, Table 1, variable investigation, covariates, model creation, preflight, diagnostics, performance, results, export |
 | [IMPLEMENTATION_NOTES.md](IMPLEMENTATION_NOTES.md) | §N | Pitfalls, the **statistical methods registry** (§N2), and as-built mechanics per stage |
 | [EDARK_Analysis_Build_Plan.md](EDARK_Analysis_Build_Plan.md) | — | Analyze build phases and acceptance criteria (incl. Phase 5b code generator, Phase 8 export, Phase S sessions) |
+| [UI_Redesign_Plan.md](UI_Redesign_Plan.md) | — | **UI assessment and staged redesign** — the tri-pane + step-rail shell, component library, IA restructure. Stage status table at the top; work one stage per session |
 | `.claude/UI principles.md` | — | Layout, action placement, visual hierarchy |
 | [PRD_section_map.md](PRD_section_map.md) | — | Old → new section numbers (migration aid) |
 
