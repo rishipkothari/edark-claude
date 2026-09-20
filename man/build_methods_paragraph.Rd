@@ -8,7 +8,8 @@ build_methods_paragraph(result, include_unadjusted = FALSE)
 }
 \arguments{
 \item{result}{The \code{analysis_result} (fitted model, snapshot,
-\code{run_status}; \code{diagnostics} when Step 6 was run).}
+\code{run_status}; \code{diagnostics} when Diagnostics was run;
+\code{performance} when Performance was run).}
 
 \item{include_unadjusted}{Logical: whether the results include unadjusted
 estimates.}

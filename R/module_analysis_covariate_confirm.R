@@ -234,10 +234,21 @@ analysis_covariate_confirm_server <- function(id, shared_state) {
                   key = key)
     })
 
+    # The rows covariates are chosen on: the training set when Step 1 set a
+    # train/test split. A reactiveVal, so it only changes with the split.
+    split_spec <- shiny::reactiveVal(NULL)
+    shiny::observe(split_spec(list(
+      purpose_specification = shared_state$analysis_spec$purpose_specification)))
+    model_data <- shiny::reactive({
+      adata <- shared_state$analysis_data
+      if (is.null(adata)) return(NULL)
+      analysis_model_data(split_spec(), adata)
+    })
+
     # ── Live sample summary (recomputed on every click) ──────────────────────
     sample_info <- shiny::reactive({
       r     <- roles()
-      adata <- shared_state$analysis_data
+      adata <- model_data()
       if (is.null(r) || is.null(adata)) return(NULL)
       compute_covariate_sample(
         adata,
@@ -358,7 +369,7 @@ analysis_covariate_confirm_server <- function(id, shared_state) {
     # re-rendering (and losing search/scroll) on unrelated spec writes.
     table_struct <- shiny::reactiveVal(NULL)
     shiny::observe({
-      table_struct(list(roles = roles(), methods = method_info()))
+      table_struct(list(roles = roles(), methods = method_info(), rows = split_spec()))
     })
 
     output$main_message <- shiny::renderUI({
@@ -402,7 +413,7 @@ analysis_covariate_confirm_server <- function(id, shared_state) {
       mi <- ts$methods
       if (is.null(r)) return(NULL)
 
-      adata <- shiny::isolate(shared_state$analysis_data)
+      adata <- shiny::isolate(model_data())
       ctypes <- shiny::isolate(shared_state$column_types)
       n     <- nrow(adata)
 

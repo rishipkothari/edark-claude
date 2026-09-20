@@ -3,22 +3,19 @@
 #' Post-fit diagnostics for the Step 5 model (PRD §7.2\enc{–}{-}7.5). Pure
 #' functions — no Shiny. \code{analysis_diagnostic_options()} lists the checks
 #' a model type offers; \code{run_analysis_diagnostics()} computes the selected
-#' ones and returns values, plots and messages for Step 6 to store.
+#' ones and returns values, plots and messages for Model › Diagnostics to store.
 #'
-#' Two groups of checks:
-#' \itemize{
-#'   \item \strong{Model assumptions} — residuals (standard plots +
-#'     Breusch-Pagan for linear models; binned residuals for logistic models,
-#'     whose raw residuals are uninformative), influence (Cook's distance,
-#'     leverage — non-mixed models), collinearity (VIF), separation (logistic),
-#'     random effects (per-cluster variance, ICC, cluster sizes, Q-Q — mixed).
-#'   \item \strong{Prediction performance} — optional, for prediction studies.
-#'     Apparent (in-sample) performance only. Mixed models use marginal
-#'     predictions (\code{re.form = NA}): the fixed effects alone, as for a
-#'     new patient from an unseen cluster.
-#' }
-#' Sample accounting and fitting warnings (convergence, singular fit) are
-#' always reported — they cost nothing and belong with every model.
+#' Checks of the model's assumptions and stability: residuals (standard plots
+#' + Breusch-Pagan for linear models; binned residuals for logistic models,
+#' whose raw residuals are uninformative), linearity of each continuous
+#' predictor, influence (Cook's distance, leverage — non-mixed models),
+#' collinearity (VIF), separation (logistic), random effects (per-cluster
+#' variance, ICC, cluster sizes, Q-Q — mixed). Sample accounting and fitting
+#' warnings (convergence, singular fit) are always reported — they cost
+#' nothing and belong with every model.
+#'
+#' Predictive performance (discrimination, calibration, prediction error) is
+#' Model › Performance — \code{service_analysis_performance.R}.
 #'
 #' @importFrom magrittr %>%
 #'
@@ -30,15 +27,13 @@ NULL
 .DIAG_VIF_MODERATE <- 5
 .DIAG_VIF_HIGH     <- 10
 .DIAG_TOP_INFLUENTIAL <- 10L
-.DIAG_CAL_BINS     <- 10L
 
 
 #' Diagnostic checks available for a model type
 #'
 #' @param model_type One of \code{"linear"}, \code{"logistic"},
 #'   \code{"linear_mixed"}, \code{"logistic_mixed"}.
-#' @return A \code{data.frame(id, category, label, description)};
-#'   \code{category} is \code{"assumptions"} or \code{"prediction"}.
+#' @return A \code{data.frame(id, label, description)}.
 #' @export
 analysis_diagnostic_options <- function(model_type) {
   if (is.null(model_type)) return(NULL)
@@ -46,35 +41,28 @@ analysis_diagnostic_options <- function(model_type) {
   mixed <- model_type %in% c("linear_mixed", "logistic_mixed")
 
   rows <- list(
-    list("residuals", "assumptions", "Residuals",
+    list("residuals", "Residuals",
          if (logit) "Binned residuals (raw residuals of a 0/1 outcome are not interpretable)"
          else if (mixed) "Residuals vs fitted, Q-Q and scale-location (conditional residuals)"
          else "Residuals vs fitted, Q-Q, scale-location and the Breusch-Pagan test"),
-    if (!mixed) list("influence", "assumptions", "Influential observations",
+    list("linearity", "Linearity",
+         if (logit) "Binned residuals against each continuous predictor (linear on the log-odds scale?)"
+         else "Residuals against each continuous predictor"),
+    if (!mixed) list("influence", "Influential observations",
                      "Cook's distance, leverage and the most influential rows"),
-    list("vif", "assumptions", "Collinearity (VIF)",
+    list("vif", "Collinearity (VIF)",
          "Variance inflation factor for each predictor"),
-    if (logit) list("separation", "assumptions", "Separation",
+    if (logit) list("separation", "Separation",
                     if (mixed) "Checked on the fixed effects" else
                       "Whether a predictor perfectly predicts the outcome"),
-    if (mixed) list("random_effects", "assumptions", "Random effects",
-                    "Variance and ICC per cluster variable, cluster sizes, Q-Q of cluster intercepts"),
-    if (logit) list("discrimination", "prediction", "Discrimination (ROC / AUC)",
-                    "How well predicted risks separate events from non-events"),
-    list("calibration", "prediction", "Calibration",
-         if (logit) "Predicted vs observed risk by decile, and the Brier score"
-         else "Observed vs predicted values"),
-    if (logit) list("predicted_distribution", "prediction", "Predicted probabilities",
-                    "Distribution of predicted risk by outcome group"),
-    if (!logit) list("prediction_error", "prediction", "Prediction error",
-                     "RMSE, MAE and R\u00b2 of the predictions")
+    if (mixed) list("random_effects", "Random effects",
+                    "Variance and ICC per cluster variable, cluster sizes, Q-Q of cluster intercepts")
   )
   rows <- Filter(Negate(is.null), rows)
   data.frame(
     id          = vapply(rows, `[[`, character(1), 1L),
-    category    = vapply(rows, `[[`, character(1), 2L),
-    label       = vapply(rows, `[[`, character(1), 3L),
-    description = vapply(rows, `[[`, character(1), 4L),
+    label       = vapply(rows, `[[`, character(1), 2L),
+    description = vapply(rows, `[[`, character(1), 3L),
     stringsAsFactors = FALSE
   )
 }
@@ -85,15 +73,17 @@ analysis_diagnostic_options <- function(model_type) {
 #' @param result The \code{analysis_result} holding a fitted
 #'   \code{primary_model}, its \code{specification_snapshot},
 #'   \code{run_status} and \code{inference_summary$predicted_values}.
-#' @param data The frozen analysis dataset (for sample accounting).
+#' @param data The rows the model was built from (for sample accounting):
+#'   \code{analysis_model_data(spec, analysis_data)} — the training set when
+#'   a train/test split applies.
 #' @param checks Character vector of check ids from
 #'   \code{analysis_diagnostic_options()}. Unknown or inapplicable ids are
 #'   ignored.
 #' @param progress_fn Optional \code{function(fraction, detail)}.
 #'
 #' @return A named list: \code{run_at}, \code{model_type}, \code{checks}
-#'   (ids actually run), \code{sample}, \code{residuals}, \code{influence},
-#'   \code{vif}, \code{separation}, \code{random_effects}, \code{prediction}
+#'   (ids actually run), \code{sample}, \code{residuals}, \code{linearity},
+#'   \code{influence}, \code{vif}, \code{separation}, \code{random_effects}
 #'   (each \code{NULL} when not run), \code{influence_measures} (per-row
 #'   data.frame, non-mixed models), \code{metrics} (long data.frame: section,
 #'   key, label, value, format, level — every computed value, for the
@@ -117,8 +107,8 @@ run_analysis_diagnostics <- function(result, data, checks, progress_fn = NULL) {
   if (length(ids) != nrow(mf)) ids <- seq_len(nrow(mf))
 
   out <- list(run_at = Sys.time(), model_type = model_type, checks = checks,
-              sample = NULL, residuals = NULL, influence = NULL, vif = NULL,
-              separation = NULL, random_effects = NULL, prediction = NULL,
+              sample = NULL, residuals = NULL, linearity = NULL, influence = NULL,
+              vif = NULL, separation = NULL, random_effects = NULL,
               influence_measures = NULL)
   metrics <- list()
   msgs    <- data.frame(level = character(0), message = character(0), stringsAsFactors = FALSE)
@@ -182,6 +172,25 @@ run_analysis_diagnostics <- function(result, data, checks, progress_fn = NULL) {
       }
       if (!is.null(r$binned)) {
         .metric("residuals", "binned_inside", "Bins within the error bounds", r$binned_inside, "percent")
+      }
+    }
+  }
+
+  # ── Linearity ───────────────────────────────────────────────────────────────
+  if ("linearity" %in% checks) {
+    .progress(0.33, "Linearity\u2026")
+    lin <- .try("Linearity check", .diag_linearity(model, mf, spec, logit))
+    if (is.character(lin)) {
+      .msg("note", lin)
+    } else if (!is.null(lin)) {
+      out$linearity <- lin[setdiff(names(lin), "plots")]
+      plots <- c(plots, lin$plots)
+      if (!is.null(lin$inside)) {
+        for (i in seq_len(nrow(lin$inside))) {
+          .metric("linearity", paste0("lin_", lin$inside$term[i]),
+                  sprintf("Bins within the error bounds (%s)", lin$inside$term[i]),
+                  lin$inside$inside[i], "percent")
+        }
       }
     }
   }
@@ -257,25 +266,6 @@ run_analysis_diagnostics <- function(result, data, checks, progress_fn = NULL) {
                 comp$median_size[i], "integer")
       }
       if (nrow(comp) > 1L) .metric("random_effects", "icc_adjusted", "ICC (all clusters)", re$icc_adjusted)
-    }
-  }
-
-  # ── Prediction performance ──────────────────────────────────────────────────
-  pred_checks <- intersect(checks, c("discrimination", "calibration", "predicted_distribution", "prediction_error"))
-  if (length(pred_checks) > 0L) {
-    .progress(0.85, "Prediction performance\u2026")
-    p <- .try("Prediction performance", .diag_prediction(model, mf, outcome, logit, mixed, pred_checks))
-    if (!is.null(p)) {
-      out$prediction <- p[setdiff(names(p), "plots")]
-      plots <- c(plots, p$plots)
-      .metric("prediction", "auc", "AUC", p$auc)
-      .metric("prediction", "auc_low", "AUC 95% CI (lower)", p$auc_low)
-      .metric("prediction", "auc_high", "AUC 95% CI (upper)", p$auc_high)
-      .metric("prediction", "brier", "Brier score", p$brier)
-      .metric("prediction", "brier_null", "Brier score, no-information", p$brier_null)
-      .metric("prediction", "rmse", "RMSE", p$rmse)
-      .metric("prediction", "mae", "MAE", p$mae)
-      .metric("prediction", "r2", "R\u00b2 (predictions)", p$r2)
     }
   }
 
@@ -447,64 +437,32 @@ run_analysis_diagnostics <- function(result, data, checks, progress_fn = NULL) {
 }
 
 
-.diag_prediction <- function(model, mf, outcome, logit, mixed, checks) {
-  pred <- if (mixed) {
-    as.numeric(stats::predict(model, type = "response", re.form = NA))
-  } else {
-    as.numeric(stats::predict(model, type = "response"))
-  }
-  out <- list(basis = if (mixed) "marginal" else "fixed", plots = list())
+# Residuals against each continuous (numeric) predictor. Linear models: the
+# model's residuals (conditional for mixed models). Logistic models: binned
+# response residuals per predictor. Returns a character note when there is no
+# continuous predictor.
+.diag_linearity <- function(model, mf, spec, logit) {
+  vr    <- spec$variable_roles
+  preds <- .safe_preds(vr$exposure_variable, vr$final_model_covariates)
+  num   <- preds[vapply(preds, function(v) v %in% names(mf) && is.numeric(mf[[v]]), logical(1))]
+  if (length(num) == 0L) return("Linearity: the model has no continuous predictor, so there is nothing to check.")
 
   if (logit) {
-    yf <- mf[[outcome]]
-    y  <- as.integer(yf == levels(yf)[2L])
-    if ("discrimination" %in% checks) {
-      roc <- pROC::roc(y, pred, levels = c(0L, 1L), direction = "<", quiet = TRUE)
-      ci  <- as.numeric(pROC::ci.auc(roc))
-      out$auc <- as.numeric(pROC::auc(roc))
-      out$auc_low  <- ci[1L]
-      out$auc_high <- ci[3L]
-      out$plots$roc_curve <- .plot_roc(roc, out$auc, ci)
-    }
-    if ("calibration" %in% checks) {
-      out$brier <- mean((pred - y)^2)
-      out$brier_null <- mean(y) * (1 - mean(y))   # predicting the prevalence for everyone
-      bins <- .calibration_bins(pred, y)
-      out$calibration <- bins
-      out$plots$calibration_plot <- .plot_calibration_logistic(bins)
-    }
-    if ("predicted_distribution" %in% checks) {
-      out$plots$predicted_probs <- .plot_predicted_probs(pred, yf)
-    }
-  } else {
-    y <- as.numeric(mf[[outcome]])
-    if ("prediction_error" %in% checks) {
-      out$rmse <- sqrt(mean((y - pred)^2))
-      out$mae  <- mean(abs(y - pred))
-      out$r2   <- 1 - sum((y - pred)^2) / sum((y - mean(y))^2)
-    }
-    if ("calibration" %in% checks) {
-      out$plots$calibration_plot <- .plot_observed_predicted(pred, y, outcome)
-    }
+    b <- lapply(num, function(v) {
+      d <- as.data.frame(performance::binned_residuals(model, term = v, residuals = "response"))
+      d$term <- v
+      d
+    })
+    b <- do.call(rbind, b)
+    inside <- stats::aggregate(list(inside = b$group == "yes"), list(term = b$term), mean)
+    return(list(terms = num, inside = inside,
+                plots = list(linearity_plot = .plot_linearity(b, binned = TRUE))))
   }
-  out
-}
 
-
-# Decile bins of predicted risk: mean predicted vs observed proportion, with a
-# Wilson 95% interval for the observed proportion.
-.calibration_bins <- function(pred, y) {
-  k   <- min(.DIAG_CAL_BINS, length(unique(pred)))
-  bin <- dplyr::ntile(pred, k)
-  out <- do.call(rbind, lapply(sort(unique(bin)), function(b) {
-    i <- bin == b
-    n <- sum(i)
-    obs <- mean(y[i])
-    z <- stats::qnorm(0.975)
-    centre <- (obs + z^2 / (2 * n)) / (1 + z^2 / n)
-    half   <- z * sqrt(obs * (1 - obs) / n + z^2 / (4 * n^2)) / (1 + z^2 / n)
-    data.frame(bin = b, n = n, predicted = mean(pred[i]), observed = obs,
-               low = max(0, centre - half), high = min(1, centre + half))
+  resid <- as.numeric(stats::residuals(model))
+  d <- do.call(rbind, lapply(num, function(v) {
+    data.frame(term = v, x = as.numeric(mf[[v]]), resid = resid, stringsAsFactors = FALSE)
   }))
-  out
+  list(terms = num, inside = NULL,
+       plots = list(linearity_plot = .plot_linearity(d, binned = FALSE)))
 }

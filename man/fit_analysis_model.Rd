@@ -18,16 +18,19 @@ A named list: \code{status} (\code{"success"} / \code{"failed"}),
 estimate, std.error, statistic, p.value, conf.low, conf.high, effect,
 effect.low, effect.high, effect_measure), \code{fit_statistics}
 (data.frame: key, label, value, format), \code{predicted_values},
-\code{n_total}, \code{n_used}, \code{outcome_event} (binary outcomes:
+\code{n_total} (rows available to the model: the training set when split),
+\code{n_used}, \code{outcome_event} (binary outcomes:
 list(variable, event, reference)), \code{reference_levels} (factor
 predictors actually used), and \code{messages}
 (data.frame: level, stage, message).
 }
 \description{
-Builds the model data (complete cases over the model variables, clusters
-included only for mixed models; ordered factors converted to unordered so
-every factor uses treatment contrasts; reference levels applied; unused
-levels dropped; cluster variables converted to factors), fits the model
+Builds the model data (the training rows when a train/test split applies —
+\code{analysis_model_data()}; complete cases over the model variables,
+clusters included only for mixed models; ordered factors converted to
+unordered so every factor uses treatment contrasts; reference levels
+applied; unused levels dropped; cluster variables converted to factors —
+\code{.prepare_model_rows()}), fits the model
 named by \code{spec$model_design$model_type}, and extracts coefficients,
 fit statistics and fitted values. Warnings and messages raised while
 fitting are captured, never thrown.

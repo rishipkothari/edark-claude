@@ -2,7 +2,7 @@
 % Please edit documentation in R/service_analysis_models.R
 \name{fit_unadjusted_models}
 \alias{fit_unadjusted_models}
-\title{Fit the unadjusted (one-variable) models for Step 7}
+\title{Fit the unadjusted (one-variable) models for Model › Results}
 \usage{
 fit_unadjusted_models(result, progress_fn = NULL)
 }

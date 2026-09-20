@@ -1,13 +1,12 @@
-#' Analysis Step 6 — Diagnostics Module
+#' Analysis Step 5 — Model › Diagnostics Module
 #'
-#' UI and server for Step 6 of the Analysis workflow. Sidebar: the checks to
-#' run, in two groups — \strong{Model assumptions} (all ticked by default)
-#' and \strong{Prediction performance} (optional, unticked, collapsed; for
-#' prediction studies only) — and the Run Diagnostics button. Main panel: an
-#' Overview tab with every computed value and warning at a glance, then one
-#' tab per computed check.
+#' UI and server for the Diagnostics sub-tab of Step 5 (Model): checks of the model's
+#' assumptions and stability. Sidebar: the checks to run (all ticked by
+#' default) and the Run Diagnostics button. Main panel: an Overview tab with
+#' every computed value and warning at a glance, then one tab per computed
+#' check. Predictive performance is the Performance sub-tab (\code{module_analysis_performance.R}).
 #'
-#' Diagnostics are advisory: nothing here blocks Step 7 or 8. Results are
+#' Diagnostics are advisory: nothing here blocks Steps 7\enc{–}{-}9. Results are
 #' stored in \code{analysis_result$diagnostics},
 #' \code{result_plots$diagnostic_plots}, \code{result_tables$diagnostic_summary}
 #' and \code{inference_summary$influence_measures}; a new fit or any
@@ -24,8 +23,8 @@ NULL
 
 
 .DG_PLOT_KEYS <- c("residuals_vs_fitted", "qq_plot", "scale_location", "binned_residuals",
-                   "influence_plot", "leverage_plot", "random_effects_qq", "cluster_size_plot",
-                   "roc_curve", "calibration_plot", "predicted_probs")
+                   "linearity_plot", "influence_plot", "leverage_plot", "random_effects_qq",
+                   "cluster_size_plot")
 
 # Reading guide shown next to a value in the Overview
 .DG_HINTS <- c(
@@ -33,16 +32,13 @@ NULL
   binned_inside = "expect about 95%",
   n_above       = "rows worth a look, not rows to delete",
   vif_max       = "5\u201310 moderate, > 10 high",
-  auc           = "0.5 = chance, 1 = perfect",
-  brier         = "lower is better",
-  brier_null    = "score from predicting the event rate for everyone",
   icc_adjusted  = "share of the outcome variance between clusters"
 )
 
 .DG_SECTIONS <- c(
-  sample = "Sample", fit = "Fit", residuals = "Residuals", influence = "Influence",
-  vif = "Collinearity", separation = "Separation", random_effects = "Random effects",
-  prediction = "Prediction performance"
+  sample = "Sample", fit = "Fit", residuals = "Residuals", linearity = "Linearity",
+  influence = "Influence", vif = "Collinearity", separation = "Separation",
+  random_effects = "Random effects"
 )
 
 
@@ -64,17 +60,6 @@ analysis_diagnostics_ui <- function(id) {
       .hdr("Model assumptions"),
       .links("assump_all", "assump_none"),
       shiny::uiOutput(ns("assump_ui")),
-      bslib::accordion(
-        open = FALSE, class = "mt-2",
-        bslib::accordion_panel(
-          "Prediction performance (optional)", value = "prediction",
-          shiny::tags$p(class = "small text-muted mb-2",
-                        "For studies that build a model to predict outcomes. Not needed to report",
-                        "an association between an exposure and an outcome."),
-          .links("pred_all", "pred_none"),
-          shiny::uiOutput(ns("pred_ui"))
-        )
-      ),
       shiny::tags$hr(class = "my-2"),
       shiny::actionButton(ns("btn_run"),
                           label = shiny::tagList(shiny::icon("play"), " Run Diagnostics"),
@@ -120,38 +105,23 @@ analysis_diagnostics_server <- function(id, shared_state) {
 
     output$assump_ui <- shiny::renderUI({
       o <- options_tbl()
-      if (is.null(o)) return(shiny::tags$p(class = "small text-muted", "Fit a model in Step 5 first."))
-      o <- o[o$category == "assumptions", , drop = FALSE]
+      if (is.null(o)) return(shiny::tags$p(class = "small text-muted", "Fit a model in the Create tab first."))
       ch <- .choices(o)
       shiny::checkboxGroupInput(ns("assump"), label = NULL, choiceNames = ch$names,
                                 choiceValues = ch$values, selected = o$id, width = "100%")
     })
 
-    output$pred_ui <- shiny::renderUI({
-      o <- options_tbl()
-      if (is.null(o)) return(NULL)
-      o <- o[o$category == "prediction", , drop = FALSE]
-      ch <- .choices(o)
-      shiny::checkboxGroupInput(ns("pred"), label = NULL, choiceNames = ch$names,
-                                choiceValues = ch$values, selected = character(0), width = "100%")
-    })
-
-    # Render even while hidden (the prediction list sits in a collapsed
-    # accordion) so a new model type always resets both lists — otherwise the
-    # hidden input would keep ticks from the previous model.
+    # Render even while the step is hidden, so a new model type always resets
+    # the list — otherwise the input would keep ticks from the previous model.
     shiny::outputOptions(output, "assump_ui", suspendWhenHidden = FALSE)
-    shiny::outputOptions(output, "pred_ui",   suspendWhenHidden = FALSE)
 
-    .set_group <- function(input_id, category, all) {
+    .set_all <- function(all) {
       o <- options_tbl()
       if (is.null(o)) return()
-      ids <- o$id[o$category == category]
-      shiny::updateCheckboxGroupInput(session, input_id, selected = if (all) ids else character(0))
+      shiny::updateCheckboxGroupInput(session, "assump", selected = if (all) o$id else character(0))
     }
-    shiny::observeEvent(input$assump_all,  .set_group("assump", "assumptions", TRUE))
-    shiny::observeEvent(input$assump_none, .set_group("assump", "assumptions", FALSE))
-    shiny::observeEvent(input$pred_all,    .set_group("pred", "prediction", TRUE))
-    shiny::observeEvent(input$pred_none,   .set_group("pred", "prediction", FALSE))
+    shiny::observeEvent(input$assump_all,  .set_all(TRUE))
+    shiny::observeEvent(input$assump_none, .set_all(FALSE))
 
     shiny::observe({
       shinyjs::toggleState("btn_run", condition = !is.null(model_type()))
@@ -163,8 +133,10 @@ analysis_diagnostics_server <- function(id, shared_state) {
       adata <- shiny::isolate(shared_state$analysis_data)
       if (is.null(res$fitted_models$primary_model)) return()
       # Inputs keep stale values across model types; the service drops ids
-      # that do not apply to this model.
-      checks <- c(input$assump, input$pred)
+      # that do not apply to this model. Sample accounting uses the rows the
+      # model was built from (the training set when split).
+      checks <- input$assump
+      adata  <- analysis_model_data(res$specification_snapshot, adata)
 
       shiny::showModal(.analysis_progress_modal("Running Diagnostics\u2026"))
       on.exit(shiny::removeModal(), add = TRUE)
@@ -204,7 +176,7 @@ analysis_diagnostics_server <- function(id, shared_state) {
     output$header_ui <- shiny::renderUI({
       res <- shared_state$analysis_result
       mt  <- model_type()
-      if (is.null(mt)) return(.ms_placeholder("Fit a model in Step 5 to run diagnostics."))
+      if (is.null(mt)) return(.ms_placeholder("Fit a model in the Create tab to run diagnostics."))
       rs  <- res$run_status
       dg  <- diag()
       bslib::card(
@@ -229,11 +201,13 @@ analysis_diagnostics_server <- function(id, shared_state) {
       if (is.null(dg)) {
         return(.ms_placeholder("Choose the checks in the sidebar and click Run Diagnostics."))
       }
-      pl <- diag_plots()
 
       tabs <- list(bslib::nav_panel("Overview", .dg_overview(dg)))
       if (!is.null(dg$residuals)) {
         tabs <- c(tabs, list(bslib::nav_panel("Residuals", .dg_residuals_tab(dg, ns))))
+      }
+      if (!is.null(dg$linearity)) {
+        tabs <- c(tabs, list(bslib::nav_panel("Linearity", .dg_linearity_tab(dg, ns))))
       }
       if (!is.null(dg$influence)) {
         tabs <- c(tabs, list(bslib::nav_panel("Influence", .dg_influence_tab(dg, ns))))
@@ -243,9 +217,6 @@ analysis_diagnostics_server <- function(id, shared_state) {
       }
       if (!is.null(dg$random_effects)) {
         tabs <- c(tabs, list(bslib::nav_panel("Random effects", .dg_ranef_tab(dg, ns))))
-      }
-      if (!is.null(dg$prediction)) {
-        tabs <- c(tabs, list(bslib::nav_panel("Prediction", .dg_prediction_tab(dg, ns, pl))))
       }
       do.call(bslib::navset_card_tab, c(list(id = ns("diag_tabs")), tabs))
     })
@@ -367,9 +338,6 @@ analysis_diagnostics_server <- function(id, shared_state) {
                              shiny::tags$li(sprintf("%s: %d", missing$variable[i], missing$n_missing[i]))
                            }))
           )
-        },
-        if (sec == "prediction") {
-          shiny::tags$p(class = "small text-muted mt-2 mb-0", .dg_apparent_note(dg$prediction$basis))
         }
       )
     )
@@ -397,18 +365,6 @@ analysis_diagnostics_server <- function(id, shared_state) {
       shiny::tagList(cards[seq_len(half)]),
       shiny::tagList(cards[setdiff(seq_along(cards), seq_len(half))])
     )
-  )
-}
-
-
-.dg_apparent_note <- function(basis) {
-  paste0(
-    "Apparent (in-sample) performance: measured on the same rows the model was fitted to, ",
-    "so it is optimistic. A prediction model needs internal validation (e.g. bootstrap) ",
-    "or external validation before it is reported.",
-    if (identical(basis, "marginal")) {
-      " Predictions use the fixed effects only (cluster effects set to zero), as for a patient from a new cluster."
-    } else ""
   )
 }
 
@@ -452,6 +408,23 @@ analysis_diagnostics_server <- function(id, shared_state) {
         )
       }
     )
+  )
+}
+
+
+.dg_linearity_tab <- function(dg, ns) {
+  lin <- dg$linearity
+  n   <- length(lin$terms)
+  shiny::tagList(
+    .dg_note(
+      "Each continuous predictor enters the model as a straight line",
+      if (!is.null(lin$inside)) "on the log-odds scale" else "",
+      "(one slope per unit). If the residuals trend or curve against a predictor,",
+      "that line misses its shape \u2014 consider a transform in Prepare (e.g. log,",
+      "or cut-points) and refit. A predictor that is a confounder can still be",
+      "adjusted for adequately with a modest misfit."
+    ),
+    .dg_plot(ns, "linearity_plot", sprintf("%dpx", 300L * ceiling(n / 2) + 80L))
   )
 }
 
@@ -500,41 +473,5 @@ analysis_diagnostics_server <- function(id, shared_state) {
       .dg_plot(ns, "random_effects_qq"),
       .dg_plot(ns, "cluster_size_plot")
     )
-  )
-}
-
-
-.dg_prediction_tab <- function(dg, ns, pl) {
-  p <- dg$prediction
-  .stat <- function(label, value, fmt = "%.3f") {
-    if (is.null(value)) return(NULL)
-    shiny::div(class = "me-4",
-               shiny::div(class = "small text-muted", label),
-               shiny::div(class = "fw-semibold", sprintf(fmt, value)))
-  }
-  plots <- intersect(c("roc_curve", "calibration_plot", "predicted_probs"), names(pl))
-  shiny::tagList(
-    shiny::div(class = "border rounded bg-body-tertiary small text-muted p-2 mb-2",
-               shiny::icon("circle-info"), " ", .dg_apparent_note(p$basis)),
-    shiny::div(
-      class = "d-flex flex-wrap mb-3",
-      if (!is.null(p$auc)) {
-        shiny::div(class = "me-4",
-                   shiny::div(class = "small text-muted", "AUC (95% CI)"),
-                   shiny::div(class = "fw-semibold",
-                              sprintf("%.3f (%.3f\u2013%.3f)", p$auc, p$auc_low, p$auc_high)))
-      },
-      .stat("Brier score", p$brier),
-      .stat("No-information Brier", p$brier_null),
-      .stat("RMSE", p$rmse),
-      .stat("MAE", p$mae),
-      .stat("R\u00b2", p$r2)
-    ),
-    if (length(plots) > 0L) {
-      do.call(bslib::layout_columns, c(
-        list(col_widths = if (length(plots) == 1L) 12 else c(6, 6)),
-        lapply(plots, function(k) .dg_plot(ns, k, "400px"))
-      ))
-    }
   )
 }

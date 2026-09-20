@@ -171,7 +171,7 @@ analysis_table1_server <- function(id, shared_state) {
           label    = "Comparison statistic",
           choices  = stats::setNames(
             c("none", "pvalues", "smd"),
-            c("None", "P-values", if (smd_ok) "SMD" else "SMD — binary only")
+            c("None", "P-values", if (smd_ok) "SMD" else "SMD \u2014 binary only")
           ),
           selected = selected,
           width    = "100%",

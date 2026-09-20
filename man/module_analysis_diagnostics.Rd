@@ -4,7 +4,7 @@
 \alias{module_analysis_diagnostics}
 \alias{analysis_diagnostics_ui}
 \alias{analysis_diagnostics_server}
-\title{Analysis Step 6 — Diagnostics Module}
+\title{Analysis Step 5 — Model › Diagnostics Module}
 \usage{
 analysis_diagnostics_ui(id)
 
@@ -16,15 +16,14 @@ analysis_diagnostics_server(id, shared_state)
 \item{shared_state}{A Shiny \code{reactiveValues} object.}
 }
 \description{
-UI and server for Step 6 of the Analysis workflow. Sidebar: the checks to
-run, in two groups — \strong{Model assumptions} (all ticked by default)
-and \strong{Prediction performance} (optional, unticked, collapsed; for
-prediction studies only) — and the Run Diagnostics button. Main panel: an
-Overview tab with every computed value and warning at a glance, then one
-tab per computed check.
+UI and server for the Diagnostics sub-tab of Step 5 (Model): checks of the model's
+assumptions and stability. Sidebar: the checks to run (all ticked by
+default) and the Run Diagnostics button. Main panel: an Overview tab with
+every computed value and warning at a glance, then one tab per computed
+check. Predictive performance is the Performance sub-tab (\code{module_analysis_performance.R}).
 }
 \details{
-Diagnostics are advisory: nothing here blocks Step 7 or 8. Results are
+Diagnostics are advisory: nothing here blocks Steps 7\enc{–}{-}9. Results are
 stored in \code{analysis_result$diagnostics},
 \code{result_plots$diagnostic_plots}, \code{result_tables$diagnostic_summary}
 and \code{inference_summary$influence_measures}; a new fit or any

@@ -158,9 +158,9 @@ build_table1 <- function(data,
 }
 
 
-# ── Step 7: results table ─────────────────────────────────────────────────────
+# ── Model › Results: results table ─────────────────────────────────────────────────────
 
-#' Build the Step 7 results table
+#' Build the Model › Results table
 #'
 #' One data frame holds every number and label in the table; the screen
 #' (\code{results_table_gt()}) and the Word export
@@ -368,7 +368,7 @@ results_table_flextable <- function(tbl) {
 #' Format fit statistics for display and export
 #'
 #' @param result The \code{analysis_result}. Adds the AUC (and its 95\% CI)
-#'   when Step 6 computed it.
+#'   when Performance computed it, for each set of rows (apparent, test).
 #' @return A data.frame(Statistic, Value) of display strings, or \code{NULL}.
 #' @export
 build_fit_statistics_table <- function(result) {
@@ -376,11 +376,24 @@ build_fit_statistics_table <- function(result) {
   if (is.null(fs) || nrow(fs) == 0L) return(NULL)
   val <- vapply(seq_len(nrow(fs)), function(i) .fmt_fit_stat(fs$value[i], fs$format[i]), character(1))
   out <- data.frame(Statistic = fs$label, Value = val, stringsAsFactors = FALSE)
-  pr <- result$diagnostics$prediction
-  if (!is.null(pr$auc)) {
-    out <- rbind(out, data.frame(
-      Statistic = if (identical(pr$basis, "marginal")) "AUC (marginal predictions, apparent)" else "AUC (apparent)",
-      Value = edark_format_ci(pr$auc, pr$auc_low, pr$auc_high), stringsAsFactors = FALSE))
+  pf <- result$performance
+  set_names <- c(apparent = "apparent", test = "test set", cv = "cross-validated",
+                 bootstrap = "bootstrap-corrected")
+  for (s in names(pf$sets)) {
+    v <- pf$sets[[s]]
+    what <- set_names[[s]] %||% s
+    if (identical(pf$basis, "marginal")) what <- paste("marginal predictions,", what)
+    if (!is.null(v$auc)) {
+      out <- rbind(out, data.frame(
+        Statistic = sprintf("AUC (%s)", what),
+        Value = if (is.null(v$auc_low)) edark_format_est(v$auc) else edark_format_ci(v$auc, v$auc_low, v$auc_high),
+        stringsAsFactors = FALSE))
+    }
+    # In-sample the calibration slope is 1 by construction; report validated ones
+    if (s != "apparent" && !is.null(v$cal_slope)) {
+      out <- rbind(out, data.frame(Statistic = sprintf("Calibration slope (%s)", what),
+                                   Value = edark_format_est(v$cal_slope), stringsAsFactors = FALSE))
+    }
   }
   out
 }

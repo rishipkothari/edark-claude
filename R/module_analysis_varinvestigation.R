@@ -69,7 +69,7 @@ NULL
 
 
 # ── Shared helper: blocking modal ─────────────────────────────────────────────
-.analysis_progress_modal <- function(title_text, detail_text = "Running\u2026") {
+.analysis_progress_modal <- function(title_text, detail_text = "Running\u2026", cancel_id = NULL) {
   shiny::modalDialog(
     title = shiny::tagList(
       shiny::tags$span(
@@ -97,7 +97,12 @@ NULL
       class = "text-muted mb-0 small",
       detail_text
     ),
-    footer    = NULL,
+    # A Cancel button only works when the caller runs its computation in
+    # steps (see module_analysis_performance.R) — a single long call blocks
+    # Shiny from seeing the click.
+    footer    = if (!is.null(cancel_id)) {
+      shiny::actionButton(cancel_id, "Cancel", class = "btn-outline-secondary btn-sm")
+    },
     easyClose = FALSE
   )
 }
@@ -239,8 +244,7 @@ analysis_varinvestigation_server <- function(id, shared_state) {
     # ── Collinearity: auto-compute on pill entry ──────────────────────────────
     collin_computed <- shiny::reactiveVal(NULL)
 
-    shiny::observeEvent(input$vi_pills, {
-      if (!identical(input$vi_pills, "collinearity")) return()
+    .run_collinearity <- function() {
       spec  <- shiny::isolate(shared_state$analysis_spec)
       adata <- shiny::isolate(shared_state$analysis_data)
       if (is.null(spec) || is.null(adata)) return()
@@ -248,7 +252,7 @@ analysis_varinvestigation_server <- function(id, shared_state) {
       candidates <- spec$variable_roles$univariable_test_pool
       if (is.null(candidates) || length(candidates) == 0L) return()
 
-      result <- compute_collinearity(adata, candidates)
+      result <- compute_collinearity(analysis_model_data(spec, adata), candidates)
       collin_computed(result)
 
       # Store in analysis_result
@@ -260,7 +264,19 @@ analysis_varinvestigation_server <- function(id, shared_state) {
       }
       res$result_plots$collinearity_plots$flagged_pairs_table <- result$flagged_pairs
       shared_state$analysis_result <- res
+    }
+
+    shiny::observeEvent(input$vi_pills, {
+      if (identical(input$vi_pills, "collinearity")) .run_collinearity()
     }, ignoreInit = TRUE)
+
+    # A new train/test split changes the rows: recompute what is on screen
+    split_key <- shiny::reactiveVal(NULL)
+    shiny::observe(split_key(analysis_split(shared_state$analysis_spec)))
+    shiny::observeEvent(split_key(), {
+      collin_computed(NULL)
+      if (identical(input$vi_pills, "collinearity")) .run_collinearity()
+    }, ignoreInit = TRUE, ignoreNULL = FALSE)
 
     # ── UNIVARIABLE SCREEN ────────────────────────────────────────────────────
 
@@ -316,7 +332,7 @@ analysis_varinvestigation_server <- function(id, shared_state) {
       shiny::showModal(.analysis_progress_modal("Running Univariable Screen\u2026"))
       on.exit(shiny::removeModal(), add = TRUE)
 
-      screen_result <- run_univariable_screen(adata, spec)
+      screen_result <- run_univariable_screen(analysis_model_data(spec, adata), spec)
 
       # Store results
       res <- shiny::isolate(shared_state$analysis_result)
@@ -692,9 +708,9 @@ analysis_varinvestigation_server <- function(id, shared_state) {
       on.exit(shiny::removeModal(), add = TRUE)
 
       sl_result <- if (method == "Stepwise") {
-        run_stepwise(adata, spec)
+        run_stepwise(analysis_model_data(spec, adata), spec)
       } else {
-        run_lasso(adata, spec)
+        run_lasso(analysis_model_data(spec, adata), spec)
       }
 
       # Store in analysis_result — each method gets its own slot

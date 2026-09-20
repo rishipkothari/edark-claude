@@ -78,13 +78,13 @@ session$sendCustomMessage("edark_analysis_progress", list(frac = 0.5, detail = "
 
 | Quantity | Function | Method | Used by |
 |---|---|---|---|
-| Regression estimate / CI / p | `edark_coef_table(model, data)` | Wald-type: est ± crit × SE; crit = t(residual df) for lm, t(Satterthwaite df) for lmerTest, z for glm/glmer; p from `summary()`. OR = exp(est, limits) | Step 3 univariable screen, Step 5 fit, Step 7 unadjusted models + results table |
+| Regression estimate / CI / p | `edark_coef_table(model, data)` | Wald-type: est ± crit × SE; crit = t(residual df) for lm, t(Satterthwaite df) for lmerTest, z for glm/glmer; p from `summary()`. OR = exp(est, limits) | Step 3 univariable screen, Step 5 fit, Step 8 unadjusted models + results table |
 | Numeric across groups | `edark_group_test(x, g)` | Kruskal-Wallis | Table 1 (`add_p(test = "kruskal.test")`), Report Table One, Report num × fac |
 | Categorical across groups | `edark_group_test(x, g)` / `.gts_categorical_test` | Chi-square (no Yates); Fisher's exact if any expected < 5 (Monte Carlo with a fixed seed only if the exact algorithm fails). Chi-square warnings suppressed there, never in callers | Table 1, Report Table One, Report fac × fac |
 | Correlation | `edark_cor_test(x, y)` | Pearson r; t-test p; Fisher's z CI | Explore scatter label, Report num × num |
 | p display | `edark_format_p(p)` | "< 0.001" else 3 decimals; NA → "—" (gtsummary gets a wrapper that keeps NA blank) | Everywhere |
-| Estimate / CI display | `edark_format_est()`, `edark_format_ci()` | 1 dp from 100, 2 dp from 0.1, else 3 significant digits; "est (low–high)", or "low to high" when a limit is negative | Step 5, Step 7, Summary |
-| CI / p wording | `edark_inference_note(model_type)` | One sentence per model type | Step 5 footnote, Summary, Step 7 table footnote + methods paragraph |
+| Estimate / CI display | `edark_format_est()`, `edark_format_ci()` | 1 dp from 100, 2 dp from 0.1, else 3 significant digits; "est (low–high)", or "low to high" when a limit is negative | Step 5, Step 8, Summary |
+| CI / p wording | `edark_inference_note(model_type)` | One sentence per model type | Step 5 footnote, Summary, Step 8 table footnote + methods paragraph |
 
 Not regression inference, so defined where computed: Breusch-Pagan (`lmtest::bptest`), AUC CI (DeLong, `pROC::ci.auc`), calibration-bin CI (Wilson), SMD (gtsummary), Explore trend `mean_ci` (t CI of a mean). The F-test p in Step 5 fit statistics is `summary.lm`'s.
 
@@ -171,10 +171,11 @@ Structure: `list(id, plot_spec, thumb_path, title, added_at)`. PNG thumbnails go
 - `apply_reference_levels(data, reference_levels)` — `stats::relevel()` per spec before any fit.
 - `compute_complete_cases(data, variables)` — `list(data, n_excluded)`.
 - `compute_covariate_sample(data, outcome, exposure, covariates, candidates, cluster_vars)` — Step 4's live listwise-deletion summary: row counts (base / fixed / mixed), per-variable row cost, surviving factor levels, EPV, and `issues` (`error`: outcome / exposure / checked covariate left with < 2 levels or no variation; `warning`: EPV < 10, > 20% rows dropped, a cluster with < 2 values).
-- `.default_model_design()` — the one place the `model_design` block is built (freeze and resets).
+- `.default_model_design()` — the one place the `model_design` block is built (freeze and resets). `.default_purpose_specification()` — the same for `purpose_specification` (freeze only; a role reset keeps it).
+- **Train/test rows:** `analysis_split(spec)` → `list(variable, training_level)` or `NULL` (a split applies only for purpose "prediction" with `validation_method == "split"` and both fields set; `analysis_validation(spec, mixed)` gives the method — "none" / "split" / "cv" / "bootstrap" — with `validation_settings` defaults filled); `analysis_split_rows(spec, data)` → logical `training` / `test` vectors, `test_levels`, `n_missing`; `analysis_model_data(spec, data)` → the training rows (or all rows); `analysis_test_data(spec, data)`. **Anything that learns from the data goes through `analysis_model_data()`** — Step 3 services, Step 4's `compute_covariate_sample()`, the Summary's covariate section, `fit_analysis_model()`, Step 6 sample accounting. `validate_analysis()` subsets itself, so callers pass the whole frozen dataset. Table 1 deliberately uses all rows.
 
 ### N6.3 Step gating (`module_analysis_main.R`)
-Steps 1–4 always reachable; Step 5 once frozen with an outcome; Steps 6–8 once `analysis_result$fitted_models$primary_model` exists. Locking adds Bootstrap's `disabled` class to the nav link via `shinyjs::toggleClass`, with a tooltip on the parent `<li>`.
+Nine steps (`step1`…`step9`). Steps 1–4 always reachable; Step 5 once frozen with an outcome; Steps 6–9 once `analysis_result$fitted_models$primary_model` exists. Locking adds Bootstrap's `disabled` class to the nav link via `shinyjs::toggleClass`, with a tooltip on the parent `<li>`.
 
 ### N6.4 Roles and Step 1 (`module_analysis_setup.R`)
 - `variable_roles`: `outcome_variable`, `exposure_variable` (radios); `candidate_covariates`, `cluster_variables` (checkboxes). No subject ID, time or random-slope fields. Any non-datetime column may be a cluster (converted with `factor()` at fit time). Clusters commit the analysis to a mixed model; a non-mixed model with clusters is the error `PF_CLUSTERS_UNUSED`.
@@ -183,9 +184,11 @@ Steps 1–4 always reachable; Step 5 once frozen with an outcome; Steps 6–8 on
 - **Cancel undoes the click:** `.push_roles_to_table()` sends `roles_state` via the `sync_roles` message; JS restores every radio / checkbox / ref-level. The same push runs after every applied change and on reactable remount.
 - `.sync_spec()` writes only when a Step 1-owned field changed, sets `final_model_covariates` to `NULL`, and bumps `specification_metadata$roles_version`. Freeze creates `roles_version = 0`, `step1_roles`, `created_at`, `dataset_signature` (sha256 — see §A3.2 note) and `prepare_snapshot`.
 - Study type values: `exposure_outcome`, `risk_factor`, `descriptive_exposure`, `descriptive` (§A1.4).
+- **Model purpose** (§A1.4a): `output$purpose_ui` renders from the spec (isolated) whenever `purpose_trigger` bumps — after every role write in `.sync_spec()` (refreshes the split choices) and on Cancel (puts the inputs back). One observer watches all four inputs and builds the proposal with `.purpose_from_inputs()`, which **derives the training level from state**: `input$training_level` keeps the previous variable's value while its select re-renders (§N1.3), so a level that is not a level of the chosen variable falls back to `.guess_training_level()`. Only a change of `analysis_split()` counts as a row change; it asks "Clear Analysis Results?" when variable investigation or a model exists and confirms with `reset_analysis_pipeline(shared_state, 3)`. `.sync_spec()` clears the split variable if it gains a role (assign `list(NULL)` to keep the field, don't `<- NULL` it).
 
 ### N6.5 Step 3 (`module_analysis_varinvestigation.R`, `service_analysis_variable_selection.R`)
 - No candidates → red banner, Run buttons disabled (`.has_candidates()`); Collinearity shows a placeholder. The services return `NULL` silently in that case, so the UI must guard.
+- **Training rows:** the univariable screen, stepwise, LASSO and collinearity get `analysis_model_data(spec, adata)`. A `split_key` reactiveVal clears and (if the pill is open) recomputes the collinearity view when the split changes; the other results are cleared by the step-3 reset.
 - **Exposure held:** stepwise uses `~ exposure` as scope floor and null model; LASSO sets `penalty.factor = 0` on the exposure's columns. The exposure is never in `selected_variables`; results carry `held_variables`. The univariable screen stays unadjusted.
 - Variable names map from `terms()` labels / `model.matrix` `assign` — never `startsWith()` (a candidate that prefixes another name would steal its terms).
 - **Listwise deletion can collapse a factor to one level.** `.prepare_selection_data()` / `.partition_modelable()` exclude such candidates after complete-casing and return `excluded_variables`, `n_used`, `n_total` (amber alert in the UI). Any new fitting path must do the same.
@@ -193,6 +196,7 @@ Steps 1–4 always reachable; Step 5 once frozen with an outcome; Steps 6–8 on
 
 ### N6.6 Step 4 (`module_analysis_covariate_confirm.R`)
 - Role variables are locked, checked rows at the top; candidates start unchecked; Include header has All / Clear.
+- **Training rows:** `model_data()` = `analysis_model_data()` over a `split_spec` reactiveVal (holds only `purpose_specification`), so it does not re-fire on every Step 4 spec write. `sample_info()` and the table's counts use it; `table_struct` includes the split so the table rebuilds when the rows change.
 - Row cost: checked → rows it costs now; unchecked → rows lost by adding it; cluster → rows lost to the mixed model.
 - Method columns: green ✓ suggested (univariable shows the smallest term p), pink — not suggested, grey not run / `n/a` excluded. **Add** only adds checks; **Replace** swaps the selection (modal).
 - Reference-level dropdowns list only levels present in the complete rows; a preferred level that drops out falls back to the first surviving level (amber icon). Clusters get no reference level.
@@ -201,7 +205,7 @@ Steps 1–4 always reachable; Step 5 once frozen with an outcome; Steps 6–8 on
 - **Staged selection carries its `roles_key`** (`created_at` + `roles_version`). The reset observer clears the selection when the key changes; the commit observer writes only when `staged()$key` matches. Without this, observer ordering after a Step 1 change could write the old selection into the new spec. (Session load hooks in here — §M8.7.)
 
 ### N6.7 Step 5 (`module_analysis_modelspec.R`)
-- Tabs (`navset_underline`): **Summary** then **Run Model**.
+- Step title "5 · Model Creation" (file and function names keep `modelspec`). Tabs (`navset_underline`): **Summary** then **Run Model**. The model header adds a "Fitted on: training set …" line when split.
 - Model type is automatic: `analysis_model_options(spec, data)` returns all four types with `available` / `reason`; an observer writes the one available type to `model_design$model_type`. The dropdown is display-only (`.disable_choice()`).
 - **Optimizer** (mixed only, Advanced accordion) is the only setting. Changing it after a fit opens "Clear Model Results?": Clear & Continue → `reset_analysis_pipeline(shared_state, 5)` then write; Cancel → `updateSelectInput` back. `analysis_fit_is_stale()` remains as a safety net.
 - **Preflight is live:** `validate_analysis(verbose = TRUE)` on every spec change.
@@ -209,7 +213,8 @@ Steps 1–4 always reachable; Step 5 once frozen with an outcome; Steps 6–8 on
 - **Run:** `fit_analysis_model(spec, data)` in the progress modal → `reset_analysis_pipeline(shared_state, 4)` → writes `specification_snapshot`, `run_status` (status, fitted_at, error, n_used, n_total, formula, outcome_event, reference_levels, preflight warnings, run_messages), `fitted_models$primary_model`, `inference_summary$coefficients / fit_statistics / predicted_values`. A failed fit stores `status = "failed"` and no model.
 
 ### N6.8 Model fitting (`service_analysis_models.R`)
-- Model data: complete cases over outcome + predictors (+ clusters if mixed) → **ordered factors made unordered** (treatment contrasts, not `.L` / `.Q`) → reference levels → `droplevels` → clusters `factor()`.
+- Model data: training rows when split (`analysis_model_data()`) → `.prepare_model_rows()`: complete cases over outcome + predictors (+ clusters if mixed) → **ordered factors made unordered** (treatment contrasts, not `.L` / `.Q`) → reference levels → `droplevels` → clusters `factor()`. Step 7 prepares the test set with the same function, so both are coded identically. `n_total` is the training-set size when split.
+- `analysis_fit_is_stale()` compares `.model_inputs()`, which includes `analysis_split(spec)`.
 - Coefficients via `edark_coef_table()` (§N2). **Don't use `confint.default()` on a merMod** — `coef()` of a merMod is per-group, not the fixed effects. Terms map to variables via the model-matrix `assign` attribute (`lme4::getME(model, "X")` for mixed).
 - Always fit linear mixed models with `lmerTest::lmer` (Satterthwaite p-values exist only because its S3 method is registered), never `lme4::lmer`.
 - Warnings / messages captured with `withCallingHandlers` + `tryCatch`, never thrown. Convergence, separation and "Rescale variables" warnings get plain-language hints (`.explain_fit_warning()`); lme4's "boundary (singular) fit" message is replaced by our own singular-fit warning.
@@ -223,15 +228,22 @@ Steps 1–4 always reachable; Step 5 once frozen with an outcome; Steps 6–8 on
 | Logistic mixed model | `logistic_mixed` | binary factor | ≥ 1 |
 
 ### N6.9 Step 6 (`module_analysis_diagnostics.R`, `service_analysis_diagnostics.R`, `service_analysis_plots.R`)
-- Sidebar: **Model assumptions** (all ticked) and **Prediction performance (optional)** in a collapsed accordion (unticked), each with Select all / Deselect all; Run Diagnostics. Main: **Overview** (Warnings card + one card per section with a reading guide from `.DG_HINTS`) then per-section tabs.
-- Checks come from `analysis_diagnostic_options(model_type)` for the *fitted* model's type. `run_analysis_diagnostics(result, data, checks)` ignores ids that don't apply — checkbox inputs keep stale values across model types (§N1.3); both `renderUI`s use `suspendWhenHidden = FALSE`.
+- Sidebar: **Model assumptions** (all ticked, Select all / Deselect all); Run Diagnostics. Main: **Overview** (Warnings card + one card per section with a reading guide from `.DG_HINTS`) then per-section tabs. Prediction performance moved to Step 7.
+- Checks come from `analysis_diagnostic_options(model_type)` (`id, label, description`) for the *fitted* model's type. `run_analysis_diagnostics(result, data, checks)` ignores ids that don't apply — checkbox inputs keep stale values across model types (§N1.3); the `renderUI` uses `suspendWhenHidden = FALSE`. The module passes `analysis_model_data(snapshot, analysis_data)` so sample accounting counts training rows.
+- **Linearity** (`.diag_linearity()`): numeric predictors of the model frame only; linear models facet residuals (conditional for mixed) against each; logistic models call `performance::binned_residuals(model, term = v, residuals = "response")` per predictor and report the share of bins inside the bounds. No continuous predictor → a note, no tab.
 - Always computed: sample accounting; fitting warnings (`optinfo$conv$lme4$messages` minus the singular notice; `isSingular()`).
 - Logistic binned residuals use `residuals = "response"` (performance's default deviance residuals don't average to 0). Influence for non-mixed only. Separation for both logistic types (glmer: on `formula(model, fixed.only = TRUE)`). Random effects from `VarCorr` (**`performance::icc()` returns NA once any component is singular**); residual variance σ² (linear) or π²/3 (logistic).
-- Prediction performance is **apparent** (in-sample); mixed models use `re.form = NA`. No calibration slope (1 in-sample by construction).
-- Stored in `analysis_result$diagnostics`, `result_plots$diagnostic_plots`, `result_tables$diagnostic_summary` (long `metrics` table: section, key, label, value, format, level), `inference_summary$influence_measures`. Advisory — never gates Steps 7–8.
+- Stored in `analysis_result$diagnostics`, `result_plots$diagnostic_plots`, `result_tables$diagnostic_summary` (long `metrics` table: section, key, label, value, format, level), `inference_summary$influence_measures`. Advisory — never gates Steps 7–9.
 
-### N6.10 Step 7 (`module_analysis_results.R`)
-- Outputs from `.RESULTS_OUTPUTS`. **Ticked = generated**; unticked outputs are set to NULL so Step 8 cannot export them. Adding an output: an entry in `.RESULTS_OUTPUTS`, a branch in the Generate handler, a tab in `output$tabs_ui`.
+### N6.9a Step 7 (`module_analysis_performance.R`, `service_analysis_performance.R`)
+- `analysis_performance_options(model_type)` → `id, label, description`. `run_analysis_performance(result, data, checks)` takes the **whole** frozen dataset and re-derives the test rows from the snapshot's split (`analysis_split_rows()`).
+- Sets: `apparent` (model frame + `predict()`) always; `test` when split — `.perf_test_rows()` runs `.prepare_model_rows()` with no clusters (marginal predictions don't need them), drops rows whose factor level the model never saw (warning, with the levels), then re-levels every factor to the model frame's levels. Mixed models: `re.form = NA` for both sets.
+- Test set only: calibration intercept (logistic `glm(y ~ 1, offset = lp)`; linear mean residual) and slope (`glm(y ~ lp)` / `lm(y ~ pred)`). `.calibration_bins()` (decile bins, Wilson CI) lives here now.
+- Plot titles carry a short set label via `.ap_title()` (e.g. "ROC curve (test set)"). Keep titles short — the plots sit two to a row and long titles are clipped.
+- Stored in `analysis_result$performance` (sets, metrics, messages, split, basis), `result_plots$performance_plots` (`list(apparent = …, test = …)`), `result_tables$performance_summary` (long: set, key, label, value, format). Step 8's fit statistics, Summary tab and methods paragraph read `performance`. Module helpers use the `.pm_` prefix (`.PF_` belongs to the preflight validator).
+
+### N6.10 Step 8 (`module_analysis_results.R`)
+- Outputs from `.RESULTS_OUTPUTS`. **Ticked = generated**; unticked outputs are set to NULL so Step 9 cannot export them. Adding an output: an entry in `.RESULTS_OUTPUTS`, a branch in the Generate handler, a tab in `output$tabs_ui`.
 - Summary tab always present, computes nothing.
 - `fit_unadjusted_models(result)` refits one model per variable on `model.frame(primary_model)` with the same engine / random intercepts / optimizer. Status per variable: ok / warning (†) / failed (‡), shortened by `.short_fit_warning()`.
 - `build_results_table(result, unadjusted)` is the single source for the table; `results_table_gt()` (app) and `results_table_flextable()` (Word) only format it. **Not gtsummary** — `tbl_regression()` needs broom.helpers and would re-tidy our numbers.
@@ -244,6 +256,8 @@ Steps 1–4 always reachable; Step 5 once frozen with an outcome; Steps 6–8 on
 ### N6.12 Validator (`service_analysis_validation.R`)
 `validate_analysis(spec, data, tier = "full", verbose = FALSE)` — pure. Returns `validity_flag` (`valid` / `warnings` / `invalid`), `messages`, `display_messages`, `checks_run`, `passed`. Codes and tiers: §A8.2. Tier 1 complete-cases over outcome + exposure; Tier 2 adds predictors, plus clusters only when mixed.
 
+**Split first:** when `analysis_split(spec)` applies, `PF_SPLIT_INVALID` (returns early), `PF_SPLIT_NO_TEST` and `PF_SPLIT_MISSING` run before Tier 1, then `data` is replaced by the training rows for every other check; `PF_SMALL_TEST_SET` (Tier 2) looks at the complete test rows.
+
 **Adding a check:** call `.ran("PF_CODE")` where it is evaluated, add a pass label to `.PF_PASS_LABELS`, and if it is a stricter variant of another code map it in `.PF_GROUP_HEAD`. `PF_LOOKS_CATEGORICAL` threshold: `.PF_CATEGORICAL_MAX_VALUES` (10).
 
 ### N6.13 Pipeline reset (`service_analysis_pipeline.R`)
@@ -252,7 +266,8 @@ Steps 1–4 always reachable; Step 5 once frozen with an outcome; Steps 6–8 on
 | `from_step` | Clears |
 |---|---|
 | `1` | Entire `analysis_result`; resets `variable_selection_specification` and `model_design`; `final_model_covariates` → `NULL` |
-| `4` or `5` | Fitted and unadjusted models, run status, result tables / plots (incl. `main_results`, `fit_statistics`, forest plot), inference summary, `diagnostics`, generated script, methods paragraph, `results_generation`. Spec untouched |
+| `3` | Everything `4` clears, plus `variable_investigation`, `result_tables$univariable_screen`, `result_plots$collinearity_plots` (the training rows changed). Table 1 and the spec are kept |
+| `4` or `5` | Fitted and unadjusted models, run status, result tables / plots (incl. `main_results`, `fit_statistics`, forest plot, `diagnostic_plots`, `performance_plots`, `performance_summary`), inference summary, `diagnostics`, `performance`, generated script, methods paragraph, `results_generation`. Spec untouched |
 
 ---
 
@@ -266,3 +281,11 @@ Steps 1–4 always reachable; Step 5 once frozen with an outcome; Steps 6–8 on
 - **Noise block (zero effect on every outcome):** `donor_blood_type`, `donor_height_cm`, `or_room_number`, `surgery_start_hour`, `preop_ferritin`, `referral_source`. Backward / forward stepwise (BIC) and LASSO (`lambda.1se`) all retain 0 of 6.
 - **Weak but real:** `preop_sodium` survives a liberal univariable screen, dropped by BIC — tests p-threshold sensitivity.
 - **Missingness:** `preop_ferritin` 35% (trips `PF_MISSING_GT20`), `donor_age` 12%, `preop_albumin` 8%, `intraop_max_lactate` 5%, `preop_inr` 3%. `postop_aki_stage` NA means *no AKI*, not missing — including it in a model guts the complete-case n.
+
+## Phase 7b — Performance validation (2026-09-19)
+
+- **Spec:** `purpose_specification$validation_method` ("bootstrap" default / "cv" / "split") replaced `use_split`. `analysis_spec$validation_settings` (`cv_folds`, `cv_repeats`, `bootstrap_reps` — NULL = 200, or 100 for mixed — `seed`) is created at freeze and written live by the Performance sidebar. The sidebar observer only reads the current method's inputs (removed inputs keep stale values) and writes nothing when a value equals the effective setting, so re-rendered inputs never turn a NULL default into a stored number.
+- **Engine:** `analysis_performance_job()` does the apparent (and test) sets immediately and draws every resample up front inside `.with_seed()` (restores `.Random.seed`), so results do not depend on how the steps are batched. `.perf_job_step()` does one refit; `.perf_job_finish()` summarises. Resampling works on `model.frame(primary_model)` and refits with `.fit_engine(..., satterthwaite = FALSE)`; factor levels absent from the refit rows are dropped first (an empty level would give an NA coefficient and a silently wrong prediction). CV drops left-out rows whose level the fold never saw (counted); a bootstrap resample that cannot predict every original row is skipped (counted). `.fast_auc()` (Mann-Whitney) is used per resample; pROC only for the reported apparent / test AUC with its DeLong CI.
+- **Cancel:** Shiny cannot see a click while an observer runs, so the module holds the job in a plain environment and an `observe()` with `invalidateLater(10)` runs refits for `.PM_TICK_SECS` (0.4 s) per tick. The Cancel button (`.analysis_progress_modal(cancel_id = )`) sets a flag read at the next tick. On finish the result is stored only if `run_status$fitted_at` is unchanged.
+- **Timings on liver_tx (440 rows):** glm ~2.5 ms / refit (200 resamples < 1 s); glmer with 12 centres ~0.75 s / refit (100 resamples ≈ 75 s).
+

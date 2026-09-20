@@ -1,9 +1,11 @@
 # EDARK Analysis Module — Phased Build Plan
 ## Implementation Sequence for Claude Code
 
-**Reference document:** `EDARK_Analysis_Module_PRD.md` (the PRD). All section references (§) refer to the PRD.
+**Reference document:** `PRD/PRD_3_Analyze.md` (the PRD). Section references (§) below use the old numbering of `EDARK_Analysis_Module_PRD.md`; add the `A` prefix to find them (§5.3 = §A5.3). Session references (§13.x) are now §M8.x in `PRD/PRD_0_Master.md`.
 
-**Project context files:** `CLAUDE.md`, `UI_principles.md` in project root.
+**Step numbering (changed 2026-09-19):** the workflow now has **nine** steps. Step 5 was renamed **Model Creation**; a new **Step 7 Performance** was inserted (Phase 6b), so Results became **Step 8** and Export **Step 9**. Phase numbers are unchanged — Phase 7 builds Step 8, Phase 8 builds Step 9. Text written before the change (Phases 0–7 "as built" and "original plan" notes) keeps the step numbers of its time unless marked.
+
+**Project context files:** `CLAUDE.md` (project root) and `PRD/CLAUDE.md` (index), `.claude/UI principles.md`.
 
 **Critical rule for all phases:** use `magrittr` `%>%` exclusively. No base R pipe `|>`.
 
@@ -228,6 +230,8 @@ deferred** to Phase 5b.
 
 ## Phase 6 — Step 6: Diagnostics — ✅ COMPLETE
 
+> **Superseded in part by Phase 6b:** the optional Prediction Performance group moved out of Step 6 into the new Step 7 Performance, and Step 6 gained a Linearity check.
+
 Built with agreed deviations (the PRD is updated to match): **left** sidebar with the check
 lists and Run button, and an **Overview tab** as the at-a-glance summary (instead of a right
 summary sidebar); **Prediction Performance for all model types** (linear: observed vs
@@ -279,7 +283,39 @@ which also clears `analysis_result$diagnostics`.
 
 ---
 
-## Phase 7 — Step 7: Results — ✅ COMPLETE
+## Phase 6b — Model Purpose, Train/Test Split, Step 7 Performance — ✅ COMPLETE (2026-09-19)
+
+Separates the two goals that Step 6 used to mix: **checking the model's assumptions** (Step 6) and **evaluating how well it predicts** (new Step 7). PRD §A1.4a, §A5.3 Steps 1 / 6 / 7, §A8.2, §A8.6.
+
+### What was built
+- **Renumbering:** nine steps; Step 5 renamed "Model Creation" (file `module_analysis_modelspec.R` kept); Results → Step 8, Export → Step 9; gating `step6`–`step9` open once a model is fitted.
+- **Model purpose (Step 1 sidebar):** Association (default) / Prediction. Prediction reveals "Train/test set variable" → Variable (factor, ≥ 2 levels, no role) + Training level. Stored in `analysis_spec$purpose_specification` (`model_purpose`, `use_split`, `split_variable`, `training_level`; `.default_purpose_specification()`). *(Phase 7b replaced `use_split` with `validation_method`.)*
+- **Split helpers** (`analysis_utils.R`): `analysis_split()`, `analysis_split_rows()`, `analysis_model_data()`, `analysis_test_data()`. With a split, Steps 3–6 and preflight use the training rows only; Table 1 uses all rows.
+- **Reset:** `reset_analysis_pipeline(from_step = 3)` for a change of training rows — clears variable investigation (incl. collinearity), model, diagnostics, performance, results; keeps Table 1 and the covariate selection. Asked via "Clear Analysis Results?" when variable investigation or a model exists; Cancel restores the inputs. The purpose alone changes nothing. Resets 4/5 also clear performance.
+- **Preflight:** `PF_SPLIT_INVALID` (error), `PF_SPLIT_NO_TEST`, `PF_SPLIT_MISSING`, `PF_SMALL_TEST_SET` (warnings), `PF_SPLIT_SUMMARY` (note); all other checks run on the training rows.
+- **Model fit:** `fit_analysis_model()` fits on the training rows; data preparation factored into `.prepare_model_rows()` so the test set is coded identically. `analysis_fit_is_stale()` includes the split.
+- **Step 7 Performance:** `service_analysis_performance.R` (`analysis_performance_options()`, `run_analysis_performance()`) and `module_analysis_performance.R`. Sets: apparent (always) and test (split). Logistic: ROC/AUC (DeLong CI), calibration deciles + Brier + no-information Brier, predicted probabilities; linear: RMSE / MAE / R², observed vs predicted. Test set adds calibration intercept and slope. Mixed: marginal predictions. Unseen factor levels in the test set are dropped with a warning. Stored in `analysis_result$performance`, `result_plots$performance_plots`, `result_tables$performance_summary`.
+- **Step 6 Diagnostics:** prediction group removed; new **Linearity** check (residuals vs each continuous predictor; binned residuals per predictor for logistic models).
+- **Step 8 Results / Summary / methods:** fit statistics show AUC for each set; the Summary shows model purpose, split and training-row counts; the methods paragraph describes the split, the assumption checks and the performance measures.
+
+### Diagnostics review (per model type) — findings
+| Model | Covered | Gap |
+|---|---|---|
+| Linear | residuals, Q-Q, scale-location, Breusch-Pagan, influence, VIF, **linearity (new)** | — |
+| Logistic | binned residuals, influence, VIF, separation, **linearity on the log-odds scale (new)** | — (Hosmer-Lemeshow is out of scope, §A11.3; calibration is in Step 7) |
+| Linear mixed | conditional residual plots, VIF, random effects (variance, ICC, Q-Q, sizes), singular / convergence, **linearity (new)** | No influence check — cluster-level (leave-one-cluster-out) influence deferred |
+| Logistic mixed | binned residuals, VIF, separation (fixed effects), random effects (latent-scale ICC), singular / convergence, **linearity (new)** | Same influence gap |
+
+### Acceptance criteria (as built — verified 2026-09-19)
+- All four model types fit, diagnose and evaluate with and without a split on `liver_tx` (plus a random `cohort` factor); every plot builds.
+- Split validation: split variable holding a role, a numeric split variable, and a missing training level each give `PF_SPLIT_INVALID`; rows missing the split variable give `PF_SPLIT_MISSING`.
+- A test-only factor level is dropped from the test set with a warning naming the level.
+- `reset_analysis_pipeline(3)` keeps Table 1 and clears investigation, model and performance; `analysis_fit_is_stale()` is TRUE after a split change.
+- In the browser (`chromote`): nine pills; Step 1 purpose controls; Step 5 header shows the training set; Step 7 shows apparent vs test; Step 8 Summary lists both AUCs; changing the training level after results opens the modal and Cancel restores the select. No new console errors.
+
+---
+
+## Phase 7 — Step 8: Results (built as "Step 7") — ✅ COMPLETE
 
 Built per the decisions below (PRD §5.3 Step 7 and §6.9 updated to match). Deviation from the
 original plan: the results table is **built by EDARK, not `gtsummary::tbl_regression()`** —
@@ -344,10 +380,38 @@ both the gt table (app) and the flextable (Word export).
 
 ---
 
-## Phase 8 — Step 8: Export
+## Phase 7b — Model › Performance: Validation (cross-validation, bootstrap) — ✅ COMPLETE (as built 2026-09-19)
+
+Extends Phase 6b's train/test option into internal validation. PRD §A1.4a, §A5.3 Model › Performance.
+
+### As built
+- **Step 1:** Prediction purpose → **Validation** radio: Bootstrap (default) / Cross-validation / Held-out test set (variable + training level). Mutually exclusive — a held-out set is data kept apart on purpose (e.g. other centres); resampling is for a single homogeneous sample. No random single split is offered. `purpose_specification$use_split` was replaced by `validation_method` ("bootstrap" / "cv" / "split"); `analysis_split()` applies for "split" only.
+- **Settings** in the Performance sidebar (only for the chosen method): folds + repeats (CV), resamples (bootstrap), seed. Written live to `analysis_spec$validation_settings` (`.default_validation_settings()`); `analysis_validation(spec, mixed)` returns the method with defaults filled (bootstrap: 200, mixed 100).
+- **Same covariates in every resample** — Step 3 selection is *not* replayed (by design; EDARK discourages automated selection). Stated in Step 1, the Performance notes and the methods paragraph.
+- `service_analysis_performance.R`: `analysis_performance_job()` / `.perf_job_step()` / `.perf_job_finish()` (steps, so the app can cancel) and `run_analysis_performance()` (all at once). Sets `cv` (pooled out-of-fold predictions per repeat, averaged; SD across repeats; stratified by outcome, or grouped by the first cluster variable for mixed models) and `bootstrap` (Harrell optimism for AUC, Brier, calibration intercept / slope, RMSE, MAE, R²; `optimism` table; lowess calibration curve apparent vs bias-corrected; cluster bootstrap for mixed models). Refits via `.fit_engine()` (shared with the primary fit and the unadjusted models).
+- Module: refits run ~0.4 s per reactive tick (`invalidateLater`), so the progress modal's **Cancel** works. Mixed models with > 100 refits ask first (Back / Proceed).
+- Results: fit statistics and the Summary card show validated AUC and calibration slope; the methods paragraph describes the method, settings and seed, and notes that the coefficients are those of the model fitted to all rows.
+
+### Acceptance criteria (verified on `liver_tx`, 2026-09-19)
+- Logistic `ead ~ preop_meld + donor_age + recipient_age`: apparent AUC 0.617 → bootstrap-corrected 0.603 (slope 0.90–0.92), CV 0.593 (slope 0.69). ✅
+- Grouped CV folds hold whole clusters; the cluster bootstrap resamples whole clusters. ✅
+- Same seed → identical numbers; the seed is in the spec, the Summary and the methods paragraph. ✅
+- A held-out set cannot be combined with resampling, so it is never used in any resample. ✅
+- Overview table gains a column per set; fit statistics and methods paragraph describe the validation used. ✅
+- Cancel stops a 2,000-resample run within a tick and keeps the previous results. ✅
+
+### Not built (deferred)
+- Shrunk coefficients (bootstrap shrinkage factor) as an optional output; decision curve analysis; replaying data-driven selection inside resamples.
+
+### PRD references
+- §A1.4a, §A5.3 Step 7, §A11.2
+
+---
+
+## Phase 8 — Step 9: Export
 
 ### What to build
-- `module_analysis_export.R` — full implementation per §5.3 Step 8 and §6.10
+- `module_analysis_export.R` — full implementation per §5.3 Step 9 and §6.11
 - `service_analysis_export.R` — complete export assembly pipeline per §10.3–10.12
 - Preset selector + item checklists with step-of-origin subheadings
 - Self-contained analysis package checkbox
@@ -355,11 +419,12 @@ both the gt table (app) and the flextable (Word export).
 - Live zip preview
 - Download button with validation
 - Blocking modal with per-step progress
-- Step 8 reachable once the dataset is frozen (change its gating in `module_analysis_main.R`); every item listed from the start, disabled with a "created in Step N" tooltip until its source exists in `analysis_result`
+- Step 9 reachable once the dataset is frozen (change its gating in `module_analysis_main.R`); every item listed from the start, disabled with a "created in Step N" tooltip until its source exists in `analysis_result`
+- Performance items (Step 7): the performance summary table (one column per set of rows) and its figures, per set
 - Analysis dataset is an optional item
 
 ### What NOT to touch
-- All other module and service files (complete at this point), except the Step 8 gating in `module_analysis_main.R`
+- All other module and service files (complete at this point), except the Step 9 gating in `module_analysis_main.R`
 
 ### Acceptance criteria
 - Each preset pre-checks correct items
@@ -379,13 +444,13 @@ both the gt table (app) and the flextable (Word export).
 - Items for outputs not yet created are visible but disabled, and become selectable once created
 
 ### PRD references
-- §5.3 Step 8, §6.10, §10.1–10.12
+- §5.3 Step 9, §6.11, §10.1–10.12
 
 ---
 
 ## Phase S — Session Save and Load
 
-**Independent of Phases 7–8** — touches only Prepare, Step 1 and Step 4, all complete. Build whenever convenient.
+**Independent of Phases 7–8** — touches only Prepare, Step 1 and Step 4, all complete. Step 1 also restores `purpose_specification` (model purpose and train/test split). Build whenever convenient.
 
 ### What to build
 
@@ -411,7 +476,7 @@ both the gt table (app) and the flextable (Word export).
 - Autosave writer, file limit, and resume modal per §13.9
 
 ### What NOT to touch
-- Steps 2, 3, 5–8 module and service files
+- Steps 2, 3, 5–9 module and service files
 - Model fitting, validation, and reset logic (`service_analysis_models.R`, `service_analysis_validation.R`, `service_analysis_pipeline.R`)
 
 ### Acceptance criteria
@@ -428,7 +493,7 @@ both the gt table (app) and the flextable (Word export).
 - `devtools::check()` passes with 0 errors, 0 warnings
 
 ### PRD references
-- §13.1–13.10, §5.3 Step 8 (materials vs session)
+- §13.1–13.10, §5.3 Step 9 (materials vs session)
 
 ---
 
@@ -464,10 +529,11 @@ both the gt table (app) and the flextable (Word export).
 Both datasets should be generated as R scripts in `inst/test_data/` and documented.
 
 ### Acceptance criteria
-- Full end-to-end workflow: Setup → Table 1 → Variable Investigation → Covariate Confirmation → Model Specification → Diagnostics → Results → Export produces correct zip
+- Full end-to-end workflow: Setup → Table 1 → Variable Investigation → Covariate Confirmation → Model Creation → Diagnostics → Performance → Results → Export produces correct zip, for an association model and for a prediction model with a train/test split
 - All four model types complete the full pipeline
 - Role changes in Step 1 trigger reset modal and clear downstream correctly
-- A Step 4 covariate change after a fit (after the modal) clears model/diagnostics/results
+- A Step 4 covariate change after a fit (after the modal) clears model/diagnostics/performance/results
+- A train/test split change in Step 1 (after the modal) clears investigation/model/diagnostics/performance/results and keeps Table 1
 - Step status indicators update correctly through the workflow
 - Stale indicators appear when upstream changes invalidate downstream results
 - Dataset 2 triggers appropriate warnings throughout the pipeline

@@ -125,14 +125,14 @@ Missing columns, dropped factor levels, and variables that no longer exist are h
 |---|---|---|
 | **1 · Prepare** | Sub-tabs Columns · Transforms · Row Filters · Data Preview | Left sidebar (Apply) + `navset_card_tab` (§P3) |
 | **2 · Explore** | Sub-tabs **Plot** (pills Describe · Correlate · Trend) and **Report** (pills Full Report · Custom Report) | Plot: left sidebar controls + output panel (§E2); Report: §E10 |
-| **3 · Analyze** | Eight numbered step pills: Setup · Table 1 · Variable Investigation · Covariates · Model · Diagnostics · Results · Export | `navset_pill` orchestrator (§A5.1) |
+| **3 · Analyze** | Nine numbered step pills: Setup · Table 1 · Variable Investigation · Covariate Confirmation · Model Creation · Diagnostics · Performance · Results · Export | `navset_pill` orchestrator (§A5.1) |
 | *(navbar right)* | Debug button; light/dark theme toggle | — |
 
 ### M4.2 Navigation and Gating
 - The three top-level tabs are always reachable.
 - Prepare sub-tab switches auto-apply staged changes; invalid transforms block the switch (§P7.3).
 - Explore → Report navigation is requested through `shared_state$requested_tab` / `requested_report_subtab` (§M6.4).
-- Analyze steps are gated by what exists (§A5, CLAUDE.md "Step gating"): Steps 1–4 always open; Step 5 once the dataset is frozen and an outcome is assigned; Steps 6–8 once a model is fitted. Locked steps show a tooltip explaining what unlocks them.
+- Analyze steps are gated by what exists (§A5, CLAUDE.md "Step gating"): Steps 1–4 always open; Step 5 once the dataset is frozen and an outcome is assigned; Steps 6–9 once a model is fitted. Locked steps show a tooltip explaining what unlocks them.
 
 ### M4.3 Entry Points
 
@@ -228,7 +228,7 @@ EDARK produces four kinds of output. They are deliberately separate.
 | Output | What it is | Where | Status |
 |---|---|---|---|
 | **Explore reports** | Full or custom PPTX / DOCX / HTML report of plots and summary tables | Explore › Report (§E10–E14) | Built |
-| **Analysis materials** | Tables, figures, methods, report, R script, spec, optional dataset — for publication and reproduction | Analyze Step 8 (§A10) | Planned (Phase 8) |
+| **Analysis materials** | Tables, figures, methods, report, R script, spec, optional dataset — for publication and reproduction | Analyze Step 9 (§A10) | Planned (Phase 8) |
 | **Dataset export** | Working dataset (and optionally original + Prepare spec) as RDS / CSV | Prepare (§P9) | Backlog |
 | **Session file** | Saved decisions for resuming work, optionally with data | Session menu (§M8) | Planned (Phase S) |
 
@@ -244,7 +244,7 @@ Single-plot exports (Save Plot, Copy to Clipboard) are in the Explore output pan
 
 Let a researcher save their setup and pick up where they left off — on the same dataset, or on a new version of it with the same columns (e.g. a refreshed data pull). A session file stores **decisions, not results**. Loading one sets up the app; nothing is fitted or computed. Anything that needs to run (Table 1, variable investigation, the model) is re-run by the user.
 
-This is separate from **materials** (Analyze Step 8, §A10), which exports outputs for publication and reproduction.
+This is separate from **materials** (Analyze Step 9, §A10), which exports outputs for publication and reproduction.
 
 ### M8.2 What a Session Contains
 
@@ -253,7 +253,7 @@ The minimum session is the work that is slowest to redo by hand:
 | Area | Content | Source |
 |---|---|---|
 | Prepare | Included columns, type overrides, transforms, row filters | `shared_state$last_applied_specs` |
-| Analyze Step 1 | Outcome, exposure, candidate covariates, clusters | `analysis_spec$variable_roles` |
+| Analyze Step 1 | Outcome, exposure, candidate covariates, clusters; model purpose and train/test split | `analysis_spec$variable_roles`, `analysis_spec$purpose_specification` |
 | Analyze Step 4 | Checked covariates and reference levels. Only saved if Step 4 was used (`final_model_covariates` is not `NULL`) | `analysis_spec$variable_roles` |
 
 **Not in a v1 session:** Explore settings, custom report items, Report settings, Table 1 options, Step 3 settings and results, model settings (including the optimizer), and any fitted object, table, or plot.

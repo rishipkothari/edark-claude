@@ -20,6 +20,7 @@ NULL
   PF_OUTCOME_UNSUPPORTED            = "Outcome is numeric or a two-level factor",
   PF_FACTOR_SINGLE_LEVEL            = "Every factor keeps two or more levels in the complete rows",
   PF_NO_PREDICTORS                  = "At least one predictor in the model",
+  PF_PREDICTOR_TYPE                 = "Every predictor is numeric or a factor",
   PF_OUTCOME_MODEL_MISMATCH         = "Outcome type matches the model",
   PF_CLUSTERS_UNUSED                = "No cluster variables left unused",
   PF_MIXED_NO_CLUSTER               = "Mixed model has a cluster variable",
@@ -33,7 +34,11 @@ NULL
   PF_RARE_FACTOR_LEVEL              = "Every factor level has at least 5 observations",
   PF_EXPOSURE_NOT_IN_MODEL          = "Exposure is in the model",
   PF_HIGH_CORRELATION               = "No numeric predictor pair correlated above 0.7",
-  PF_LOOKS_CATEGORICAL              = "No numeric variable looks categorical"
+  PF_LOOKS_CATEGORICAL              = "No numeric variable looks categorical",
+  PF_SPLIT_INVALID                  = "Train/test variable and training level are valid",
+  PF_SPLIT_NO_TEST                  = "The test set has rows",
+  PF_SPLIT_MISSING                  = "Every row is in the training or the test set",
+  PF_SMALL_TEST_SET                 = "The test set is large enough for precise performance estimates"
 )
 
 .PF_GROUP_HEAD <- c(
@@ -107,6 +112,42 @@ validate_analysis <- function(spec, data, tier = "full", verbose = FALSE) {
     return(.done())
   }
 
+  # Train/test split (prediction purpose only). Every later check runs on the
+  # training rows — the rows the model is built from.
+  split <- analysis_split(spec)
+  if (!is.null(split)) {
+    .ran("PF_SPLIT_INVALID", "PF_SPLIT_NO_TEST", "PF_SPLIT_MISSING")
+    sv    <- split$variable
+    roled <- c(outcome, exposure, covariates, clusters, roles$candidate_covariates)
+    bad <- if (!sv %in% names(data)) {
+      paste0("Train/test variable '", sv, "' is not in the analysis dataset.")
+    } else if (!is.factor(data[[sv]])) {
+      paste0("Train/test variable '", sv, "' must be a factor.")
+    } else if (sv %in% roled) {
+      paste0("'", sv, "' is the train/test variable and also has a role in Step 1. ",
+             "Remove the role or choose another train/test variable.")
+    } else if (!split$training_level %in% as.character(data[[sv]])) {
+      paste0("No rows have the training level '", split$training_level, "' of '", sv, "'.")
+    }
+    if (!is.null(bad)) {
+      .add("PF_SPLIT_INVALID", "error", bad)
+      return(.done())
+    }
+    sr <- analysis_split_rows(spec, data)
+    if (sum(sr$test) == 0L) {
+      .add("PF_SPLIT_NO_TEST", "warning",
+           paste0("Every row of '", sv, "' is the training level, so there is no test set. ",
+                  "Only apparent (in-sample) performance can be measured."))
+    }
+    if (sr$n_missing > 0L) {
+      .add("PF_SPLIT_MISSING", "warning",
+           paste0(sr$n_missing, " row", if (sr$n_missing != 1L) "s have" else " has",
+                  " no value for '", sv, "' and belong to neither the training nor the test set."))
+    }
+    test_data <- data[sr$test, , drop = FALSE]
+    data      <- data[sr$training, , drop = FALSE]
+  }
+
   # Complete cases over outcome + exposure for Tier 1
   .ran("PF_ZERO_COMPLETE")
   t1_vars <- .safe_vars(c(outcome, exposure), data)
@@ -163,6 +204,20 @@ validate_analysis <- function(spec, data, tier = "full", verbose = FALSE) {
   .ran("PF_NO_PREDICTORS")
   if (length(predictors) == 0L) {
     .add("PF_NO_PREDICTORS", "error", "No predictor variables assigned.")
+  }
+
+  # PF_PREDICTOR_TYPE — a timestamp would enter as seconds since 1970, free
+  # text as one dummy per string. Step 1 blocks both; this catches specs
+  # built programmatically.
+  .ran("PF_PREDICTOR_TYPE")
+  for (v in .safe_vars(predictors, data)) {
+    x <- data[[v]]
+    if (is.numeric(x) || is.factor(x)) next
+    kind <- if (inherits(x, c("POSIXt", "Date"))) "a date/time" else "a free-text"
+    .add("PF_PREDICTOR_TYPE", "error",
+         paste0("'", v, "' is ", kind, " column and cannot be a model term. ",
+                "Derive a numeric or factor variable from it instead (e.g. a year, ",
+                "era or duration)."))
   }
 
   # Full complete-case subset over all model variables (clusters only enter
@@ -390,11 +445,40 @@ validate_analysis <- function(spec, data, tier = "full", verbose = FALSE) {
     .add("PF_LOOKS_CATEGORICAL", "warning", txt)
   }
 
+  # PF_SMALL_TEST_SET — a test set needs roughly 100 events and 100
+  # non-events (binary) or 100 rows (continuous) for its performance
+  # estimates to be usefully precise (Riley et al., 2021).
+  n_test_cc <- NA_integer_
+  if (!is.null(split) && nrow(test_data) > 0L) {
+    .ran("PF_SMALL_TEST_SET")
+    test_cc   <- test_data[stats::complete.cases(test_data[, t2_vars, drop = FALSE]), , drop = FALSE]
+    n_test_cc <- nrow(test_cc)
+    y_test    <- test_cc[[outcome]]
+    small <- if (out_binary_t2 && is.factor(y_test)) {
+      min(table(factor(as.character(y_test), levels = levels(droplevels(out_t2))))) < 100L
+    } else {
+      n_test_cc < 100L
+    }
+    if (small) {
+      .add("PF_SMALL_TEST_SET", "warning",
+           paste0("The test set has ", n_test_cc, " complete row", if (n_test_cc != 1L) "s",
+                  if (out_binary_t2) " and fewer than 100 events or non-events" else "",
+                  ". Its performance estimates will be imprecise."))
+    }
+  }
+
   # Notes — only shown in verbose mode
   if (verbose) {
+    if (!is.null(split)) {
+      .add("PF_SPLIT_SUMMARY", "note",
+           paste0("Train/test split on '", split$variable, "': the model is built on the ",
+                  n_total, " training rows ('", split$training_level, "')",
+                  if (!is.na(n_test_cc)) paste0("; ", n_test_cc, " complete test rows are held out") else "",
+                  "."))
+    }
     .add("PF_SAMPLE_SUMMARY", "note",
-         paste0("N = ", n_t2, " of ", n_total, " rows included (", n_miss,
-                " excluded for missing data)."))
+         paste0("N = ", n_t2, " of ", n_total, if (!is.null(split)) " training" else "",
+                " rows included (", n_miss, " excluded for missing data)."))
 
     if (!is.null(model_type)) {
       label <- .ANALYSIS_MODEL_LABELS[[model_type]]

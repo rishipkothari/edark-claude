@@ -11,7 +11,9 @@ run_analysis_diagnostics(result, data, checks, progress_fn = NULL)
 \code{primary_model}, its \code{specification_snapshot},
 \code{run_status} and \code{inference_summary$predicted_values}.}
 
-\item{data}{The frozen analysis dataset (for sample accounting).}
+\item{data}{The rows the model was built from (for sample accounting):
+\code{analysis_model_data(spec, analysis_data)} — the training set when
+a train/test split applies.}
 
 \item{checks}{Character vector of check ids from
 \code{analysis_diagnostic_options()}. Unknown or inapplicable ids are
@@ -21,8 +23,8 @@ ignored.}
 }
 \value{
 A named list: \code{run_at}, \code{model_type}, \code{checks}
-(ids actually run), \code{sample}, \code{residuals}, \code{influence},
-\code{vif}, \code{separation}, \code{random_effects}, \code{prediction}
+(ids actually run), \code{sample}, \code{residuals}, \code{linearity},
+\code{influence}, \code{vif}, \code{separation}, \code{random_effects}
 (each \code{NULL} when not run), \code{influence_measures} (per-row
 data.frame, non-mixed models), \code{metrics} (long data.frame: section,
 key, label, value, format, level — every computed value, for the

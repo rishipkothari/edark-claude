@@ -1,6 +1,6 @@
 # EDARK — Analyze PRD (Tab 3 · Analyze)
 
-**Scope:** the eight-step guided workflow that freezes the working dataset and takes the user from study framing to a fitted, diagnosed, reported and exported model.
+**Scope:** the nine-step guided workflow that freezes the working dataset and takes the user from study framing to a fitted, diagnosed, evaluated, reported and exported model.
 **Master PRD:** [PRD_0_Master.md](PRD_0_Master.md) — principles (§M2–M3), state ownership (§M5), Prepare → Analyze hand-off (§M6.6), sessions (§M8).
 **Implementation details and as-built mechanics:** [IMPLEMENTATION_NOTES.md](IMPLEMENTATION_NOTES.md) §N6. Statistical methods registry: §N2.
 **Build sequence:** `PRD/EDARK_Analysis_Build_Plan.md`.
@@ -19,7 +19,7 @@
 
 **Progress:** every run button uses the blocking progress modal (§M3.5) — never `withProgress` toasts.
 
-**Downstream reset behaviour:** changes that trigger `reset_analysis_pipeline()` with a confirmation modal: Step 1 role changes, Step 4 covariate changes after a model has been fitted, Step 5 optimizer change after a fit. Changes that do NOT trigger a reset: Table 1 modifications, diagnostic category add/remove, variable investigation reruns, export selections. See §A8.6.
+**Downstream reset behaviour:** changes that trigger `reset_analysis_pipeline()` with a confirmation modal: Step 1 role changes, Step 1 train/test split changes once variable investigation or a model exists, Step 4 covariate changes after a model has been fitted, Step 5 optimizer change after a fit. Changes that do NOT trigger a reset: the model purpose alone (association ↔ prediction without a split change), Table 1 modifications, diagnostic or performance check add/remove, variable investigation reruns, export selections. See §A8.6.
 
 ---
 
@@ -66,6 +66,33 @@ Study type framing drives:
 - **Exposure-outcome study:** Table 1 stratified by exposure; model selection centers on the exposure-outcome relationship; covariate selection framed as confounder identification
 - **Risk factor / descriptive association study:** Table 1 stratified by outcome; model selection centers on variable associations with the outcome; covariate selection framed as candidate predictor screening
 - **Purely descriptive:** Table 1 unstratified; no inferential modeling expected
+
+### A1.4a Model Purpose — Association or Prediction
+
+Separate from study type (which comes from roles), the user states in Step 1 what the model is **for**:
+
+| Model purpose | Question | Judged by | Step 7 Performance |
+|---|---|---|---|
+| **Association** (default) | How does the exposure / each risk factor relate to the outcome? | Its estimates, CIs and assumptions (Steps 5–6) | Optional context (e.g. a c-statistic) |
+| **Prediction** | How well does the model predict the outcome for new patients? | Its discrimination and calibration on rows it has not seen | The point of the analysis |
+
+Creating a model and checking its assumptions are the same for both purposes; evaluating predictive performance (Model › Performance) is a separate goal. Choosing **Prediction** asks for a **validation method** — one of three, mutually exclusive:
+
+| Validation method | `validation_method` | Model built from | Validated set |
+|---|---|---|---|
+| **Bootstrap** (default) | `"bootstrap"` | all rows | Harrell optimism correction: refit in each resample, subtract the mean optimism |
+| **Cross-validation** | `"cv"` | all rows | k-fold (repeated), pooled out-of-fold predictions |
+| **Held-out test set** | `"split"` | the training rows | rows at the other levels of a chosen variable |
+
+The method must be set in Step 1 because a held-out set changes the rows Steps 3–5 learn from. A **held-out test set** is data kept apart on purpose (e.g. other centres — close to external validation): the user picks a factor column (with no role) and its **training level**; rows at that level are the **training set**, rows at any other level the **test set**, rows missing the variable neither. It cannot be combined with resampling. **Bootstrap / cross-validation** are for a single, homogeneous sample. There is no random single train/test split — it is inefficient and unstable, so the app does not offer one.
+
+With a held-out set, everything that learns from the data uses the training rows only — variable investigation (Step 3), covariate row counts and levels (Step 4), preflight and the model fit (Step 5), diagnostics — so the test set stays unseen until Performance measures it. Table 1 still describes the whole frozen dataset. The purpose alone changes no computation; switching between bootstrap and cross-validation does not either (the model is fitted to all rows under both); adding, changing or removing a held-out set does (§A5.3 Step 1).
+
+**Resampling uses the covariates confirmed in Step 4, unchanged.** Variable selection is *not* repeated in each resample: EDARK discourages automated selection, so the covariate set is treated as fixed (pre-specified). If stepwise / LASSO did drive the selection, the resampled estimates are somewhat optimistic.
+
+**Coefficients.** Every method yields one final model whose coefficients may be reported: with a held-out set, the model fitted to the training rows; with bootstrap or cross-validation, the model fitted to all rows (the fold / resample models are discarded — resampling estimates the performance of the *modelling procedure*). What undermines reported CIs and p-values is data-driven variable selection, not the validation method.
+
+**Association models** are not validated. Apparent discrimination and calibration are still shown as a description of fit (useful e.g. for a propensity or confounder model), labelled as not evidence about the exposure effect.
 
 ### A1.5 Scope Boundary
 
@@ -225,6 +252,24 @@ analysis_spec <- list(
     selected_variables      = NULL
   ),
 
+  purpose_specification = list(   # Step 1; kept by a role reset (§A1.4a)
+    model_purpose     = "association",  # "association" | "prediction"
+    validation_method = "bootstrap",    # "bootstrap" | "cv" | "split" (prediction only)
+    split_variable    = NULL,           # "split": factor column with no role
+    training_level    = NULL            # "split": its level that marks the training rows
+  ),
+  # A split applies only when model_purpose == "prediction", validation_method
+  # == "split" and both fields are set — analysis_split(spec).
+  # analysis_validation(spec, mixed) returns the method ("none" for association)
+  # with the settings below, defaults filled.
+
+  validation_settings = list(     # Model › Performance sidebar; written live
+    cv_folds       = 10L,         # 2–20; capped at the clusters / rarer outcome class
+    cv_repeats     = 5L,          # 1–50
+    bootstrap_reps = NULL,        # NULL = 200, or 100 for mixed models; 10–2000
+    seed           = 20260919L
+  ),
+
   model_design = list(
     model_type                 = NULL,
     confidence_interval_level  = 0.95,  # hardcoded
@@ -255,7 +300,7 @@ analysis_result <- list(
     fitted_at        = Sys.time(),
     error            = NULL,               # message when failed
     n_used           = NULL,               # complete-case rows fitted
-    n_total          = NULL,
+    n_total          = NULL,               # rows available (the training set when split)
     formula          = NULL,
     outcome_event    = NULL,               # list(variable, event, reference) — binary outcomes
     reference_levels = list(),             # factor predictors: reference level used
@@ -283,25 +328,28 @@ analysis_result <- list(
     table1_by_exposure  = NULL,
     table1_by_outcome   = NULL,
     univariable_screen  = NULL,
-    main_results        = NULL,   # Step 7: build_results_table() data.frame (display + export)
-    fit_statistics      = NULL,   # Step 7: formatted fit statistics data.frame
-    diagnostic_summary  = NULL
+    main_results        = NULL,   # Step 8: build_results_table() data.frame (display + export)
+    fit_statistics      = NULL,   # Step 8: formatted fit statistics data.frame
+    diagnostic_summary  = NULL,   # Step 6: long metrics table
+    performance_summary = NULL    # Step 7: long metrics table (set, key, label, value, format)
   ),
 
   result_plots = list(
     coefficient_plot    = NULL,
-    diagnostic_plots    = list(
+    diagnostic_plots    = list(    # Step 6
       residuals_vs_fitted = NULL,
       qq_plot             = NULL,
       scale_location      = NULL,
       binned_residuals    = NULL,  # logistic models
+      linearity_plot      = NULL,  # residuals vs each continuous predictor
       influence_plot      = NULL,  # Cook's distance
       leverage_plot       = NULL,
       random_effects_qq   = NULL,
-      cluster_size_plot   = NULL,
-      roc_curve           = NULL,
-      calibration_plot    = NULL,
-      predicted_probs     = NULL
+      cluster_size_plot   = NULL
+    ),
+    performance_plots   = list(    # Step 7; one list per set of rows
+      apparent = list(roc_curve = NULL, calibration_plot = NULL, predicted_probs = NULL),
+      test     = list(roc_curve = NULL, calibration_plot = NULL, predicted_probs = NULL)
     ),
     collinearity_plots  = list(
       correlation_heatmap = NULL,
@@ -323,12 +371,18 @@ analysis_result <- list(
   ),
 
   diagnostics = NULL,  # Step 6: run_at, model_type, checks, sample, residuals,
-                       # influence, vif, separation, random_effects, prediction,
+                       # linearity, influence, vif, separation, random_effects,
                        # metrics (long table), messages — see run_analysis_diagnostics()
 
+  performance = NULL,  # Step 7: run_at, model_type, checks, basis ("fixed" /
+                       # "marginal"), split, sets (apparent, test: n, n_events,
+                       # auc + CI, brier, brier_null, calibration bins,
+                       # cal_intercept, cal_slope, rmse, mae, r2), metrics,
+                       # messages — see run_analysis_performance()
+
   generated_r_script  = NULL,  # character string; cached from Step 5
-  methods_paragraph   = NULL,  # character string; cached from Step 7
-  results_generation  = NULL,  # Step 7: generated_at, outputs (ids), include_unadjusted,
+  methods_paragraph   = NULL,  # character string; cached from Step 8
+  results_generation  = NULL,  # Step 8: generated_at, outputs (ids), include_unadjusted,
                                # unadjusted_status (variable, status, message)
 
   linked_model_result = NULL   # reserved for PS (v1.5)
@@ -381,7 +435,7 @@ All analytical methods available in v1. Linear regression and logistic regressio
 | Logistic regression | Wald z-tests, native from `summary()` | estimate ± 1.96 × SE on the log-odds scale, exponentiated (= `confint.default()`) | Acceptable for adequate sample sizes |
 | Linear mixed model | t-tests with Satterthwaite df via `lmerTest` | estimate ± t(0.975, Satterthwaite df) × SE | Standard accepted approach in clinical research |
 | Logistic mixed model | Wald z-tests, native from `summary()` | estimate ± 1.96 × SE, exponentiated | Interpret with caution in small samples, sparse data, or near-boundary random effects. Preflight validation flags inadequate event counts. |
-| Univariable screen (Step 3), unadjusted models (Step 7) | As the matching model type above | As the matching model type above | Same function (`edark_coef_table()`) as the final model |
+| Univariable screen (Step 3), unadjusted models (Step 8) | As the matching model type above | As the matching model type above | Same function (`edark_coef_table()`) as the final model |
 | Stepwise | Not reported | Not reported | Selection only |
 | LASSO | None | None | Explicitly exploratory; coefficient path and selected variable list only |
 
@@ -396,7 +450,7 @@ All analytical methods available in v1. Linear regression and logistic regressio
 
 **P-value display:** "< 0.001", otherwise three decimals (`edark_format_p()`), everywhere including gtsummary tables.
 
-**Publication table footnotes** come from `edark_inference_note(model_type)` — the same sentence in Step 5, Step 7, the Summary and the methods paragraph:
+**Publication table footnotes** come from `edark_inference_note(model_type)` — the same sentence in Step 5, Step 8, the Summary and the methods paragraph:
 - Linear: "Wald-type 95% confidence intervals using the t distribution with residual degrees of freedom. P-values from t-tests."
 - Logistic: "Wald 95% confidence intervals (normal distribution), exponentiated to odds ratios. P-values from Wald z-tests."
 - Linear mixed: "Wald-type 95% confidence intervals using the t distribution with Satterthwaite degrees of freedom. P-values from t-tests with Satterthwaite degrees of freedom (lmerTest)."
@@ -455,6 +509,8 @@ Surfaced as dismissible banners at the relevant workflow step. Never blocking.
 | Post-fit VIF > 10 | "High variance inflation. Review the VIF table." | Diagnostics |
 | Singular fit (mixed) | "Singular fit. Random effects structure may be too complex." | Diagnostics |
 | Convergence warning (mixed) | "Model did not converge. Simplify random effects or change optimizer." | Diagnostics |
+| Test set too small (split) | "The test set has N complete rows and fewer than 100 events or non-events. Its performance estimates will be imprecise." | Preflight |
+| Rows missing the split variable | "N rows have no value for X and belong to neither the training nor the test set." | Preflight |
 | Rare factor level (< 5 obs) | "Variable X has a level with fewer than 5 observations." | Preflight |
 | Outcome prevalence < 5% or > 95% | "Outcome prevalence is [X]%. Wald inference is fragile with rare events." | Preflight |
 
@@ -472,7 +528,8 @@ Each step has its own explicit run button. No step silently triggers another. Ea
 | LASSO | "Run LASSO" | Single cross-validated fit |
 | Model fit | "Run Model" | Fast for lm/glm; moderate for mixed |
 | Diagnostics | "Run Diagnostics" | Post-fit extraction |
-| Results | "Generate Selected Outputs" | Dependent on selections |
+| Performance | "Run Performance" | Predictions on the model rows and, with a split, the test set |
+| Results | "Generate Outputs" | Dependent on selections |
 
 ### A4.7 Deferred to Future Versions
 
@@ -486,20 +543,23 @@ Each step has its own explicit run button. No step silently triggers another. Ea
 
 ### A5.1 Overview
 
-The analysis module is Tab 3 (`3 · Analyze`) in `page_navbar`. Eight steps as `bslib::navset_pill` — horizontal pills.
+The analysis module is Tab 3 (`3 · Analyze`) in `page_navbar`. Nine steps as `bslib::navset_pill` — horizontal pills.
 
 ```
 Tab 3: Analyze
-└── navset_pill (8 steps, horizontal)
+└── navset_pill (9 steps, horizontal)
     ├── Step 1: Setup                  layout_sidebar(position = "right")
     ├── Step 2: Table 1                layout_sidebar(position = "left")
     ├── Step 3: Variable Investigation full-width, internal vertical navset_pill
     ├── Step 4: Covariate Confirmation layout_sidebar(position = "right")
-    ├── Step 5: Model Specification    layout_sidebar(position = "left")
-    ├── Step 6: Diagnostics            layout_sidebar(position = "right")
-    ├── Step 7: Results                layout_sidebar(position = "left")
-    └── Step 8: Export                 full-width, layout_columns(col_widths = c(6,6))
+    ├── Step 5: Model Creation         navset_underline: Summary | Run Model (sidebar left)
+    ├── Step 6: Diagnostics            layout_sidebar(position = "left")
+    ├── Step 7: Performance            layout_sidebar(position = "left")
+    ├── Step 8: Results                layout_sidebar(position = "left")
+    └── Step 9: Export                 full-width, layout_columns(col_widths = c(6,6))
 ```
+
+Steps 5–6 create the model and check its assumptions; Step 7 evaluates how well it predicts — a separate goal that matters most when the model purpose is **Prediction** (§A1.4a). Steps 6–9 open once a model is fitted.
 
 Non-blocking rail. Run Model disabled until an outcome is assigned and the Tier 2 preflight has no errors. Step 4 has no confirmation step — its selection is always current in the spec, so a model with the exposure alone (nothing checked in Step 4) is valid.
 
@@ -508,7 +568,7 @@ Status indicators: Not started (muted) / In progress (blue) / Complete (green ch
 ### A5.2 Global UI Principles
 
 - Run/generate buttons in config panel only — never in output area
-- No per-object download buttons — all downloads via Step 8
+- No per-object download buttons — all downloads via Step 9
 - Consistent message area at top of every output panel
 - Placeholder cards for ungenerated outputs — never blank space
 - Blocking modal with step-list progress for operations > ~2 seconds
@@ -528,9 +588,14 @@ Status indicators: Not started (muted) / In progress (blue) / Complete (green ch
 
 **Cluster role:** grouping variables such as patient ID or centre. Each checked cluster becomes its own random intercept `(1 | cluster)` in a mixed model; check several for nested (patients within centres) or crossed groupings. Any non-datetime column may be a cluster (numeric IDs are converted with `factor()` at fit time). There is no separate subject ID or time role, and no random slopes.
 
-**Sidebar:** study type badge (color-coded), role summary, dataset snapshot. Updates reactively.
+**Sidebar:** study type badge (color-coded), **Model Purpose**, role summary, dataset snapshot. Updates reactively.
 
-**Defaults:** `table1_variables` = candidates + exposure + outcome; `univariable_test_pool` = candidates; `final_model_covariates` = none (covariates start unchecked in Step 4).
+**Model Purpose** (§A1.4a): radio **Association** (default) / **Prediction**, with a one-line explanation of each. Prediction reveals **Validation**: radio **Bootstrap** (default) / **Cross-validation** / **Held-out test set**, with a note that resampling settings live in Model › Performance. Held-out test set reveals a **Variable** select (factor columns with ≥ 2 levels and no role) and a **Training level** select (that variable's levels; defaults to a level named like "train", else the first). Written to `analysis_spec$purpose_specification` as the inputs change.
+- The purpose alone never clears anything, nor does switching between bootstrap and cross-validation. A change that alters the training rows (choosing or leaving Held-out test set, or changing its variable or training level) asks "Clear Analysis Results?" when variable investigation or a model exists; Clear & Continue runs `reset_analysis_pipeline(shared_state, 3)` (Table 1 and the covariate selection are kept); Cancel puts the inputs back.
+- A split variable cannot hold a role: if a role is later assigned to it, the split variable is cleared.
+- With a split, Steps 3–6 use the training rows only; Step 7 measures performance on the test rows too.
+
+**Defaults:** `table1_variables` = candidates + exposure + outcome; `univariable_test_pool` = candidates; `final_model_covariates` = none (covariates start unchecked in Step 4); `purpose_specification` = association, no split.
 
 **Step complete when:** outcome assigned.
 
@@ -556,7 +621,9 @@ Variables: exposure + outcome + all candidates, fixed order. Placeholders for un
 
 **Univariable Screen:** p-value threshold input (default 0.2) + run button. Auto-selects lm/glm by outcome type. Non-mixed. All candidates. Tier 1 validation banner (§A8.5).
 
-**Collinearity:** auto-computed on entry. Heatmap, Cramér's V, flagged pairs tabs. No run button.
+**Collinearity:** auto-computed on entry (and recomputed when the train/test split changes). Heatmap, Cramér's V, flagged pairs tabs. No run button.
+
+**Training rows:** with a train/test split (Step 1), every tool here runs on the training rows only (`analysis_model_data()`), so variable selection never sees the test set.
 
 **Stepwise / LASSO:** `radioGroupButtons` toggle. Stepwise: direction + criterion + run. LASSO: lambda + run. State preserved on toggle. Advisory banner. When an exposure is assigned it is held in every model and never offered for selection (see §A7.7–A7.8), and the results say so.
 
@@ -572,27 +639,31 @@ Variables: exposure + outcome + all candidates, fixed order. Placeholders for un
 
 **Table columns:** Include (checkbox; candidates start unchecked; header All / Clear), Variable, Type, Missing, Row cost, Univariable, Stepwise, LASSO (each with Add / Replace in the header and a parameter tooltip), Reference level. Role variables (outcome, exposure, clusters) are locked, checked rows at the top. Cell highlighting: green (suggested), pink (not suggested), grey (not run). See §A9.7.
 
+**Training rows:** with a train/test split, the counts, missingness, row cost, EPV and surviving reference levels are computed on the training rows.
+
 **No confirm step:** every change (checkbox, reference level, Add, Replace) is written to `analysis_spec` immediately — `final_model_covariates`, `reference_levels`, `variable_selection_specification$selected_variables`. The first change after a model has been fitted opens a "Clear Model Results?" modal; Cancel undoes the click, Clear & Continue runs `reset_analysis_pipeline(shared_state, 4)` and applies it. Errors in the Checks panel (e.g. a factor left with one level) do not stop the write — Step 5's preflight blocks the model. Step 3 reruns simply refresh the suggestion columns.
 
 **Step complete when:** always usable; nothing to confirm.
 
 ---
 
-#### Step 5 — Model Specification
+#### Step 5 — Model Creation
 
-**Module file:** `R/module_analysis_modelspec.R` | **Service files:** `R/service_analysis_models.R`, `R/service_analysis_validation.R`, `R/service_analysis_summary.R` (`R/service_analysis_codegen.R` deferred)
+**Module file:** `R/module_analysis_modelspec.R` (file name kept from when the step was "Model Specification") | **Service files:** `R/service_analysis_models.R`, `R/service_analysis_validation.R`, `R/service_analysis_summary.R` (`R/service_analysis_codegen.R` deferred)
 
 **Layout:** two tabs (`navset_underline`) — **Summary** (first) and **Run Model**. See §A8.4.
 
-**Summary tab:** read-only audit of the current state of every step, top to bottom: data preparation (from the Prepare snapshot taken at freeze), analysis dataset, study design and roles (incl. "Modelling: outcome = event (vs reference)"), Table 1, variable investigation, covariates and sample, model (type, formula, random intercepts, optimizer, inference method, fit status), and **every** preflight check — errors, warnings, notes and passes. Built by the pure function `build_analysis_summary(spec, result, data, validation)` so export can reuse it. It shows current state, not a click history.
+**Summary tab:** read-only audit of the current state of every step, top to bottom: data preparation (from the Prepare snapshot taken at freeze), analysis dataset, study design and roles (incl. model purpose, the train/test split with its row counts, and "Modelling: outcome = event (vs reference)"), Table 1, variable investigation, covariates and sample, model (type, formula, random intercepts, optimizer, inference method, fit status), and **every** preflight check — errors, warnings, notes and passes. Built by the pure function `build_analysis_summary(spec, result, data, validation)` so export can reuse it. It shows current state, not a click history.
 
 **Run Model tab — sidebar:** model dropdown (all four types listed; the one valid type — decided by outcome type and whether clusters are assigned — is selected and written to the spec automatically; the others are disabled with the reason in their label); Advanced accordion (mixed models only) with the optimizer; compact live preflight (errors and warnings only); Run Model button. Clicking the disabled button pulses the preflight box.
 
-**Run Model tab — main:** model header (model type, "Modelling:" line for binary outcomes, formula); results after a fit — Primary result (exposure estimate(s) with 95% CI and p, one row per level vs the reference for a factor exposure; a note for risk-factor studies), Coefficients table (all terms except the intercept, with footnote), Fit statistics, Fitting notes (preflight warnings at fit time + fit warnings/notes); R Code Preview accordion (placeholder until the code generator is built).
+**Run Model tab — main:** model header (model type, "Modelling:" line for binary outcomes, "Fitted on: training set, variable = level (n rows); m test rows held out for Step 7" when split, formula); results after a fit — Primary result (exposure estimate(s) with 95% CI and p, one row per level vs the reference for a factor exposure; a note for risk-factor studies), Coefficients table (all terms except the intercept, with footnote), Fit statistics, Fitting notes (preflight warnings at fit time + fit warnings/notes); R Code Preview accordion (placeholder until the code generator is built).
 
 **No warning modal:** Run Model proceeds whenever the preflight has no errors; warnings are already on screen and are replayed in Fitting notes.
 
-**Changes after a fit:** every model-affecting change clears the model and everything built on it. Changing the optimizer after a fit asks "Clear Model Results?" (Cancel puts the dropdown back) and then calls `reset_analysis_pipeline(from_step = 5)`. Step 1 roles and Step 4 covariates / reference levels do the same from their own steps. `analysis_fit_is_stale()` remains as a safety net for the Run Model results panel.
+**Training rows:** with a train/test split the model is fitted to the training rows only; preflight runs on them too (§A8.2).
+
+**Changes after a fit:** every model-affecting change clears the model and everything built on it. Changing the optimizer after a fit asks "Clear Model Results?" (Cancel puts the dropdown back) and then calls `reset_analysis_pipeline(from_step = 5)`. Step 1 roles and split, and Step 4 covariates / reference levels, do the same from their own steps. `analysis_fit_is_stale()` (which includes the split) remains as a safety net for the Run Model results panel.
 
 **Step complete when:** model run successfully.
 
@@ -602,27 +673,64 @@ Variables: exposure + outcome + all candidates, fixed order. Placeholders for un
 
 **Module file:** `R/module_analysis_diagnostics.R` | **Service files:** `R/service_analysis_diagnostics.R`, `R/service_analysis_plots.R`
 
-**Layout:** `layout_sidebar(position = "left")` — sidebar: check lists + Run Diagnostics; main: model header + `navset_card_tab` (Overview first, then one tab per computed check). Same sidebar-is-setup pattern as Steps 3 and 5.
+**Purpose:** is the fitted model trustworthy — do its assumptions hold, is it stable? Predictive performance is Step 7.
 
-**Always included (no checkbox):** sample accounting (rows in the frozen dataset, rows used, missing values per model variable, events for logistic models) and fitting warnings (convergence, singular fit — read from the Step 5 fit).
+**Layout:** `layout_sidebar(position = "left")` — sidebar: check list + Run Diagnostics; main: model header + `navset_card_tab` (Overview first, then one tab per computed check). Same sidebar-is-setup pattern as Steps 3 and 5.
 
-**Two groups of checks** (`analysis_diagnostic_options(model_type)`):
-- **Model assumptions** (all checked by default): residuals, influential observations (non-mixed), collinearity (VIF), separation (logistic), random effects (mixed).
-- **Prediction performance** (all unchecked, in a collapsed "optional" accordion, **all model types**): for prediction studies only; not needed to report an association. Logistic: discrimination (ROC/AUC), calibration (deciles + Brier), predicted probabilities. Linear: calibration (observed vs predicted), prediction error (RMSE, MAE, R²). Always **apparent (in-sample)** performance, labelled as optimistic; mixed models use marginal predictions (`re.form = NA`).
+**Always included (no checkbox):** sample accounting (rows the model was built from — the training set when split — rows used, missing values per model variable, events for logistic models) and fitting warnings (convergence, singular fit — read from the Step 5 fit).
 
-**Advisory, never blocking:** diagnostics do not gate Steps 7–8.
+**Checks** (`analysis_diagnostic_options(model_type)`, all ticked by default):
+
+| Check | Linear | Logistic | Linear mixed | Logistic mixed |
+|---|---|---|---|---|
+| Residuals | resid vs fitted, Q-Q, scale-location, Breusch-Pagan | binned residuals (response scale) | same plots on conditional residuals | binned residuals |
+| Linearity | residuals vs each continuous predictor (loess) | binned residuals vs each continuous predictor | as linear (conditional residuals) | as logistic |
+| Influence | Cook's distance, leverage, top 10 rows | same | — (planned: cluster-level influence) | — |
+| Collinearity | VIF / GVIF | same | same (fixed effects) | same |
+| Separation | — | `detectseparation` | — | on the fixed effects |
+| Random effects | — | — | variance, SD, ICC per cluster; cluster sizes; Q-Q of intercepts | same, latent scale (π²/3) |
+
+A model with no continuous predictor gets a note instead of a Linearity tab.
+
+**Advisory, never blocking:** diagnostics do not gate Steps 7–9.
 
 **Step complete when:** diagnostics run at least once.
 
 ---
 
-#### Step 7 — Results
+#### Step 7 — Performance
+
+**Module file:** `R/module_analysis_performance.R` | **Service files:** `R/service_analysis_performance.R`, `R/service_analysis_plots.R`
+
+**Purpose:** how well does the model predict? Central when the model purpose is Prediction; optional context (e.g. a c-statistic) for an association model — the header says which.
+
+**Layout:** `layout_sidebar(position = "left")` — sidebar: **Measures** checkboxes (all ticked), **Validation** (Apparent, plus the Step 1 method with its settings: folds + repeats for cross-validation, resamples for the bootstrap, and a random seed — written live to `validation_settings`), Run Performance; main: model header (type, model purpose, time run) + `navset_card_tab`: **Overview** (messages, then one table with a column per set of rows and a reading guide per measure) and one tab per set with its values and plots.
+
+**Measures** (`analysis_performance_options(model_type)`): logistic — discrimination (ROC, AUC with DeLong CI), calibration (deciles with Wilson CIs, Brier score and no-information Brier), predicted probabilities by outcome; linear — prediction error (RMSE, MAE, R²), calibration (observed vs predicted). On the test set, calibration adds the **calibration intercept** and **slope** (logistic: `glm(y ~ offset(lp))` and `glm(y ~ lp)`; linear: mean residual and the slope of observed on predicted) — in-sample they are 0 and 1 by construction, so they are not shown for the apparent set.
+
+**Sets of rows:**
+- **Apparent (model rows)** — always; the rows the model was fitted to; labelled optimistic.
+- **Test set** — when Step 1 set a train/test split: the held-out rows, prepared exactly like the model rows (`.prepare_model_rows()`: complete cases, ordered → unordered, reference levels). Rows with a factor level the model never saw are dropped with a warning; rows missing a model variable are dropped with a note.
+- **Cross-validated** — method `"cv"`: k folds × r repeats. Folds are stratified by outcome (logistic) or made of whole clusters of the first cluster variable (mixed; k capped at the number of clusters). Each fold's model is refitted to the other folds (same covariates) and predicts the rows left out. Measures are computed on the pooled out-of-fold predictions of each repeat and averaged over repeats, with the SD across repeats. Plots pool every out-of-fold prediction.
+- **Bootstrap-corrected** — method `"bootstrap"`: Harrell's optimism correction. Each resample's model is scored on the resample (apparent) and on the original rows (test); optimism = mean(apparent − test); corrected = apparent − optimism, for AUC, Brier, calibration intercept and slope (logistic) or RMSE, MAE, R², calibration intercept and slope (linear). The corrected calibration slope doubles as a shrinkage factor. A smoothed calibration curve (lowess, as `rms::calibrate`) is shown apparent and bias-corrected, plus an Apparent | Optimism | Corrected table. Mixed models resample whole clusters of the first cluster variable (a cluster drawn twice becomes two clusters). No CI for corrected values (that needs a double bootstrap).
+
+Resamples are drawn up front with the seed (`.with_seed()` restores the session's random stream), so results are reproducible. A refit that fails, or a bootstrap resample missing a factor level needed to predict the original rows, is skipped and counted; fitting warnings are counted. Refits of linear mixed models use `lme4::lmer` (no Satterthwaite p-values needed). Mixed models use marginal predictions (`re.form = NA`) for every set — the fixed effects alone, as for a patient from a new cluster.
+
+**Running:** the job is computed in steps (`analysis_performance_job()` / `.perf_job_step()` / `.perf_job_finish()`); the module runs refits for ~0.4 s per reactive tick (`invalidateLater`), so the blocking progress modal's **Cancel** button is heard (previous results are kept). A mixed model asking for more than 100 refits (resamples, or folds × repeats) first shows a confirmation modal (Back / Proceed).
+
+**Advisory, never blocking.** Stored in `analysis_result$performance`, `result_plots$performance_plots` and `result_tables$performance_summary`; any model-affecting change clears them.
+
+**Step complete when:** performance run at least once.
+
+---
+
+#### Step 8 — Results
 
 **Module file:** `R/module_analysis_results.R` | **Service files:** `R/service_analysis_tables.R`, `R/service_analysis_plots.R`
 
 **Layout:** `layout_sidebar(position = "left")` — sidebar: output checkboxes + Generate Outputs; main panel: model header + `navset_card_tab`.
 
-**Outputs** (catalogue `.RESULTS_OUTPUTS` — add future outputs there): Results table (sub-option: include unadjusted estimates), Fit statistics, Forest plot, Methods paragraph. All ticked by default. **Only ticked outputs are created and stored; unticked ones are not created, so Step 8 cannot export them.** Each Generate replaces the previous set. The **Summary** tab is always shown, has no checkbox, and computes nothing — key numbers only, no prose (exposure estimates, model, sample, fit, checks, which outputs exist).
+**Outputs** (catalogue `.RESULTS_OUTPUTS` — add future outputs there): Results table (sub-option: include unadjusted estimates), Fit statistics, Forest plot, Methods paragraph. All ticked by default. **Only ticked outputs are created and stored; unticked ones are not created, so Step 9 cannot export them.** Fit statistics add the AUC (with CI) for each set of rows Step 7 evaluated (apparent, test). Each Generate replaces the previous set. The **Summary** tab is always shown, has no checkbox, and computes nothing — key numbers only, no prose (exposure estimates, model, sample, fit, checks, which outputs exist).
 
 **Results table** (`build_results_table()` → one data.frame; `results_table_gt()` for the app, `results_table_flextable()` for Word): rows = exposure then final covariates (never unchosen candidates, so every cell is filled); a factor gets a header row, a *Reference* row and one row per other level; no intercept; random effects not shown (Fit statistics only). Columns: Unadjusted and Adjusted (n), each "OR (95% CI)" or "β (95% CI)" plus p. Exposure bold, reference rows italic. Footnotes: measure (and event), per-unit note, what "adjusted" and "unadjusted" mean, `edark_inference_note()`, and † / ‡ for unadjusted models fitted with a warning / not fitted. Built as our own table, not `tbl_regression()` — that needs broom.helpers and would re-process our numbers.
 
@@ -630,7 +738,7 @@ Variables: exposure + outcome + all candidates, fixed order. Placeholders for un
 
 **Forest plot** (`build_forest_plot()`): every model term, adjusted estimates; three aligned panels — labels | estimates with 95% CI | "OR (95% CI)" and p; log-scale OR axis with a line at 1 (logistic) or a line at 0 (linear); exposure highlighted. Scaling continuous variables is the user's responsibility (Prepare).
 
-**Methods paragraph** (`build_methods_paragraph()`): the model as fitted — design, outcome (event), exposure, covariates, random intercepts and estimation method (REML / Laplace, optimizer), reference categories, complete-case n, unadjusted models (if generated), CI and p-value methods, diagnostics run in Step 6 (assumptions and apparent prediction performance, separately), then a software sentence with R, EDARK and package versions. It does not describe variable selection.
+**Methods paragraph** (`build_methods_paragraph()`): the model as fitted — design, outcome (event), exposure, covariates, random intercepts and estimation method (REML / Laplace, optimizer), reference categories, the train/test split (if any), complete-case n, unadjusted models (if generated), CI and p-value methods, assumptions checked in Step 6, predictive performance measured in Step 7 (apparent and/or test set), then a software sentence with R, EDARK and package versions. It does not describe variable selection.
 
 **Table footnotes** per model type — Footnote text per model type is in §A4.2.
 
@@ -638,7 +746,7 @@ Variables: exposure + outcome + all candidates, fixed order. Placeholders for un
 
 ---
 
-#### Step 8 — Export
+#### Step 9 — Export
 
 **Module file:** `R/module_analysis_export.R` | **Service file:** `R/service_analysis_export.R`
 
@@ -658,13 +766,16 @@ Export checklist repopulates on tab entry. See §A10 for complete specifications
 
 | Change | Marks stale |
 |---|---|
-| Step 1 role change | Table 1, var investigation, covariate selection, model, diagnostics, results |
+| Step 1 role change | Table 1, var investigation, covariate selection, model, diagnostics, performance, results |
+| Step 1 train/test split change | Var investigation, model, diagnostics, performance, results (Table 1 and covariate selection kept) |
+| Step 1 model purpose alone | Nothing |
 | Step 2 config change | Table 1 only |
 | Step 3 investigation rerun | Nothing (Step 4 suggestion columns refresh) |
-| Step 4 covariate change after a fit | Model, diagnostics, results |
-| Step 5 spec change | Model, diagnostics, results |
+| Step 4 covariate change after a fit | Model, diagnostics, performance, results |
+| Step 5 spec change | Model, diagnostics, performance, results |
 | Step 6 diagnostics rerun | Nothing downstream |
-| Step 7 display change | Results display only |
+| Step 7 performance rerun | Nothing downstream (Step 8 fit statistics read it when generated) |
+| Step 8 display change | Results display only |
 | Dataset restart | Everything |
 
 ### A5.5 Default Spec Population on Skip
@@ -706,7 +817,7 @@ This section specifies precise UI components, input types, and rendering behavio
 
 `reactable` with raw HTML inputs in cells (state pushed from the server, see §N1.4). Column widths: Variable 140px, Type 80px, Reference 130px, Outcome/Exposure 80px, Candidate 90px, Cluster 70px. Built-in search for filtering. Column header Clear buttons. Reference levels in R factor order. Cluster cells show "—" for datetime columns.
 
-**Sidebar:** study type badge, role summary, dataset snapshot. Reactive. Downstream cleared via `reset_analysis_pipeline()` (§A8.6).
+**Sidebar:** study type badge, Model Purpose block (radio, conditional train/test checkbox, variable and training-level selects built with `selectize = FALSE`), role summary, dataset snapshot. Reactive. Downstream cleared via `reset_analysis_pipeline()` (§A8.6).
 
 ### A6.4 Step 2 — Table 1
 
@@ -726,7 +837,7 @@ Vertical `navset_pill`. **Univariable:** p-threshold + run button; Tier 1 banner
 
 Table in the main panel, live counts and checks in a right sidebar. Add / Replace buttons in method column headers, suggestion indicators (green/pink/grey), parameter tooltips. No confirm button — changes are written as they happen (§A5.3 Step 4).
 
-### A6.7 Step 5 — Model Specification
+### A6.7 Step 5 — Model Creation
 
 **Module file:** `R/module_analysis_modelspec.R`
 
@@ -738,33 +849,59 @@ Two tabs — Summary and Run Model — per §A5.3 Step 5 and §A8.4. Pulse anima
 
 **Layout:** `layout_sidebar(position = "left")`.
 
-Sidebar: "Model assumptions" checkbox group (Select all / Deselect all; each choice shows a one-line description), "Prediction performance (optional)" accordion (collapsed, unchecked, Select all / Deselect all), Run Diagnostics (`btn-primary w-100`), note that sample accounting and fitting warnings are always included.
+Sidebar: "Model assumptions" checkbox group (Select all / Deselect all; each choice shows a one-line description), Run Diagnostics (`btn-primary w-100`), note that sample accounting and fitting warnings are always included.
 
 Main: model header (type, formula, time run), then `navset_card_tab`:
 
 ```
 Overview        Warnings card, then cards for each computed section:
-                Sample · Fit [mixed] · Residuals · Influence · Collinearity ·
-                Separation [logistic] · Random effects [mixed] · Prediction [if run]
+                Sample · Fit [mixed] · Residuals · Linearity [logistic: % bins] ·
+                Influence · Collinearity · Separation [logistic] · Random effects [mixed]
                 Values with a short reading guide (e.g. "VIF 5–10 moderate, > 10 high")
 Residuals       linear: resid vs fitted, Q-Q, scale-location, Breusch-Pagan
                 linear mixed: same plots on conditional residuals (no BP)
                 logistic (both): binned residuals + % of bins including 0
+Linearity       one facet per continuous predictor: residuals + loess (linear) or
+                binned residuals (logistic)
 Influence       [non-mixed] Cook's distance, leverage vs std. residual, top 10 rows
                 with their model-variable values
 Collinearity    VIF table flagged OK / Moderate / High
 Random effects  [mixed] per cluster variable: variance, SD, ICC, cluster count and
                 sizes; random-intercept Q-Q; rows per cluster
-Prediction      [if run] apparent-performance note, metrics, plots
 ```
 
-### A6.9 Step 7 — Results
+### A6.9 Step 7 — Performance
+
+**Module file:** `R/module_analysis_performance.R`
+
+**Layout:** `layout_sidebar(position = "left")`.
+
+Sidebar: "Measures" checkbox group (all ticked, one-line descriptions), "Validation" (Apparent — always; then the Step 1 method: No validation (association) / Held-out test set — its test levels and row count / Cross-validation — Folds + Repeats inputs / Bootstrap — Resamples input, with the mixed-model confirmation threshold noted; Random seed for either resampling method), Run Performance (`btn-primary w-100`).
+
+Main: model header (type, model purpose — with a note for an association model — time run), then `navset_card_tab`:
+
+```
+Overview                Messages card; one table: rows = measures (with reading
+                        guide), columns = sets of rows; AUC shown with its CI
+Apparent (model rows)   optimism note, values, ROC / calibration / predicted-probability
+                        plots (logistic) or observed vs predicted (linear)
+Test set                [split] same, plus calibration intercept and slope
+Cross-validated         [cv] method note, values ± SD across repeats, model refits
+                        (skipped), pooled out-of-fold plots
+Bootstrap-corrected     [bootstrap] method note, corrected values, Apparent |
+                        Optimism | Corrected table, calibration curve (apparent vs
+                        bias-corrected)
+```
+
+Plot titles carry the set, e.g. "ROC curve (test set)".
+
+### A6.10 Step 8 — Results
 
 **Module file:** `R/module_analysis_results.R`
 
 Sidebar: "Outputs" checkboxes (Results table + indented "Include unadjusted estimates", Fit statistics, Forest plot, Methods paragraph — each with a one-line description), Generate Outputs (`btn-primary w-100`), note that only created outputs can be exported. Main: model header (type, formula, time generated), `navset_card_tab`: Summary (always) then one tab per created output. Methods tab has a Copy button.
 
-### A6.10 Step 8 — Export
+### A6.11 Step 9 — Export
 
 **Module file:** `R/module_analysis_export.R`
 
@@ -780,7 +917,7 @@ Two-column full-width. Left: presets, checklists with step-of-origin subheadings
 
 **Formula assembly:** constructed from `analysis_spec$variable_roles` at fit time. Pattern: `outcome ~ exposure + cov1 + cov2 + ...`. Mixed models append one random intercept per cluster variable: `+ (1 | cluster1) + (1 | cluster2)`. Nested groupings rely on IDs being unique across the parent grouping (preflight warns via `PF_CLUSTER_IDS_SHARED`). No random slopes. Implemented in `analysis_utils.R`.
 
-**Model data** (`fit_analysis_model()` in `service_analysis_models.R`): complete cases over outcome + exposure + covariates (+ clusters for mixed models); **ordered factors are converted to unordered** (level order kept) so every factor uses treatment contrasts — each level vs the reference — rather than polynomial contrasts; reference levels applied; unused levels dropped; cluster variables converted with `factor()`.
+**Model data** (`fit_analysis_model()` in `service_analysis_models.R`): the training rows when a train/test split applies (`analysis_model_data()`); complete cases over outcome + exposure + covariates (+ clusters for mixed models); **ordered factors are converted to unordered** (level order kept) so every factor uses treatment contrasts — each level vs the reference — rather than polynomial contrasts; reference levels applied; unused levels dropped; cluster variables converted with `factor()`.
 
 **Reference levels:** applied once via `relevel()` per `analysis_spec$variable_roles$reference_levels` before any model fit. For a binary outcome the reference level is the non-event; the model estimates the probability of the other level, shown as "Modelling: outcome = event (vs reference)". Implemented in `analysis_utils.R`.
 
@@ -794,7 +931,7 @@ Two-column full-width. Left: presets, checklists with step-of-origin subheadings
 
 **Warning capture:** `withCallingHandlers()` wraps all fitting. Warnings stored in `run_status$run_messages`.
 
-**Publication tables:** Step 7 builds the results table itself from `edark_coef_table()` output (`build_results_table()` → `result_tables$main_results`); gtsummary is used for Table 1 only.
+**Publication tables:** Step 8 builds the results table itself from `edark_coef_table()` output (`build_results_table()` → `result_tables$main_results`); gtsummary is used for Table 1 only.
 
 ### A7.2 Linear Regression
 
@@ -814,9 +951,9 @@ Two-column full-width. Left: presets, checklists with step-of-origin subheadings
 
 **Fit statistics:** N, R², adjusted R², RMSE, F-statistic, AIC, BIC.
 
-**Diagnostics — Model Assumptions:** residuals vs fitted, Q-Q plot, scale-location, Breusch-Pagan (`lmtest::bptest()`), Cook's distance, leverage vs residuals, top 10 influential observations, VIF table.
+**Diagnostics (Step 6):** residuals vs fitted, Q-Q plot, scale-location, Breusch-Pagan (`lmtest::bptest()`), residuals vs each continuous predictor (linearity), Cook's distance, leverage vs residuals, top 10 influential observations, VIF table.
 
-**Prediction Performance (optional):** apparent RMSE, MAE, R² and an observed-vs-predicted plot.
+**Performance (Step 7):** RMSE, MAE, R² and an observed-vs-predicted plot — apparent, and on the test set when split (plus calibration-in-the-large and slope).
 
 ### A7.3 Logistic Regression
 
@@ -836,9 +973,9 @@ Two-column full-width. Left: presets, checklists with step-of-origin subheadings
 
 **Fit statistics:** N, N events, event rate, pseudo R² (McFadden + Nagelkerke), AIC, BIC, log-likelihood.
 
-**Diagnostics — Model Assumptions:** binned residuals (`performance::binned_residuals(residuals = "response")`, Gelman & Hill — raw residuals of a 0/1 outcome are not interpretable, and performance's default deviance residuals do not average to zero), Cook's distance, leverage, top influential observations, VIF, separation detection (`glm(method = detectseparation::detect_separation)`).
+**Diagnostics (Step 6):** binned residuals (`performance::binned_residuals(residuals = "response")`, Gelman & Hill — raw residuals of a 0/1 outcome are not interpretable, and performance's default deviance residuals do not average to zero), binned residuals against each continuous predictor (`term =`; linearity on the log-odds scale), Cook's distance, leverage, top influential observations, VIF, separation detection (`glm(method = detectseparation::detect_separation)`).
 
-**Diagnostics — Prediction Performance (optional):** ROC curve with AUC and DeLong CI (`pROC`), calibration plot (decile bins, Wilson CIs) with Brier score and the no-information Brier (prevalence × (1 − prevalence)), predicted probability distribution by outcome group. Apparent performance only; calibration slope/intercept are not shown because in-sample they are 1 and 0 by construction.
+**Performance (Step 7):** ROC curve with AUC and DeLong CI (`pROC`), calibration plot (decile bins, Wilson CIs) with Brier score and the no-information Brier (prevalence × (1 − prevalence)), predicted probability distribution by outcome group — apparent, and on the test set when split. The calibration intercept (`glm(y ~ 1, offset = logit(p))`) and slope (`glm(y ~ logit(p))`) are shown for the test set only; in-sample they are 0 and 1 by construction.
 
 ### A7.4 Linear Mixed Model
 
@@ -858,9 +995,9 @@ Two-column full-width. Left: presets, checklists with step-of-origin subheadings
 
 **Fit statistics:** N observations, N clusters, marginal R², conditional R², ICC, AIC, BIC, log-likelihood, random intercept SD, residual SD.
 
-**Diagnostics — Model Assumptions:** residuals vs fitted, Q-Q and scale-location (conditional residuals), random effects Q-Q, per-cluster variance / ICC (from `VarCorr`; `performance::icc()` returns NA once any component is singular), cluster size distribution + summary, VIF, singular fit check (`isSingular()`), convergence check.
+**Diagnostics (Step 6):** residuals vs fitted, Q-Q and scale-location (conditional residuals), residuals vs each continuous predictor, random effects Q-Q, per-cluster variance / ICC (from `VarCorr`; `performance::icc()` returns NA once any component is singular), cluster size distribution + summary, VIF, singular fit check (`isSingular()`), convergence check. Not yet: cluster-level influence (leave-one-cluster-out) — see §A11.2.
 
-**Prediction Performance (optional):** as linear regression, using marginal predictions (`re.form = NA`).
+**Performance (Step 7):** as linear regression, using marginal predictions (`re.form = NA`).
 
 ### A7.5 Logistic Mixed Model
 
@@ -876,11 +1013,11 @@ Two-column full-width. Left: presets, checklists with step-of-origin subheadings
 
 **P-values:** Wald z-tests. Footnote: "P-values from Wald z-tests. Interpret with caution in small samples or with rare outcomes."
 
-**Fit statistics:** N observations, N clusters, N events, event rate, marginal AUC (if prediction diagnostics run), AIC, BIC, log-likelihood, random intercept variance, ICC.
+**Fit statistics:** N observations, N clusters, N events, event rate, marginal AUC (apparent and test set, if Step 7 ran), AIC, BIC, log-likelihood, random intercept variance, ICC.
 
-**Diagnostics — Model Assumptions:** binned residuals, random effects Q-Q, per-cluster ICC (latent scale, residual variance π²/3), cluster size distribution + summary, VIF, separation (checked on the fixed effects), singular fit, convergence.
+**Diagnostics (Step 6):** binned residuals, binned residuals against each continuous predictor, random effects Q-Q, per-cluster ICC (latent scale, residual variance π²/3), cluster size distribution + summary, VIF, separation (checked on the fixed effects), singular fit, convergence. Not yet: cluster-level influence.
 
-**Diagnostics — Prediction Performance (supplementary):** all use **marginal** predictions (`re.form = NA`). ROC/AUC, calibration, predicted probability distribution.
+**Performance (Step 7):** all use **marginal** predictions (`re.form = NA`). ROC/AUC, calibration, predicted probability distribution.
 
 ### A7.6 Univariable Regression Screen
 
@@ -888,7 +1025,7 @@ Two-column full-width. Left: presets, checklists with step-of-origin subheadings
 
 Batch execution: one `lm` or `glm` per candidate. Always standard (non-mixed). Output: tibble (variable, estimate, CI, p-value) sorted by p-value. Stored in `result_tables$univariable_screen` and `fitted_models$univariable_models`.
 
-**Combined table (Step 7):** side-by-side unadjusted + adjusted for the final model's variables only. The Step 3 screen is not reused: Step 7 refits each unadjusted model on the final model's rows with the same engine (§A5.3 Step 7).
+**Combined table (Step 8):** side-by-side unadjusted + adjusted for the final model's variables only. The Step 3 screen is not reused: Step 8 refits each unadjusted model on the final model's rows with the same engine (§A5.3 Step 8).
 
 ### A7.7 Stepwise Selection
 
@@ -978,6 +1115,11 @@ Pure function `validate_analysis(spec, data, tier = "full", verbose = FALSE)`. R
 | `PF_OUTCOME_NO_VARIANCE_BINARY` | error | Binary outcome all 0 or all 1 | "Outcome has no events." |
 | `PF_OUTCOME_NO_VARIANCE_CONTINUOUS` | error | Continuous outcome single value | "Outcome has only one unique value." |
 | `PF_FACTOR_SINGLE_LEVEL` | error | Factor with one level post-complete-case | "Variable [X] has only one level remaining." |
+| `PF_SPLIT_INVALID` | error | Train/test split set but its variable is missing, not a factor, holds a role, or has no rows at the training level | Names the problem |
+| `PF_SPLIT_NO_TEST` | warning | Every row is at the training level | "…there is no test set. Only apparent (in-sample) performance can be measured." |
+| `PF_SPLIT_MISSING` | warning | Rows missing the split variable | "N rows … belong to neither the training nor the test set." |
+
+**Train/test split:** when a split applies (§A1.4a), the split checks run first and **every other check runs on the training rows** — the rows the model is built from. The validator subsets the data itself, so callers pass the whole frozen dataset.
 
 **Tier 2 — Model Specification** (adds to Tier 1, runs before multivariable model):
 
@@ -985,11 +1127,11 @@ Errors: `PF_NO_PREDICTORS`, `PF_OUTCOME_MODEL_MISMATCH`, `PF_MIXED_NO_CLUSTER` (
 
 Also an error: `PF_OUTCOME_UNSUPPORTED` (outcome is neither numeric nor a two-level factor — e.g. a 3-level factor; no model is available).
 
-Warnings: `PF_LOW_EPV_10`, `PF_LOW_EPV_5`, `PF_MISSING_ANY`, `PF_MISSING_GT20`, `PF_MISSING_GT50`, `PF_RARE_FACTOR_LEVEL`, `PF_HIGH_CORRELATION`, `PF_FEW_CLUSTERS`, `PF_UNBALANCED_CLUSTERS` (both per cluster variable), `PF_CLUSTER_IDS_SHARED` (values of one cluster variable recur under several values of another — merged clusters if IDs are only unique within the parent; harmless if crossed), `PF_RARE_OUTCOME`, `PF_EXPOSURE_NOT_IN_MODEL`, `PF_LOOKS_CATEGORICAL` (a numeric outcome or predictor with ≤ 10 distinct whole-number values — e.g. a 0/1 flag or ASA class — will be modelled as continuous; the message points to Prepare › Transforms › Auto-factor. A 0/1 outcome gets a sharper message: linear regression will be fitted to it. Factoring is the user's responsibility; the app never converts silently).
+Warnings: `PF_LOW_EPV_10`, `PF_LOW_EPV_5`, `PF_MISSING_ANY`, `PF_MISSING_GT20`, `PF_MISSING_GT50`, `PF_RARE_FACTOR_LEVEL`, `PF_HIGH_CORRELATION`, `PF_FEW_CLUSTERS`, `PF_UNBALANCED_CLUSTERS` (both per cluster variable), `PF_CLUSTER_IDS_SHARED` (values of one cluster variable recur under several values of another — merged clusters if IDs are only unique within the parent; harmless if crossed), `PF_RARE_OUTCOME`, `PF_EXPOSURE_NOT_IN_MODEL`, `PF_SMALL_TEST_SET` (split: fewer than 100 events or non-events — binary — or 100 rows — continuous — among the complete test rows; Riley et al., 2021), `PF_LOOKS_CATEGORICAL` (a numeric outcome or predictor with ≤ 10 distinct whole-number values — e.g. a 0/1 flag or ASA class — will be modelled as continuous; the message points to Prepare › Transforms › Auto-factor. A 0/1 outcome gets a sharper message: linear regression will be fitted to it. Factoring is the user's responsibility; the app never converts silently).
 
 Cluster variables enter the complete-case set only for mixed models.
 
-Notes: `PF_SINGLE_COVARIATE` (incl. "No covariates selected — unadjusted model"), `PF_SAMPLE_SUMMARY`, `PF_MODEL_SUMMARY`, `PF_DATA_STRUCTURE`, `PF_REFERENCE_LEVELS`.
+Notes: `PF_SINGLE_COVARIATE` (incl. "No covariates selected — unadjusted model"), `PF_SPLIT_SUMMARY` (training and complete test row counts), `PF_SAMPLE_SUMMARY`, `PF_MODEL_SUMMARY`, `PF_DATA_STRUCTURE`, `PF_REFERENCE_LEVELS`.
 
 **Passes:** `validate_analysis()` also returns `checks_run` and `passed` (one pass message per check that ran and raised nothing; stricter variants such as `PF_LOW_EPV_5` fold onto their head code). The Step 5 Summary lists them.
 
@@ -1015,7 +1157,8 @@ Run Model tab — layout_sidebar(position = "left"):
            Advanced ▸ Optimizer            [mixed models only]
            PREFLIGHT (errors + warnings)   [pulses on disabled Run click]
            [ Run Model ]
-  Main:    Model header — type · Modelling: ead = TRUE (vs FALSE) · Formula
+  Main:    Model header — type · Modelling: ead = TRUE (vs FALSE) ·
+           Fitted on: training set [split] · Formula
            Primary result | Coefficients | Fit statistics + Fitting notes
            ▸ R Code Preview                [placeholder until codegen]
 ```
@@ -1030,14 +1173,15 @@ Single `uiOutput` banner at top of each vertical pill's main panel. Red text if 
 
 | Change | From step | Clears | Modal |
 |---|---|---|---|
-| Role assignment change | 1 | Table 1, var investigation, covariate selection, model, diagnostics, results | Yes if downstream results exist |
-| Covariate change in Step 4 | 4 | Model, diagnostics, results | Yes if model run (first change only — the model is then gone) |
-| New Step 5 model run | 4 | Previous model, diagnostics, results (replaced by the new fit) | No |
-| Step 5 setting change (optimizer) after a fit | 5 | Model, diagnostics, results — `model_design` is kept (the new setting is written after the reset) | Yes |
+| Role assignment change | 1 | Table 1, var investigation, covariate selection, model, diagnostics, performance, results | Yes if downstream results exist |
+| Train/test split change (Step 1) | 3 | Var investigation (incl. collinearity), model, diagnostics, performance, results — Table 1, covariate selection, `purpose_specification` kept | Yes if var investigation or a model exists |
+| Covariate change in Step 4 | 4 | Model, diagnostics, performance, results | Yes if model run (first change only — the model is then gone) |
+| New Step 5 model run | 4 | Previous model, diagnostics, performance, results (replaced by the new fit) | No |
+| Step 5 setting change (optimizer) after a fit | 5 | Model, diagnostics, performance, results — `model_design` is kept (the new setting is written after the reset) | Yes |
 
-The model type can no longer change on its own — it follows Step 1 roles, whose reset already clears the model.
+The model type can no longer change on its own — it follows Step 1 roles, whose reset already clears the model. A role reset (1) leaves `purpose_specification` alone; it is Step 1's own setting.
 
-Does NOT trigger: Table 1 changes, diagnostic category changes, investigation reruns, export changes.
+Does NOT trigger: the model purpose alone, Table 1 changes, diagnostic or performance check changes, investigation reruns, export changes.
 
 Confirmation modal lists only items that actually exist and will be cleared.
 
@@ -1085,7 +1229,7 @@ No candidates → disabled. Single candidate → valid. All excluded → modal w
 
 ### A10.1 Overview
 
-Export reads from cached `analysis_result`. No recomputation during export. Checklist repopulates on Step 8 tab entry. Items whose source has not been created yet are shown disabled (§A5.3 Step 8).
+Export reads from cached `analysis_result`. No recomputation during export. Checklist repopulates on Step 9 tab entry. Items whose source has not been created yet are shown disabled (§A5.3 Step 9).
 
 Export produces **materials** — outputs for publication and reproduction. Saving and resuming work is a **session file** (§M8), not an export.
 
@@ -1113,7 +1257,12 @@ analysis_[YYYY-MM-DD_HHMMSS]/
 │   ├── tables/
 │   │   └── [diagnostic_summary.docx, vif_table.docx, etc.]
 │   └── figures/
-│       └── [residuals_vs_fitted.png, roc_curve.png, etc.]
+│       └── [residuals_vs_fitted.png, linearity.png, etc.]
+├── performance/
+│   ├── tables/
+│   │   └── performance_summary.docx          ← one column per set of rows
+│   └── figures/
+│       └── [roc_curve_apparent.png, roc_curve_test.png, calibration_test.png, etc.]
 ├── analysis_report.docx
 ├── analysis_result.rds
 └── analysis_package_[HHMMSS].zip
@@ -1127,7 +1276,7 @@ Tables via `flextable::save_as_docx()`. Figures via `ggplot2::ggsave()` (8×6 in
 
 **Word:** `officer::read_docx()` + `body_add_*()`. **HTML:** `rmarkdown` template at `inst/report_template.Rmd`.
 
-Fixed structure: title/metadata → spec summary → methods paragraph → Table 1 → results → Appendix A (variable selection) → Appendix B (diagnostics). Sections omitted if content not generated.
+Fixed structure: title/metadata → spec summary → methods paragraph → Table 1 → results → performance (when run; first for a prediction model) → Appendix A (variable selection) → Appendix B (diagnostics). Sections omitted if content not generated.
 
 ### A10.8–A10.9 Spec Export, Analysis Package
 
@@ -1148,8 +1297,9 @@ Spec exported as both JSON (human-readable) and RDS (programmatic). Analysis pac
 - Linear regression, logistic regression, linear mixed model, logistic mixed model
 - Stepwise variable selection (forward/backward, AIC/BIC)
 - LASSO variable selection
-- Model assumption diagnostics (residuals, influence, VIF, convergence, separation)
-- Prediction performance diagnostics (ROC/AUC, calibration, predicted probabilities) — supplementary
+- Model assumption diagnostics (residuals, linearity of continuous predictors, influence, VIF, convergence, separation, random effects)
+- Model purpose (association / prediction) with an optional train/test split variable
+- Performance step: ROC/AUC, calibration (with test-set calibration intercept and slope), predicted probabilities, prediction error — apparent and on a held-out test set
 - Manuscript-ready tables and figures
 - Methods paragraph auto-generation
 - Export zip with manuscript-oriented folder structure
@@ -1163,7 +1313,11 @@ Spec exported as both JSON (human-readable) and RDS (programmatic). Analysis pac
 
 **Mid Priority — v1.5:** analysis package import, additional models (GEE, multinomial, ordinal, Poisson, NB), marginal effects, LRT p-values for glmer (advanced option), profile likelihood CIs (advanced option), elastic net (LASSO alpha), customizable report builder, NNT/ARR, dynamic rounding.
 
-**Low Priority — v2+:** survival models, stratified models, saved runs, async progress, prediction modeling infrastructure (bootstrap optimism correction, cross-validation, split-sample, calibration slope, NRI, IDI, decision curves). Step 6 reports apparent performance only.
+**Performance validation — built (Phase 7b, 2026-09-19):** cross-validation and bootstrap optimism correction (§A5.3 Model › Performance). Deferred from it: shrunk coefficients (applying the bootstrap shrinkage factor) as an optional output; decision curve analysis; replaying data-driven variable selection inside resamples (by design not done — see §A1.4a).
+
+**Also deferred for Diagnostics (Step 6):** cluster-level influence for mixed models (leave-one-cluster-out change in the fixed effects).
+
+**Low Priority — v2+:** survival models, stratified models, saved runs, async progress, NRI, IDI, decision curves.
 
 ### A11.3 Out of Scope Permanently
 
@@ -1182,12 +1336,14 @@ R/
 ├── module_analysis_table1.R              ← Step 2
 ├── module_analysis_varinvestigation.R    ← Step 3
 ├── module_analysis_covariate_confirm.R   ← Step 4
-├── module_analysis_modelspec.R           ← Step 5
+├── module_analysis_modelspec.R           ← Step 5 (Model Creation)
 ├── module_analysis_diagnostics.R         ← Step 6
-├── module_analysis_results.R             ← Step 7
-├── module_analysis_export.R              ← Step 8
+├── module_analysis_performance.R         ← Step 7
+├── module_analysis_results.R             ← Step 8
+├── module_analysis_export.R              ← Step 9
 ├── service_analysis_models.R             ← model fitting engines
 ├── service_analysis_diagnostics.R        ← diagnostic computation
+├── service_analysis_performance.R        ← performance computation (apparent, test set)
 ├── service_analysis_tables.R             ← gtsummary table generation
 ├── service_analysis_plots.R              ← ggplot figure generation
 ├── service_analysis_validation.R         ← preflight validator
@@ -1196,7 +1352,7 @@ R/
 ├── service_analysis_codegen.R            ← R code generator
 ├── service_analysis_export.R             ← export assembly pipeline
 ├── service_analysis_pipeline.R           ← reset_analysis_pipeline()
-├── analysis_utils.R                      ← formula assembly, reference levels, complete cases
+├── analysis_utils.R                      ← formula assembly, reference levels, complete cases, train/test rows
 ├── module_session.R                      ← session save/load menu, autosave, resume (§M8)
 └── service_session.R                     ← session build/read/migrate/reconcile (§M8)
 ```
@@ -1211,6 +1367,7 @@ R/
 | `module_analysis_covariate_confirm.R` | (reads from `analysis_result$variable_investigation`) |
 | `module_analysis_modelspec.R` | `service_analysis_models.R`, `service_analysis_validation.R` (Tier 2), `service_analysis_summary.R`, `service_analysis_codegen.R` (deferred) |
 | `module_analysis_diagnostics.R` | `service_analysis_diagnostics.R`, `service_analysis_plots.R` |
+| `module_analysis_performance.R` | `service_analysis_performance.R`, `service_analysis_plots.R` |
 | `module_analysis_results.R` | `service_analysis_tables.R`, `service_analysis_plots.R` |
 | `module_analysis_export.R` | `service_analysis_export.R` |
 | `module_session.R` | `service_session.R` |

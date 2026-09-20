@@ -129,7 +129,8 @@ analysis_outcome_event <- function(spec, data) {
        clusters   = sort(as.character(vr$cluster_variables)),
        references = refs,
        model_type = spec$model_design$model_type,
-       optimizer  = spec$model_design$optimizer)
+       optimizer  = spec$model_design$optimizer,
+       split      = analysis_split(spec))
 }
 
 #' Has the spec changed since the model was fitted?
@@ -138,7 +139,8 @@ analysis_outcome_event <- function(spec, data) {
 #' @param result The \code{analysis_result}; its \code{specification_snapshot}
 #'   is the spec the model was fitted with.
 #' @return \code{TRUE} when a fitted model exists and any model input
-#'   (roles, covariates, reference levels, model type, optimizer) differs.
+#'   (roles, covariates, reference levels, model type, optimizer, train/test
+#'   split) differs.
 #' @export
 analysis_fit_is_stale <- function(spec, result) {
   if (is.null(result$fitted_models$primary_model)) return(FALSE)
@@ -150,10 +152,12 @@ analysis_fit_is_stale <- function(spec, result) {
 
 #' Fit the analysis model described by a spec
 #'
-#' Builds the model data (complete cases over the model variables, clusters
-#' included only for mixed models; ordered factors converted to unordered so
-#' every factor uses treatment contrasts; reference levels applied; unused
-#' levels dropped; cluster variables converted to factors), fits the model
+#' Builds the model data (the training rows when a train/test split applies —
+#' \code{analysis_model_data()}; complete cases over the model variables,
+#' clusters included only for mixed models; ordered factors converted to
+#' unordered so every factor uses treatment contrasts; reference levels
+#' applied; unused levels dropped; cluster variables converted to factors —
+#' \code{.prepare_model_rows()}), fits the model
 #' named by \code{spec$model_design$model_type}, and extracts coefficients,
 #' fit statistics and fitted values. Warnings and messages raised while
 #' fitting are captured, never thrown.
@@ -167,12 +171,15 @@ analysis_fit_is_stale <- function(spec, result) {
 #'   estimate, std.error, statistic, p.value, conf.low, conf.high, effect,
 #'   effect.low, effect.high, effect_measure), \code{fit_statistics}
 #'   (data.frame: key, label, value, format), \code{predicted_values},
-#'   \code{n_total}, \code{n_used}, \code{outcome_event} (binary outcomes:
+#'   \code{n_total} (rows available to the model: the training set when split),
+#'   \code{n_used}, \code{outcome_event} (binary outcomes:
 #'   list(variable, event, reference)), \code{reference_levels} (factor
 #'   predictors actually used), and \code{messages}
 #'   (data.frame: level, stage, message).
 #' @export
 fit_analysis_model <- function(spec, data) {
+  split <- analysis_split_rows(spec, data)
+  data  <- analysis_model_data(spec, data)
   roles      <- spec$variable_roles
   model_type <- spec$model_design$model_type
   outcome    <- roles$outcome_variable
@@ -210,22 +217,14 @@ fit_analysis_model <- function(spec, data) {
   if (length(missing) > 0L) {
     return(.fail(paste("Not in the analysis dataset:", paste(missing, collapse = ", "))))
   }
-  keep <- intersect(c(vars, ".edark_row_id"), names(data))
-  cc   <- compute_complete_cases(data[, keep, drop = FALSE], vars)$data
+  if (!is.null(split) && nrow(data) == 0L) {
+    return(.fail(sprintf("No rows have the training level '%s' of '%s'.",
+                         split$training_level, split$variable)))
+  }
+  cc <- .prepare_model_rows(data, outcome, preds, clusters, roles$reference_levels)
   n_total <- nrow(data)
   n_used  <- nrow(cc)
   if (n_used == 0L) return(.fail("No complete cases remain."))
-
-  # Ordered factors (e.g. from Auto-factor / cut-points) would get polynomial
-  # contrasts; clinical tables expect each level against a reference.
-  for (v in c(outcome, preds)) {
-    if (is.ordered(cc[[v]])) cc[[v]] <- factor(cc[[v]], levels = levels(cc[[v]]), ordered = FALSE)
-  }
-  cc <- apply_reference_levels(cc, roles$reference_levels)
-  for (v in c(outcome, preds)) {
-    if (is.factor(cc[[v]])) cc[[v]] <- droplevels(cc[[v]])
-  }
-  for (cl in clusters) cc[[cl]] <- factor(cc[[cl]])
 
   outcome_event <- NULL
   if (is_logit) {
@@ -238,38 +237,23 @@ fit_analysis_model <- function(spec, data) {
     return(.fail(sprintf("Linear models need a numeric outcome; '%s' is not.", outcome)))
   }
 
-  .msg("note", "data", sprintf("%d of %d rows used (%d excluded for missing data).",
-                               n_used, n_total, n_total - n_used))
+  if (!is.null(split)) {
+    .msg("note", "data", sprintf(
+      "Fitted on the training set (%s = %s): %d rows. %d test rows are held out for Performance.",
+      split$variable, split$training_level, sum(split$training), sum(split$test)))
+  }
+  .msg("note", "data", sprintf("%d of %d %srows used (%d excluded for missing data).",
+                               n_used, n_total, if (!is.null(split)) "training " else "",
+                               n_total - n_used))
 
   fmla <- build_analysis_formula(spec)
 
   # ── Fit ───────────────────────────────────────────────────────────────────
-  warns <- character(0)
-  notes <- character(0)
-  err   <- NULL
-  model <- withCallingHandlers(
-    tryCatch(
-      switch(model_type,
-        linear   = stats::lm(fmla, data = cc),
-        logistic = stats::glm(fmla, data = cc, family = stats::binomial()),
-        linear_mixed = lmerTest::lmer(
-          fmla, data = cc, control = lme4::lmerControl(optimizer = optimizer)),
-        logistic_mixed = lme4::glmer(
-          fmla, data = cc, family = stats::binomial(),
-          control = lme4::glmerControl(optimizer = optimizer))
-      ),
-      error = function(e) { err <<- conditionMessage(e); NULL }
-    ),
-    warning = function(w) {
-      warns <<- c(warns, conditionMessage(w))
-      invokeRestart("muffleWarning")
-    },
-    message = function(m) {
-      notes <<- c(notes, trimws(conditionMessage(m)))
-      invokeRestart("muffleMessage")
-    }
-  )
-  if (is.null(model)) return(.fail(paste("Model fitting failed:", err)))
+  ft    <- .fit_engine(model_type, fmla, cc, optimizer)
+  model <- ft$model
+  warns <- ft$warnings
+  notes <- ft$messages
+  if (is.null(model)) return(.fail(paste("Model fitting failed:", ft$error)))
 
   for (w in unique(warns)) .msg("warning", "fit", .explain_fit_warning(w))
   singular <- is_mixed && isTRUE(lme4::isSingular(model))
@@ -322,6 +306,66 @@ fit_analysis_model <- function(spec, data) {
     reference_levels = ref_levels,
     messages         = msgs
   )
+}
+
+
+# Fit one model with the engine for its type, capturing warnings and messages
+# instead of throwing them. Used by the primary fit, the unadjusted models and
+# the Performance resamples. `satterthwaite = FALSE` fits a linear mixed model
+# with lme4::lmer — same estimates, faster, for refits that need no p-values.
+# Returns list(model, warnings, messages, error); model is NULL on failure.
+.fit_engine <- function(model_type, fmla, data, optimizer = "bobyqa", satterthwaite = TRUE) {
+  warns <- character(0)
+  notes <- character(0)
+  err   <- NULL
+  model <- withCallingHandlers(
+    tryCatch(
+      switch(model_type,
+        linear   = stats::lm(fmla, data = data),
+        logistic = stats::glm(fmla, data = data, family = stats::binomial()),
+        linear_mixed = if (satterthwaite) {
+          lmerTest::lmer(fmla, data = data, control = lme4::lmerControl(optimizer = optimizer))
+        } else {
+          lme4::lmer(fmla, data = data, control = lme4::lmerControl(optimizer = optimizer))
+        },
+        logistic_mixed = lme4::glmer(
+          fmla, data = data, family = stats::binomial(),
+          control = lme4::glmerControl(optimizer = optimizer))
+      ),
+      error = function(e) { err <<- conditionMessage(e); NULL }
+    ),
+    warning = function(w) {
+      warns <<- c(warns, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    },
+    message = function(m) {
+      notes <<- c(notes, trimws(conditionMessage(m)))
+      invokeRestart("muffleMessage")
+    }
+  )
+  list(model = model, warnings = warns, messages = notes, error = err)
+}
+
+
+# Model rows from a data set: complete cases over the model variables (the
+# row id is carried along), ordered factors made unordered (e.g. Auto-factor /
+# cut-points would otherwise get polynomial contrasts; clinical tables expect
+# each level against a reference), reference levels applied, unused levels
+# dropped, clusters made factors. Used for the fit and, in Performance, for the
+# test set, so both are prepared the same way.
+.prepare_model_rows <- function(data, outcome, preds, clusters, reference_levels) {
+  vars <- unique(c(outcome, preds, clusters))
+  keep <- intersect(c(vars, ".edark_row_id"), names(data))
+  cc   <- compute_complete_cases(data[, keep, drop = FALSE], vars)$data
+  for (v in c(outcome, preds)) {
+    if (is.ordered(cc[[v]])) cc[[v]] <- factor(cc[[v]], levels = levels(cc[[v]]), ordered = FALSE)
+  }
+  cc <- apply_reference_levels(cc, reference_levels)
+  for (v in c(outcome, preds)) {
+    if (is.factor(cc[[v]])) cc[[v]] <- droplevels(cc[[v]])
+  }
+  for (cl in clusters) cc[[cl]] <- factor(cc[[cl]])
+  cc
 }
 
 
@@ -424,7 +468,7 @@ fit_analysis_model <- function(spec, data) {
 }
 
 
-#' Fit the unadjusted (one-variable) models for Step 7
+#' Fit the unadjusted (one-variable) models for Model › Results
 #'
 #' One model per predictor of the fitted primary model (exposure first, then
 #' covariates), each containing that predictor alone. Every model is fitted
@@ -473,25 +517,10 @@ fit_unadjusted_models <- function(result, progress_fn = NULL) {
     rhs  <- paste(c(v, if (is_mixed) paste0("(1 | ", clusters, ")")), collapse = " + ")
     fmla <- stats::as.formula(paste(outcome, "~", rhs))
 
-    warns <- character(0)
-    notes <- character(0)
-    err   <- NULL
-    fit <- withCallingHandlers(
-      tryCatch(
-        switch(model_type,
-          linear   = stats::lm(fmla, data = dat),
-          logistic = stats::glm(fmla, data = dat, family = stats::binomial()),
-          linear_mixed = lmerTest::lmer(
-            fmla, data = dat, control = lme4::lmerControl(optimizer = optimizer)),
-          logistic_mixed = lme4::glmer(
-            fmla, data = dat, family = stats::binomial(),
-            control = lme4::glmerControl(optimizer = optimizer))
-        ),
-        error = function(e) { err <<- conditionMessage(e); NULL }
-      ),
-      warning = function(w) { warns <<- c(warns, conditionMessage(w)); invokeRestart("muffleWarning") },
-      message = function(m) { notes <<- c(notes, trimws(conditionMessage(m))); invokeRestart("muffleMessage") }
-    )
+    ft    <- .fit_engine(model_type, fmla, dat, optimizer)
+    fit   <- ft$model
+    warns <- ft$warnings
+    err   <- ft$error
 
     if (is.null(fit)) {
       status[nrow(status) + 1L, ] <- list(v, "failed", .short_fit_warning(err))

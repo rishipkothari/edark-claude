@@ -3,7 +3,8 @@
 #' \code{ggplot2} figures for the Analysis module. Each function takes plain
 #' vectors / data frames (never a Shiny object) and returns a ggplot, so the
 #' same figure is shown in the app and saved by the export.
-#' Phase 6: diagnostic plots. Phase 7 adds the forest plot.
+#' Diagnostic plots (Model › Diagnostics), performance plots (Model › Performance) and the forest plot
+#' (Model › Results).
 #'
 #' @importFrom magrittr %>%
 #'
@@ -89,6 +90,38 @@ NULL
 }
 
 
+# Linearity: residuals against each continuous predictor. Linear models get a
+# scatter with a loess line per predictor; logistic models get binned
+# residuals per predictor (the raw residuals of a 0/1 outcome are two bands).
+# `d` is a long data.frame(term, x, resid) or, for binned, (term, xbar, ybar,
+# CI_low, CI_high, group).
+.plot_linearity <- function(d, binned) {
+  if (binned) {
+    d$inside <- ifelse(d$group == "yes", "Includes 0", "Excludes 0")
+    p <- ggplot2::ggplot(d, ggplot2::aes(.data$xbar, .data$ybar, colour = .data$inside)) +
+      ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = .AP_MUTED) +
+      ggplot2::geom_errorbar(ggplot2::aes(ymin = .data$CI_low, ymax = .data$CI_high), width = 0) +
+      ggplot2::geom_point(size = 1.8) +
+      ggplot2::scale_colour_manual(values = c("Includes 0" = .AP_PRIMARY, "Excludes 0" = .AP_FLAG),
+                                   name = NULL) +
+      ggplot2::labs(subtitle = "Mean residual per bin of the predictor; a trend suggests the effect is not linear on the log-odds scale",
+                    y = "Average residual")
+  } else {
+    p <- ggplot2::ggplot(d, ggplot2::aes(.data$x, .data$resid)) +
+      ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = .AP_MUTED) +
+      ggplot2::geom_point(alpha = 0.35, colour = .AP_PRIMARY) +
+      ggplot2::geom_smooth(method = "loess", formula = y ~ x, se = FALSE,
+                           colour = .AP_FLAG, linewidth = 0.8) +
+      ggplot2::labs(subtitle = "The smoothed line should stay flat around 0; a curve suggests a non-linear effect",
+                    y = "Residual")
+  }
+  p +
+    ggplot2::facet_wrap(~ term, scales = "free_x") +
+    ggplot2::labs(title = "Residuals vs each continuous predictor", x = NULL) +
+    .ap_theme()
+}
+
+
 # ── Influence ─────────────────────────────────────────────────────────────────
 
 .plot_cooks <- function(ids, cooks, threshold, n_label = 5L) {
@@ -168,23 +201,29 @@ NULL
 }
 
 
-# ── Prediction performance ────────────────────────────────────────────────────
+# ── Performance (Model › Performance) ──────────────────────────────────────────────────────
 
-.plot_roc <- function(roc, auc, ci) {
+# Title with the set of rows it describes, e.g. "ROC curve (test set)".
+.ap_title <- function(title, set_label = NULL) {
+  if (is.null(set_label)) title else paste0(title, " (", set_label, ")")
+}
+
+
+.plot_roc <- function(roc, auc, ci, set_label = NULL, subtitle = NULL) {
   df <- data.frame(fpr = 1 - roc$specificities, tpr = roc$sensitivities)
   df <- df[order(df$fpr, df$tpr), , drop = FALSE]
   ggplot2::ggplot(df, ggplot2::aes(.data$fpr, .data$tpr)) +
     ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed", colour = .AP_MUTED) +
     ggplot2::geom_step(colour = .AP_PRIMARY, linewidth = 0.9) +
     ggplot2::coord_equal(xlim = c(0, 1), ylim = c(0, 1)) +
-    ggplot2::labs(title = "ROC curve",
-                  subtitle = sprintf("AUC %.3f (95%% CI %.3f\u2013%.3f, DeLong)", auc, ci[1L], ci[3L]),
+    ggplot2::labs(title = .ap_title("ROC curve", set_label),
+                  subtitle = subtitle %||% sprintf("AUC %.3f (95%% CI %.3f\u2013%.3f, DeLong)", auc, ci[1L], ci[3L]),
                   x = "1 \u2212 specificity", y = "Sensitivity") +
     .ap_theme()
 }
 
 
-.plot_calibration_logistic <- function(bins) {
+.plot_calibration_logistic <- function(bins, set_label = NULL) {
   lim <- c(0, max(c(bins$high, bins$predicted), na.rm = TRUE))
   ggplot2::ggplot(bins, ggplot2::aes(.data$predicted, .data$observed)) +
     ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed", colour = .AP_MUTED) +
@@ -193,26 +232,55 @@ NULL
     ggplot2::geom_line(colour = .AP_PRIMARY, alpha = 0.5) +
     ggplot2::geom_point(colour = .AP_PRIMARY, size = 2.5) +
     ggplot2::coord_equal(xlim = lim, ylim = lim) +
-    ggplot2::labs(title = "Calibration by decile of predicted risk",
+    ggplot2::labs(title = .ap_title("Calibration by decile", set_label),
                   subtitle = "On the dashed line, predicted risk = observed risk",
                   x = "Mean predicted probability", y = "Observed proportion (95% CI)") +
     .ap_theme()
 }
 
 
-.plot_predicted_probs <- function(pred, outcome_factor) {
+# Smoothed calibration curve: apparent and bootstrap bias-corrected (as
+# rms::calibrate). `curve` is data.frame(predicted, apparent, corrected);
+# `pred` (the apparent predictions) is drawn as a rug.
+.plot_calibration_curve <- function(curve, pred, logit, outcome, set_label = NULL) {
+  long <- rbind(
+    data.frame(x = curve$predicted, y = curve$apparent,  line = "Apparent"),
+    data.frame(x = curve$predicted, y = curve$corrected, line = "Bias-corrected")
+  )
+  long <- long[is.finite(long$y), , drop = FALSE]
+  rug  <- data.frame(x = if (length(pred) > 2000L) pred[seq(1L, length(pred), length.out = 2000L)] else pred)
+  lim  <- range(c(curve$predicted, long$y), na.rm = TRUE)
+  if (logit) lim <- c(max(0, lim[1L]), min(1, lim[2L]))
+  ggplot2::ggplot(long, ggplot2::aes(.data$x, .data$y, colour = .data$line, linetype = .data$line)) +
+    ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed", colour = .AP_MUTED) +
+    ggplot2::geom_rug(data = rug, ggplot2::aes(x = .data$x), inherit.aes = FALSE,
+                      sides = "b", alpha = 0.15, colour = .AP_MUTED) +
+    ggplot2::geom_line(linewidth = 0.9) +
+    ggplot2::scale_colour_manual(values = c(Apparent = .AP_MUTED, `Bias-corrected` = .AP_PRIMARY), name = NULL) +
+    ggplot2::scale_linetype_manual(values = c(Apparent = "dotted", `Bias-corrected` = "solid"), name = NULL) +
+    ggplot2::coord_cartesian(xlim = lim, ylim = lim) +
+    ggplot2::labs(title = .ap_title("Calibration curve", set_label),
+                  subtitle = "Smoothed (lowess); on the dashed line, predicted = observed",
+                  x = if (logit) "Predicted probability" else "Predicted value",
+                  y = if (logit) "Observed proportion" else sprintf("Observed %s", outcome)) +
+    .ap_theme() +
+    ggplot2::theme(legend.position = "bottom")
+}
+
+
+.plot_predicted_probs <- function(pred, outcome_factor, set_label = NULL) {
   df <- data.frame(pred = pred, group = outcome_factor)
   ggplot2::ggplot(df, ggplot2::aes(.data$pred, fill = .data$group)) +
     ggplot2::geom_histogram(bins = 30, alpha = 0.6, position = "identity", colour = NA) +
     ggplot2::scale_fill_manual(values = c(.AP_MUTED, .AP_PRIMARY), name = "Observed outcome") +
-    ggplot2::labs(title = "Predicted probabilities by observed outcome",
+    ggplot2::labs(title = .ap_title("Predicted probabilities", set_label),
                   subtitle = "Less overlap = better separation of events from non-events",
                   x = "Predicted probability", y = "Rows") +
     .ap_theme()
 }
 
 
-.plot_observed_predicted <- function(pred, y, outcome) {
+.plot_observed_predicted <- function(pred, y, outcome, set_label = NULL) {
   df  <- data.frame(pred = pred, y = y)
   rng <- range(c(pred, y), na.rm = TRUE)
   ggplot2::ggplot(df, ggplot2::aes(.data$pred, .data$y)) +
@@ -221,14 +289,14 @@ NULL
     ggplot2::geom_smooth(method = "loess", formula = y ~ x, se = FALSE,
                          colour = .AP_FLAG, linewidth = 0.8) +
     ggplot2::coord_cartesian(xlim = rng, ylim = rng) +
-    ggplot2::labs(title = "Observed vs predicted",
+    ggplot2::labs(title = .ap_title("Observed vs predicted", set_label),
                   subtitle = "The smoothed line should follow the dashed diagonal",
                   x = "Predicted value", y = sprintf("Observed %s", outcome)) +
     .ap_theme()
 }
 
 
-# ── Step 7: forest plot ───────────────────────────────────────────────────────
+# ── Model › Results: forest plot ───────────────────────────────────────────────────────
 
 #' Forest plot of the adjusted estimates
 #'

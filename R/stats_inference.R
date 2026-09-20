@@ -139,7 +139,7 @@ edark_format_ci <- function(est, low, high) {
 #' Coefficient table with Wald-type confidence intervals
 #'
 #' The one place regression estimates, CIs and p-values are extracted
-#' (Step 3 univariable screen, Step 5 model, Step 7 results). Works for
+#' (Step 3 univariable screen, Step 5 model, Model › Results). Works for
 #' \code{lm}, binomial \code{glm}, \code{lmerTest::lmer} and
 #' \code{lme4::glmer} fits. Estimates, SEs, test statistics and p-values come
 #' from \code{summary(model)$coefficients} (fixed effects only); terms are

@@ -1,6 +1,6 @@
-#' Analysis Step 8 — Export Module
+#' Analysis Step 6 — Export Module
 #'
-#' UI and server for Step 8 of the Analysis workflow: export preset selector,
+#' UI and server for Step 6 of the Analysis workflow: export preset selector,
 #' item checklists, zip preview, and download handler producing a structured
 #' analysis folder (see PRD §10.2 for folder layout).
 #' Full implementation: Phase 8 of the build plan.
@@ -21,7 +21,7 @@ analysis_export_ui <- function(id) {
       shiny::tags$p(
         class = "text-muted fst-italic text-center mt-4",
         shiny::icon("clock"),
-        " Step 8 \u2014 Export: available in Phase 8."
+        " Step 6 \u2014 Export: available in Phase 8."
       )
     )
   )

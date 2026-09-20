@@ -7,5 +7,6 @@
 \code{ggplot2} figures for the Analysis module. Each function takes plain
 vectors / data frames (never a Shiny object) and returns a ggplot, so the
 same figure is shown in the app and saved by the export.
-Phase 6: diagnostic plots. Phase 7 adds the forest plot.
+Diagnostic plots (Model › Diagnostics), performance plots (Model › Performance) and the forest plot
+(Model › Results).
 }

@@ -7,21 +7,20 @@
 Post-fit diagnostics for the Step 5 model (PRD §7.2\enc{–}{-}7.5). Pure
 functions — no Shiny. \code{analysis_diagnostic_options()} lists the checks
 a model type offers; \code{run_analysis_diagnostics()} computes the selected
-ones and returns values, plots and messages for Step 6 to store.
+ones and returns values, plots and messages for Model › Diagnostics to store.
 }
 \details{
-Two groups of checks:
+Checks of the model's assumptions and stability: residuals (standard plots
 \itemize{
-\item \strong{Model assumptions} — residuals (standard plots +
-Breusch-Pagan for linear models; binned residuals for logistic models,
-whose raw residuals are uninformative), influence (Cook's distance,
-leverage — non-mixed models), collinearity (VIF), separation (logistic),
-random effects (per-cluster variance, ICC, cluster sizes, Q-Q — mixed).
-\item \strong{Prediction performance} — optional, for prediction studies.
-Apparent (in-sample) performance only. Mixed models use marginal
-predictions (\code{re.form = NA}): the fixed effects alone, as for a
-new patient from an unseen cluster.
+\item Breusch-Pagan for linear models; binned residuals for logistic models,
+whose raw residuals are uninformative), linearity of each continuous
+predictor, influence (Cook's distance, leverage — non-mixed models),
+collinearity (VIF), separation (logistic), random effects (per-cluster
+variance, ICC, cluster sizes, Q-Q — mixed). Sample accounting and fitting
+warnings (convergence, singular fit) are always reported — they cost
+nothing and belong with every model.
 }
-Sample accounting and fitting warnings (convergence, singular fit) are
-always reported — they cost nothing and belong with every model.
+
+Predictive performance (discrimination, calibration, prediction error) is
+Model › Performance — \code{service_analysis_performance.R}.
 }

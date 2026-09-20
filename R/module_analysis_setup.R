@@ -142,6 +142,7 @@ analysis_setup_ui <- function(id) {
         shiny::uiOutput(ns("incoming_snapshot_ui")),
         shiny::tags$hr(class = "my-2"),
         shiny::uiOutput(ns("study_type_ui")),
+        shiny::uiOutput(ns("purpose_ui")),
         shiny::uiOutput(ns("role_summary_ui")),
         shiny::uiOutput(ns("selected_snapshot_ui"))
       ),
@@ -165,12 +166,28 @@ analysis_setup_server <- function(id, shared_state) {
     MULTI_ROLES <- c("candidate", "cluster")
     ALL_ROLES   <- c(RADIO_ROLES, MULTI_ROLES)
 
+    # Which column types may hold a role. Model terms must be numeric or
+    # factor: a timestamp enters as seconds since 1970 and free text as one
+    # dummy per string. Derived variables (year, era, duration) are the way in.
+    # A cluster only labels groups, so anything but a timestamp will do.
+    .role_eligible <- function(v, role) {
+      ctypes <- shiny::isolate(shared_state$column_types)
+      type   <- if (!is.null(ctypes) && v %in% names(ctypes)) ctypes[[v]] else "unknown"
+      if (role == "cluster") return(type != "datetime")
+      type %in% c("numeric", "factor")
+    }
+
     # Named list keyed by variable name; each entry is a role assignment list.
     roles_state    <- shiny::reactiveVal(NULL)
     # Incremented on freeze / unfreeze to force re-render of the role table.
     frozen_trigger <- shiny::reactiveVal(0L)
     # Holds a pending role-change event while waiting for user confirmation.
     pending_change <- shiny::reactiveVal(NULL)
+    # Incremented to rebuild the model purpose inputs from the spec (after a
+    # role write, or to undo a cancelled change).
+    purpose_trigger <- shiny::reactiveVal(0L)
+    # Holds a proposed purpose_specification while waiting for confirmation.
+    pending_purpose <- shiny::reactiveVal(NULL)
 
     .empty_role <- function() {
       list(outcome = FALSE, exposure = FALSE, candidate = FALSE,
@@ -236,6 +253,8 @@ analysis_setup_server <- function(id, shared_state) {
           lasso_lambda            = "lambda.1se",
           selected_variables      = NULL
         ),
+        purpose_specification = .default_purpose_specification(),
+        validation_settings   = .default_validation_settings(),
         model_design = .default_model_design(),
         analysis_options = list(
           missing_data_handling = "complete_case",
@@ -379,10 +398,11 @@ analysis_setup_server <- function(id, shared_state) {
         }
       } else if (var == "__select_all_candidates__") {
         for (v in names(current)) {
-          if (!.has_role(v)) current[[v]][["candidate"]] <- TRUE
+          if (!.has_role(v) && .role_eligible(v, "candidate")) current[[v]][["candidate"]] <- TRUE
         }
       } else {
         if (!var %in% names(current)) return()
+        if (role %in% ALL_ROLES && isTRUE(value) && !.role_eligible(var, role)) return()
 
         if (role %in% ALL_ROLES) {
           if (isTRUE(value)) {
@@ -469,7 +489,17 @@ analysis_setup_server <- function(id, shared_state) {
       spec$table1_specification$stratify_by_exposure <- t1_strat_exp
       spec$table1_specification$stratify_by_outcome  <- t1_strat_out
 
+      # A variable cannot be both a model role and the train/test variable
+      ps <- spec$purpose_specification
+      if (!is.null(ps$split_variable) &&
+          ps$split_variable %in% c(outcome_var, exposure_var, candidates, cluster_vars)) {
+        ps["split_variable"] <- list(NULL)   # keep the fields, as NULL
+        ps["training_level"] <- list(NULL)
+        spec$purpose_specification <- ps
+      }
+
       shared_state$analysis_spec <- spec
+      purpose_trigger(shiny::isolate(purpose_trigger()) + 1L)   # refresh split choices
     }
 
     # ── Main content (pre-freeze vs post-freeze) ──────────────────────────────
@@ -539,8 +569,11 @@ analysis_setup_server <- function(id, shared_state) {
         htmltools::tags$span(class = cls, style = "font-size:0.7rem;", t)
       }
 
+      .dash <- function() htmltools::tags$span("\u2014", class = "text-muted")
+
       .radio_cell <- function(role_key) {
         function(value, index) {
+          if (!.role_eligible(vars[index], role_key)) return(.dash())
           htmltools::tags$input(
             type        = "radio",
             class       = "edark-role-radio form-check-input",
@@ -666,6 +699,7 @@ analysis_setup_server <- function(id, shared_state) {
             ),
             minWidth = 90,
             cell = function(value, index) {
+              if (!.role_eligible(vars[index], "candidate")) return(.dash())
               htmltools::tags$input(
                 type        = "checkbox",
                 class       = "edark-role-checkbox form-check-input",
@@ -695,10 +729,7 @@ analysis_setup_server <- function(id, shared_state) {
             minWidth = 70,
             cell = function(value, index) {
               v <- vars[index]
-              # Any column can identify groups except a timestamp
-              if (!is.null(ctypes) && v %in% names(ctypes) && ctypes[[v]] == "datetime") {
-                return(htmltools::tags$span("\u2014", class = "text-muted"))
-              }
+              if (!.role_eligible(v, "cluster")) return(.dash())
               htmltools::tags$input(
                 type        = "checkbox",
                 class       = "edark-role-checkbox form-check-input",
@@ -767,6 +798,189 @@ analysis_setup_server <- function(id, shared_state) {
         nudge
       )
     })
+
+    # ── Model purpose (prediction: optional train/test split) ────────────────
+    # The purpose is a study design decision, so it lives in Step 1: a split
+    # decides which rows Steps 3–5 may learn from, and must be set before them.
+
+    # Factor columns with two or more levels and no role
+    .split_candidates <- function(spec, data) {
+      vr    <- spec$variable_roles
+      roled <- c(vr$outcome_variable, vr$exposure_variable,
+                 vr$candidate_covariates, vr$cluster_variables)
+      vars  <- setdiff(names(data), c(".edark_row_id", roled))
+      vars[vapply(vars, function(v) {
+        is.factor(data[[v]]) && nlevels(droplevels(data[[v]])) >= 2L
+      }, logical(1))]
+    }
+
+    # Default training level: one named like "train", else the first level
+    .guess_training_level <- function(lv) {
+      hit <- lv[grepl("^train", lv, ignore.case = TRUE)]
+      if (length(hit) > 0L) hit[1L] else lv[1L]
+    }
+
+    output$purpose_ui <- shiny::renderUI({
+      purpose_trigger()
+      frozen_trigger()
+      spec  <- shiny::isolate(shared_state$analysis_spec)
+      adata <- shiny::isolate(shared_state$analysis_data)
+      if (is.null(spec) || is.null(adata)) return(NULL)
+      ps <- spec$purpose_specification %||% .default_purpose_specification()
+
+      cands <- .split_candidates(spec, adata)
+      sv    <- ps$split_variable
+      shiny::tagList(
+        shiny::tags$p("Model Purpose",
+          class = "text-muted small text-uppercase fw-semibold mt-3 mb-1"),
+        shiny::radioButtons(
+          ns("model_purpose"), label = NULL, inline = TRUE,
+          choices  = c(Association = "association", Prediction = "prediction"),
+          selected = ps$model_purpose %||% "association"
+        ),
+        shiny::tags$p(
+          class = "text-muted small mb-1",
+          "Association: estimate how the exposure or risk factors relate to the outcome.",
+          "Prediction: build a model to predict the outcome for new patients \u2014",
+          "judged by its performance (Step 5 \u203a Performance)."
+        ),
+        shiny::conditionalPanel(
+          condition = "input.model_purpose == 'prediction'", ns = ns,
+          shiny::tags$p("Validation",
+            class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+          shiny::radioButtons(
+            ns("validation_method"), label = NULL, width = "100%",
+            choiceNames = list(
+              shiny::span("Bootstrap", shiny::span(class = "small text-muted",
+                "\u2014 optimism correction")),
+              shiny::span("Cross-validation", shiny::span(class = "small text-muted",
+                "\u2014 k-fold")),
+              shiny::span("Held-out test set", shiny::span(class = "small text-muted",
+                "\u2014 e.g. other centres"))
+            ),
+            choiceValues = c("bootstrap", "cv", "split"),
+            selected = ps$validation_method %||% "bootstrap"
+          ),
+          shiny::tags$p(
+            class = "text-muted small mb-1",
+            "Bootstrap and cross-validation build the model from all rows and refit it in each",
+            "resample with the covariates confirmed in Step 4 (settings: Step 5 \u203a Performance).",
+            "A held-out test set is data kept apart on purpose, marked by a variable."
+          ),
+          shiny::conditionalPanel(
+            condition = "input.validation_method == 'split'", ns = ns,
+            shiny::selectInput(
+              ns("split_variable"), "Variable",
+              choices  = c(stats::setNames("", if (length(cands)) "Choose a factor\u2026" else "No eligible factor"),
+                           cands),
+              selected = if (!is.null(sv) && sv %in% cands) sv else "",
+              selectize = FALSE, width = "100%"
+            ),
+            shiny::uiOutput(ns("training_level_ui")),
+            shiny::tags$p(
+              class = "text-muted small mb-0",
+              "Variable investigation, covariate selection and the model use the training",
+              "rows only. Every other level is the held-out test set, used in Step 5 \u203a Performance.",
+              "Rows missing this variable are in neither set."
+            )
+          )
+        )
+      )
+    })
+
+    output$training_level_ui <- shiny::renderUI({
+      purpose_trigger()
+      v     <- input$split_variable
+      adata <- shiny::isolate(shared_state$analysis_data)
+      if (is.null(v) || !nzchar(v) || is.null(adata) || !v %in% names(adata)) return(NULL)
+      lv  <- levels(droplevels(adata[[v]]))
+      cur <- shiny::isolate(shared_state$analysis_spec)$purpose_specification
+      sel <- if (identical(cur$split_variable, v) && isTRUE(cur$training_level %in% lv)) {
+        cur$training_level
+      } else .guess_training_level(lv)
+      shiny::selectInput(ns("training_level"), "Training level", choices = lv,
+                         selected = sel, selectize = FALSE, width = "100%")
+    })
+
+    # The purpose_specification the inputs describe. Derived from state, not
+    # trusted blindly: training_level keeps its old value while its select is
+    # re-rendered for a new variable (§N1.3), so it must be a level of the
+    # chosen variable.
+    .purpose_from_inputs <- function() {
+      adata <- shiny::isolate(shared_state$analysis_data)
+      v <- input$split_variable
+      if (is.null(v) || !nzchar(v) || !v %in% names(adata) || !is.factor(adata[[v]])) v <- NULL
+      lvl <- NULL
+      if (!is.null(v)) {
+        lv  <- levels(droplevels(adata[[v]]))
+        lvl <- if (isTRUE(input$training_level %in% lv)) input$training_level else .guess_training_level(lv)
+      }
+      vm <- input$validation_method
+      list(
+        model_purpose     = if (identical(input$model_purpose, "prediction")) "prediction" else "association",
+        validation_method = if (isTRUE(vm %in% c("bootstrap", "cv", "split"))) vm else "bootstrap",
+        split_variable    = v,
+        training_level    = lvl
+      )
+    }
+
+    .write_purpose <- function(ps) {
+      spec <- shiny::isolate(shared_state$analysis_spec)
+      if (is.null(spec) || identical(spec$purpose_specification, ps)) return()
+      spec$purpose_specification <- ps
+      shared_state$analysis_spec <- spec
+    }
+
+    shiny::observeEvent(
+      list(input$model_purpose, input$validation_method, input$split_variable, input$training_level), {
+      spec <- shiny::isolate(shared_state$analysis_spec)
+      if (is.null(spec) || is.null(input$model_purpose)) return()
+      proposed <- .purpose_from_inputs()
+      if (identical(proposed, spec$purpose_specification)) return()
+
+      # Only a change of training rows invalidates anything: purpose alone
+      # changes no computation.
+      new_spec <- spec
+      new_spec$purpose_specification <- proposed
+      rows_change <- !identical(analysis_split(spec), analysis_split(new_spec))
+      res <- shiny::isolate(shared_state$analysis_result)
+      learned <- !is.null(res$variable_investigation) ||
+                 !is.null(res$fitted_models$primary_model)
+
+      if (rows_change && learned) {
+        pending_purpose(proposed)
+        shiny::showModal(shiny::modalDialog(
+          title = "Clear Analysis Results?",
+          shiny::p("Adding, changing or removing the held-out test set changes the rows the model learns from.",
+                   "Variable investigation, the fitted model, diagnostics, performance and",
+                   "results will be cleared. Table 1 and your covariate selection are kept."),
+          shiny::tags$small(class = "text-muted",
+                            "Cancel undoes your change and keeps everything as it was."),
+          footer = shiny::tagList(
+            shiny::actionButton(ns("cancel_purpose"),  "Cancel",           class = "btn-secondary"),
+            shiny::actionButton(ns("confirm_purpose"), "Clear & Continue", class = "btn-warning")
+          ),
+          easyClose = FALSE
+        ))
+        return()
+      }
+      .write_purpose(proposed)
+    }, ignoreInit = TRUE)
+
+    shiny::observeEvent(input$confirm_purpose, {
+      shiny::removeModal()
+      ps <- pending_purpose()
+      pending_purpose(NULL)
+      if (is.null(ps)) return()
+      reset_analysis_pipeline(shared_state, from_step = 3L)
+      .write_purpose(ps)
+    }, ignoreInit = TRUE)
+
+    shiny::observeEvent(input$cancel_purpose, {
+      shiny::removeModal()
+      pending_purpose(NULL)
+      purpose_trigger(shiny::isolate(purpose_trigger()) + 1L)   # inputs back to the spec
+    }, ignoreInit = TRUE)
 
     output$role_summary_ui <- shiny::renderUI({
       rs <- roles_state()

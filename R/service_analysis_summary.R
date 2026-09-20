@@ -164,8 +164,29 @@ build_analysis_summary <- function(spec, result, data, validation = NULL) {
     sprintf("%s (%d clusters)", cl, length(unique(stats::na.omit(data[[cl]]))))
   }, character(1))
 
+  ps <- spec$purpose_specification
+  sr <- analysis_split_rows(spec, data)
+  vl <- analysis_validation(spec, mixed = length(vr$cluster_variables) > 0L)
+  split_row <- switch(vl$method,
+    split = if (!is.null(sr)) {
+      .srow("Validation",
+            sprintf("Held-out test set \u2014 %s: training = %s (%d rows); test = %s (%d rows)%s", sr$variable,
+                    sr$training_level, sum(sr$training), paste(sr$test_levels, collapse = ", "),
+                    sum(sr$test),
+                    if (sr$n_missing > 0L) sprintf("; %d rows in neither", sr$n_missing) else ""))
+    } else {
+      .srow("Validation", "Held-out test set \u2014 choose a variable and training level in Step 1", level = "warning")
+    },
+    cv        = .srow("Validation", sprintf("Cross-validation \u2014 %d-fold \u00d7 %d repeat%s, seed %d (set in Performance)",
+                                            vl$cv_folds, vl$cv_repeats, if (vl$cv_repeats == 1L) "" else "s", vl$seed)),
+    bootstrap = .srow("Validation", sprintf("Bootstrap optimism correction \u2014 %d resamples, seed %d (set in Performance)",
+                                            vl$bootstrap_reps, vl$seed)),
+    NULL)
+
   .ssection("roles", "Study design and roles", list(
     .srow("Study type", .STUDY_TYPE_LABELS[[st]] %||% st),
+    .srow("Model purpose", if (identical(ps$model_purpose, "prediction")) "Prediction" else "Association"),
+    split_row,
     .srow("Outcome", .var(vr$outcome_variable)),
     if (!is.null(ev)) .srow("Modelling", sprintf("%s = %s (vs %s)", ev$variable, ev$event, ev$reference)),
     .srow("Exposure", .var(vr$exposure_variable)),
@@ -245,6 +266,7 @@ build_analysis_summary <- function(spec, result, data, validation = NULL) {
 # ── 6. Covariates and sample ──────────────────────────────────────────────────
 
 .summary_covariates <- function(spec, result, data) {
+  data  <- analysis_model_data(spec, data)   # training rows when split
   vr    <- spec$variable_roles
   covs  <- vr$final_model_covariates %||% character(0)
   vi    <- result$variable_investigation
@@ -284,8 +306,9 @@ build_analysis_summary <- function(spec, result, data, validation = NULL) {
           items = unname(cov_items)),
     .srow("Reference levels", if (length(ref_items)) length(ref_items) else .none, items = ref_items),
     if (!is.null(si)) .srow("Complete-case sample",
-                            sprintf("%d of %d rows (%d excluded for missing data)",
-                                    si$n_fixed, si$n_total, si$n_total - si$n_fixed)),
+                            sprintf("%d of %d %srows (%d excluded for missing data)",
+                                    si$n_fixed, si$n_total, if (!is.null(analysis_split(spec))) "training " else "",
+                                    si$n_total - si$n_fixed)),
     if (!is.null(si) && !is.na(si$n_mixed)) .srow("With cluster variables", sprintf("%d rows", si$n_mixed)),
     if (!is.null(si) && !is.na(si$epv)) .srow("Events per parameter", sprintf("%.1f", si$epv))
   )
@@ -324,6 +347,7 @@ build_analysis_summary <- function(spec, result, data, validation = NULL) {
     if (mixed) .srow("Random intercepts", paste(vr$cluster_variables, collapse = ", ")),
     if (mixed) .srow("Optimizer", md$optimizer %||% "bobyqa"),
     if (!is.null(mt)) .srow("Inference", edark_inference_note(mt)),
+    if (!is.null(sp <- analysis_split(spec))) .srow("Fitted on", sprintf("Training set (%s = %s)", sp$variable, sp$training_level)),
     .srow("Missing data", "Complete-case analysis"),
     status
   ))
@@ -344,7 +368,7 @@ build_analysis_summary <- function(spec, result, data, validation = NULL) {
 }
 
 
-# ── Step 7: methods paragraph ─────────────────────────────────────────────────
+# ── Model › Results: methods paragraph ─────────────────────────────────────────────────
 
 #' Build the methods paragraph
 #'
@@ -355,7 +379,8 @@ build_analysis_summary <- function(spec, result, data, validation = NULL) {
 #' the software sentence reports the R and package versions actually loaded.
 #'
 #' @param result The \code{analysis_result} (fitted model, snapshot,
-#'   \code{run_status}; \code{diagnostics} when Step 6 was run).
+#'   \code{run_status}; \code{diagnostics} when Diagnostics was run;
+#'   \code{performance} when Performance was run).
 #' @param include_unadjusted Logical: whether the results include unadjusted
 #'   estimates.
 #' @return A single character string (paragraphs separated by blank lines).
@@ -419,10 +444,17 @@ build_methods_paragraph <- function(result, include_unadjusted = FALSE) {
     s <- c(s, sprintf("Categorical variables were compared with a reference category (%s).",
                       paste(sprintf("%s: %s", names(refs), unlist(refs)), collapse = "; ")))
   }
+  sp <- analysis_split(spec)
+  if (!is.null(sp)) {
+    s <- c(s, sprintf(paste(
+      "The model was developed in a training set (%s = %s); observations with any other value of %s",
+      "formed a held-out test set that was not used for variable selection or model fitting."),
+      sp$variable, sp$training_level, sp$variable))
+  }
   pct <- if (isTRUE(rs$n_total > 0)) round(100 * rs$n_used / rs$n_total, 1) else NA
   s <- c(s, sprintf(
-    "The analysis was restricted to complete cases: %d of %d observations (%s%%) had no missing values in any model variable.",
-    rs$n_used, rs$n_total, format(pct, nsmall = 1)))
+    "The analysis was restricted to complete cases: %d of %d %sobservations (%s%%) had no missing values in any model variable.",
+    rs$n_used, rs$n_total, if (!is.null(sp)) "training " else "", format(pct, nsmall = 1)))
   if (isTRUE(include_unadjusted)) {
     s <- c(s, sprintf(
       "Unadjusted estimates came from separate models containing one variable at a time, fitted to the same %d observations%s.",
@@ -436,8 +468,9 @@ build_methods_paragraph <- function(result, include_unadjusted = FALSE) {
                     if (!is.null(inf$caution)) paste0(" ", inf$caution) else ""))
 
   diag_txt <- .methods_diagnostics(result$diagnostics)
-  para1 <- paste(c(s, diag_txt), collapse = " ")
-  paste(para1, .methods_software(mt, result$diagnostics), sep = "\n\n")
+  perf_txt <- .methods_performance(result$performance)
+  para1 <- paste(c(s, diag_txt, perf_txt), collapse = " ")
+  paste(para1, .methods_software(mt, result$diagnostics, result$performance), sep = "\n\n")
 }
 
 .methods_diagnostics <- function(dg) {
@@ -451,31 +484,69 @@ build_methods_paragraph <- function(result, include_unadjusted = FALSE) {
     residuals      = if (identical(dg$residuals$type, "binned")) "binned residual plots"
                      else if (identical(dg$residuals$type, "standard")) "residual plots and the Breusch-Pagan test"
                      else "residual plots",
+    linearity      = "residuals plotted against each continuous predictor",
     influence      = "Cook's distance and leverage",
     vif            = "variance inflation factors",
     separation     = "a check for separation",
     random_effects = "the distribution of the random intercepts")
-  prediction <- c(
-    discrimination   = "the area under the ROC curve",
-    calibration      = if (identical(dg$model_type, "logistic") || identical(dg$model_type, "logistic_mixed"))
-                         "calibration by decile and the Brier score" else "observed versus predicted values",
-    prediction_error = "the root mean squared and mean absolute error")
   a <- unname(assumptions[intersect(dg$checks, names(assumptions))])
-  p <- unname(prediction[intersect(dg$checks, names(prediction))])
-  c(if (length(a)) sprintf("Model assumptions were assessed with %s.", .join(a)),
-    if (length(p)) sprintf("Apparent (in-sample) predictive performance was summarised with %s%s.",
-                           .join(p), if (identical(dg$prediction$basis, "marginal"))
-                             ", using predictions from the fixed effects only" else ""))
+  if (length(a)) sprintf("Model assumptions were assessed with %s.", .join(a))
 }
 
-.methods_software <- function(mt, dg) {
+.methods_performance <- function(pf) {
+  if (is.null(pf) || length(pf$checks) == 0L) return(NULL)
+  .join <- function(x) {
+    if (length(x) == 1L) return(x)
+    if (length(x) == 2L) return(paste(x, collapse = " and "))
+    paste0(paste(x[-length(x)], collapse = ", "), ", and ", x[length(x)])
+  }
+  logit <- pf$model_type %in% c("logistic", "logistic_mixed")
+  vl <- pf$validation
+  validated <- intersect(c("test", "cv", "bootstrap"), names(pf$sets))
+  has_val <- length(validated) > 0L
+  where_val <- c(test = "in the test set", cv = "under cross-validation",
+                 bootstrap = "after bootstrap optimism correction")[validated]
+  slope_txt <- if (has_val) sprintf(", with the calibration intercept and slope %s", where_val[1L]) else ""
+  measures <- c(
+    discrimination   = if (has_val && validated[1L] != "test") "the area under the ROC curve"
+                       else "the area under the ROC curve (DeLong 95% CI)",
+    calibration      = if (logit) paste0("calibration plots and the Brier score", slope_txt)
+                       else paste0("observed versus predicted values", slope_txt),
+    prediction_error = "the root mean squared error, mean absolute error and R-squared of the predictions")
+  m <- unname(measures[intersect(pf$checks, names(measures))])
+  if (!length(m)) return(NULL)
+  marg <- if (identical(pf$basis, "marginal")) ", using predictions from the fixed effects only" else ""
+  first <- sprintf("Predictive performance was summarised with %s%s.", .join(m), marg)
+  cl <- if (identical(pf$basis, "marginal")) " (resampling whole clusters)" else ""
+  second <- switch(if (has_val) validated[1L] else "none",
+    test = paste("Performance is reported both in the rows used to fit the model (apparent performance)",
+                 "and in the held-out test set."),
+    cv = sprintf(paste(
+      "Performance was internally validated by %d-fold cross-validation repeated %d time%s%s%s (random seed %d):",
+      "in each fold the model, with the same covariates, was refitted to the remaining folds and",
+      "predicted the omitted rows; measures were computed on the pooled out-of-fold predictions and",
+      "averaged over repeats. The reported coefficients are those of the model fitted to all rows."),
+      vl$cv_folds, vl$cv_repeats, if (vl$cv_repeats == 1L) "" else "s",
+      if (logit && !identical(pf$basis, "marginal")) ", stratified by outcome" else "",
+      if (identical(pf$basis, "marginal")) ", with folds made of whole clusters" else "", vl$seed),
+    bootstrap = sprintf(paste(
+      "Performance was internally validated by bootstrap optimism correction with %d resamples%s (random seed %d):",
+      "the model, with the same covariates, was refitted in each resample and the mean difference",
+      "between its performance in the resample and in the original data was subtracted from the",
+      "apparent performance. The reported coefficients are those of the model fitted to all rows."),
+      vl$bootstrap_reps, cl, vl$seed),
+    "Performance was measured in the rows used to fit the model (apparent performance, which is optimistic).")
+  paste(first, second)
+}
+
+.methods_software <- function(mt, dg, pf = NULL) {
   pkgs <- c(
     if (mt %in% c("linear_mixed", "logistic_mixed")) "lme4",
     if (mt == "linear_mixed") "lmerTest",
     if (!is.null(dg)) "performance",
     if (!is.null(dg$residuals$bp)) "lmtest",
     if (!is.null(dg$separation)) "detectseparation",
-    if (!is.null(dg$prediction$auc)) "pROC")
+    if (any(vapply(pf$sets, function(s) !is.null(s$auc), logical(1)))) "pROC")
   ver <- function(p) tryCatch(as.character(utils::packageVersion(p)), error = function(e) "?")
   edark_v <- ver("edark")
   pk <- if (length(pkgs) > 0L) {

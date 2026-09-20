@@ -115,6 +115,117 @@ compute_complete_cases <- function(data, variables) {
 }
 
 
+#' The train/test split a spec asks for
+#'
+#' A split applies only when the model purpose is \code{"prediction"}, the
+#' validation method is \code{"split"} (a held-out test set) and a variable
+#' and a training level are chosen (PRD §A3.5 \code{purpose_specification}).
+#'
+#' @param spec An \code{analysis_spec} list.
+#' @return \code{list(variable, training_level)}, or \code{NULL} when no split
+#'   applies.
+#' @export
+analysis_split <- function(spec) {
+  ps <- spec$purpose_specification
+  if (!identical(ps$model_purpose, "prediction") || !identical(ps$validation_method, "split")) return(NULL)
+  v   <- ps$split_variable
+  lvl <- ps$training_level
+  if (is.null(v) || !nzchar(v) || is.null(lvl) || !nzchar(lvl)) return(NULL)
+  list(variable = v, training_level = lvl)
+}
+
+
+#' How a prediction model is validated
+#'
+#' Reads the Step 1 purpose (\code{purpose_specification}) and the Model ›
+#' Performance settings (\code{validation_settings}), filling defaults.
+#' Association models are not validated: \code{method = "none"}. A held-out
+#' test set (\code{"split"}) cannot be combined with resampling — it is
+#' deliberately separate data, e.g. other centres.
+#'
+#' @param spec An \code{analysis_spec} list.
+#' @param mixed Logical. Mixed models default to fewer bootstrap resamples
+#'   (each refit is slow).
+#' @return \code{list(method, cv_folds, cv_repeats, bootstrap_reps, seed)};
+#'   \code{method} is \code{"none"}, \code{"split"}, \code{"cv"} or
+#'   \code{"bootstrap"}.
+#' @export
+analysis_validation <- function(spec, mixed = FALSE) {
+  ps <- spec$purpose_specification
+  method <- if (!identical(ps$model_purpose, "prediction")) "none" else {
+    m <- ps$validation_method %||% "bootstrap"
+    if (m %in% c("split", "cv", "bootstrap")) m else "bootstrap"
+  }
+  vs  <- spec$validation_settings %||% list()
+  def <- .default_validation_settings()
+  .int <- function(x, d, lo, hi) {
+    x <- suppressWarnings(as.integer(x))
+    if (length(x) != 1L || is.na(x)) d else min(max(x, lo), hi)
+  }
+  list(
+    method         = method,
+    cv_folds       = .int(vs$cv_folds, def$cv_folds, 2L, 20L),
+    cv_repeats     = .int(vs$cv_repeats, def$cv_repeats, 1L, 50L),
+    bootstrap_reps = .int(vs$bootstrap_reps, if (mixed) .PERF_BOOT_MIXED_DEFAULT else .PERF_BOOT_DEFAULT,
+                          10L, 2000L),
+    seed           = .int(vs$seed, def$seed, 1L, .Machine$integer.max)
+  )
+}
+
+
+#' Which rows are in the training and test sets
+#'
+#' Rows whose split variable equals the training level are the training set;
+#' rows with any other (non-missing) level are the test set; rows missing the
+#' split variable are in neither.
+#'
+#' @param spec An \code{analysis_spec} list.
+#' @param data The frozen analysis dataset.
+#' @return \code{NULL} when no split applies, else \code{list(variable,
+#'   training_level, test_levels, training, test, n_missing)} where
+#'   \code{training} and \code{test} are logical vectors over the rows of
+#'   \code{data}.
+#' @export
+analysis_split_rows <- function(spec, data) {
+  sp <- analysis_split(spec)
+  if (is.null(sp) || is.null(data) || !sp$variable %in% names(data)) return(NULL)
+  x <- as.character(data[[sp$variable]])
+  training <- !is.na(x) & x == sp$training_level
+  test     <- !is.na(x) & x != sp$training_level
+  c(sp, list(test_levels = sort(unique(x[test])),
+             training = training, test = test, n_missing = sum(is.na(x))))
+}
+
+
+#' The rows a model is built from
+#'
+#' The training set when a train/test split applies, otherwise every row.
+#' Variable investigation, covariate counts, preflight and the model fit all
+#' use this, so nothing is learned from the test set.
+#'
+#' @param spec An \code{analysis_spec} list.
+#' @param data The frozen analysis dataset.
+#' @return A \code{data.frame}.
+#' @export
+analysis_model_data <- function(spec, data) {
+  sr <- analysis_split_rows(spec, data)
+  if (is.null(sr)) return(data)
+  data[sr$training, , drop = FALSE]
+}
+
+
+#' The held-out test set
+#'
+#' @inheritParams analysis_model_data
+#' @return A \code{data.frame}, or \code{NULL} when no split applies.
+#' @export
+analysis_test_data <- function(spec, data) {
+  sr <- analysis_split_rows(spec, data)
+  if (is.null(sr)) return(NULL)
+  data[sr$test, , drop = FALSE]
+}
+
+
 #' Summarise the complete-case sample for a covariate selection
 #'
 #' Listwise deletion across the outcome, exposure and selected covariates

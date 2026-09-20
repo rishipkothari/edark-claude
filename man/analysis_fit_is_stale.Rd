@@ -14,7 +14,8 @@ is the spec the model was fitted with.}
 }
 \value{
 \code{TRUE} when a fitted model exists and any model input
-(roles, covariates, reference levels, model type, optimizer) differs.
+(roles, covariates, reference levels, model type, optimizer, train/test
+split) differs.
 }
 \description{
 Has the spec changed since the model was fitted?

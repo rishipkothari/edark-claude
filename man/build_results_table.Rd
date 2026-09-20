@@ -2,7 +2,7 @@
 % Please edit documentation in R/service_analysis_tables.R
 \name{build_results_table}
 \alias{build_results_table}
-\title{Build the Step 7 results table}
+\title{Build the Model › Results table}
 \usage{
 build_results_table(result, unadjusted = NULL)
 }

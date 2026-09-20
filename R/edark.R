@@ -360,6 +360,8 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
     
       step <- input[["analysis_main-analysis_steps"]]
       if (is.null(step)) step <- "step1"
+      # Step 5 (Model) has sub-tabs: key on "step5_<subtab>"
+      if (step == "step5") step <- paste0("step5_", input[["analysis_main-model_tabs"]] %||% "summary")
     
       .dbg <- function(label, x) {
         cat(sprintf("  [%s]\n", label), file = stderr())
@@ -370,11 +372,11 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       result <- shiny::isolate(shared_state$analysis_result)
       adata  <- shiny::isolate(shared_state$analysis_data)
     
-      cat(sprintf("\n════════════════ DEBUG · %s ════════════════\n", toupper(step)), file = stderr())
+      cat(sprintf("\n\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 DEBUG \u00b7 %s \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n", toupper(step)), file = stderr())
     
       if (step == "step1") {
         if (!is.null(adata)) {
-          cat(sprintf("  [analysis_data] %d rows × %d cols\n", nrow(adata), ncol(adata)), file = stderr())
+          cat(sprintf("  [analysis_data] %d rows \u00d7 %d cols\n", nrow(adata), ncol(adata)), file = stderr())
           cat(sprintf("  cols: %s\n", paste(names(adata), collapse = ", ")), file = stderr())
         } else {
           cat("  [analysis_data] <NULL>\n", file = stderr())
@@ -396,20 +398,25 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
         .dbg("analysis_spec$variable_roles$final_model_covariates", spec$variable_roles$final_model_covariates)
         .dbg("analysis_spec$variable_roles$reference_levels",       spec$variable_roles$reference_levels)
     
-      } else if (step == "step5") {
+      } else if (step %in% c("step5_summary", "step5_create")) {
         .dbg("analysis_spec$model_design",             spec$model_design)
         .dbg("analysis_result$fitted_models$primary",  result$fitted_models$primary_model)
         .dbg("analysis_result$run_status",             result$run_status)
     
-      } else if (step == "step6") {
+      } else if (step == "step5_diagnostics") {
         .dbg("analysis_result$result_plots$diagnostic_plots", result$result_plots$diagnostic_plots)
         .dbg("analysis_result$inference_summary",             result$inference_summary)
     
-      } else if (step == "step7") {
+      } else if (step == "step5_performance") {
+        .dbg("analysis_spec$purpose_specification", spec$purpose_specification)
+        .dbg("analysis_spec$validation_settings",   spec$validation_settings)
+        .dbg("analysis_result$performance",         result$performance)
+
+      } else if (step == "step5_results") {
         .dbg("analysis_result$result_tables",    result$result_tables)
         .dbg("analysis_result$inference_summary", result$inference_summary)
-    
-      } else if (step == "step8") {
+
+      } else if (step == "step6") {
         .dbg("analysis_spec (full)", spec)
         if (!is.null(result)) {
           cat(sprintf("  [analysis_result keys] %s\n", paste(names(result), collapse = ", ")), file = stderr())
@@ -418,7 +425,7 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
         }
       }
     
-      cat("════════════════════════════════════════════════\n\n", file = stderr())
+      cat("\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n\n", file = stderr())
     }, ignoreInit = TRUE)
 
     # ── Cross-tab navigation (requested by modules via shared_state$requested_tab) ─

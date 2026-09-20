@@ -4,7 +4,7 @@
 \alias{module_analysis_export}
 \alias{analysis_export_ui}
 \alias{analysis_export_server}
-\title{Analysis Step 8 — Export Module}
+\title{Analysis Step 6 — Export Module}
 \usage{
 analysis_export_ui(id)
 
@@ -16,7 +16,7 @@ analysis_export_server(id, shared_state)
 \item{shared_state}{A Shiny \code{reactiveValues} object.}
 }
 \description{
-UI and server for Step 8 of the Analysis workflow: export preset selector,
+UI and server for Step 6 of the Analysis workflow: export preset selector,
 item checklists, zip preview, and download handler producing a structured
 analysis folder (see PRD §10.2 for folder layout).
 Full implementation: Phase 8 of the build plan.

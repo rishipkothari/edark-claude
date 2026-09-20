@@ -13,9 +13,9 @@ This file is the **index**: where to find things, the rules that must never be b
 | [PRD_0_Master.md](PRD_0_Master.md) | §M | Design and functional principles, app layout, `shared_state` ownership, how stages interact, outputs overview, **session save/load** (§M8), packages, scope |
 | [PRD_1_Prepare.md](PRD_1_Prepare.md) | §P | Launch validation and auto-cast, Columns, Transforms, Row Filters, Apply pipeline, Data Preview |
 | [PRD_2_Explore.md](PRD_2_Explore.md) | §E | Explore › Plot (Describe, Correlate, Trend, plot types, aesthetics) and Explore › Report (Full / Custom, formats, API) |
-| [PRD_3_Analyze.md](PRD_3_Analyze.md) | §A | The 8-step analysis workflow: roles, Table 1, variable investigation, covariates, models, preflight, diagnostics, results, export |
+| [PRD_3_Analyze.md](PRD_3_Analyze.md) | §A | The 9-step analysis workflow: roles and model purpose, Table 1, variable investigation, covariates, model creation, preflight, diagnostics, performance, results, export |
 | [IMPLEMENTATION_NOTES.md](IMPLEMENTATION_NOTES.md) | §N | Pitfalls, the **statistical methods registry** (§N2), and as-built mechanics per stage |
-| `PRD/EDARK_Analysis_Build_Plan.md` | — | Analyze build phases and acceptance criteria (incl. Phase 5b code generator, Phase 8 export, Phase S sessions) |
+| [EDARK_Analysis_Build_Plan.md](EDARK_Analysis_Build_Plan.md) | — | Analyze build phases and acceptance criteria (incl. Phase 5b code generator, Phase 8 export, Phase S sessions) |
 | `.claude/UI principles.md` | — | Layout, action placement, visual hierarchy |
 | [PRD_section_map.md](PRD_section_map.md) | — | Old → new section numbers (migration aid) |
 
@@ -33,6 +33,7 @@ This file is the **index**: where to find things, the rules that must never be b
 | A reactable table loses its checkbox state | §N1.4 |
 | An input still has a value after its UI disappeared | §N1.3 |
 | Test dataset features (collinearity, noise, missingness) | §N7 |
+| Association vs prediction; validation method (bootstrap / CV / held-out set) | §A1.4a; helpers §N6.2 |
 
 **Precedence:** stage PRD for its stage; Master for anything cross-stage; the PRD wins over code and over §N unless the mismatch is listed under "Doc discrepancies" below.
 
@@ -100,24 +101,26 @@ R/
 ├── module_explore_output.R      Explore output panel — plot, summary, Save / Copy / Add to Custom Report / View Report (§E6)
 ├── module_report.R              Explore › Report — Full Report + Custom Report pills (§E10–E12)
 │
-├── module_analysis_main.R           Analyze orchestrator — 8-step navset_pill, progress JS handler, step gating (§A5.1, §N6.3)
-├── module_analysis_setup.R          Step 1 Setup — freeze, roles, study type (§A5.3, §N6.4)
+├── module_analysis_main.R           Analyze orchestrator — 9-step navset_pill, progress JS handler, step gating (§A5.1, §N6.3)
+├── module_analysis_setup.R          Step 1 Setup — freeze, roles, study type, model purpose + train/test split (§A5.3, §N6.4)
 ├── module_analysis_table1.R         Step 2 Table 1 (§A5.3)
 ├── module_analysis_varinvestigation.R  Step 3 Variable Investigation; shared .analysis_progress_modal() (§A5.3, §N6.5)
 ├── module_analysis_covariate_confirm.R Step 4 Covariate Confirmation — live writes (§A5.3, §N6.6)
-├── module_analysis_modelspec.R      Step 5 Model — Summary + Run Model (§A5.3, §A8.4, §N6.7)
-├── module_analysis_diagnostics.R    Step 6 Diagnostics (§A5.3, §N6.9)
-├── module_analysis_results.R        Step 7 Results (§A5.3, §N6.10)
-├── module_analysis_export.R         Step 8 Export — stub (§A10)
+├── module_analysis_modelspec.R      Step 5 Model Creation — Summary + Run Model (§A5.3, §A8.4, §N6.7)
+├── module_analysis_diagnostics.R    Step 6 Diagnostics — assumptions (§A5.3, §N6.9)
+├── module_analysis_performance.R    Step 7 Performance — apparent + test set (§A5.3, §N6.9a)
+├── module_analysis_results.R        Step 8 Results (§A5.3, §N6.10)
+├── module_analysis_export.R         Step 9 Export — stub (§A10)
 │
-├── analysis_utils.R                 Formula, reference levels, complete cases, covariate sample (§N6.2)
+├── analysis_utils.R                 Formula, reference levels, complete cases, covariate sample, train/test rows (§N6.2)
 ├── service_analysis_pipeline.R      reset_analysis_pipeline(); .default_model_design() (§A8.6, §N6.13)
 ├── service_analysis_validation.R    validate_analysis() — preflight (§A8, §N6.12)
 ├── service_analysis_models.R        Model fitting and model options (§A7, §N6.8)
 ├── service_analysis_summary.R       build_analysis_summary() (§N6.11)
 ├── service_analysis_diagnostics.R   Diagnostic options and computation (§N6.9)
+├── service_analysis_performance.R   Performance options and computation (§N6.9a)
 ├── service_analysis_tables.R        Table 1; results table; fit statistics (§N6.10)
-├── service_analysis_plots.R         Diagnostic plots; forest plot
+├── service_analysis_plots.R         Diagnostic and performance plots; forest plot
 ├── service_analysis_variable_selection.R  Univariable screen / stepwise / LASSO (§A9, §N6.5)
 ├── service_analysis_codegen.R       R script generator — stub, deferred (§A7.9)
 ├── service_analysis_export.R        Export assembly — stub (§A10)
@@ -134,8 +137,9 @@ inst/templates/ppt_16x9_blank_template.pptx   PPTX template
 ## Current State
 
 - **Prepare, Explore (Plot + Report):** built.
-- **Analyze:** Phases 0–7 complete (Setup, Table 1, Variable Investigation, Covariate Confirmation, Model, Diagnostics, Results). Step 8 Export is a stub. Phase 5b (R code generator) deferred — Step 5's R Code Preview is a placeholder; it should consume `prepare_snapshot` + the spec.
-- **Planned:** Phase 8 export materials (§A10, with items disabled until created — §A5.3 Step 8); Phase S session save / load / autosave (§M8).
+- **Analyze:** nine steps. Phases 0–7 and 6b complete (Setup incl. model purpose + train/test split, Table 1, Variable Investigation, Covariate Confirmation, Model Creation, Diagnostics, Performance, Results). Step 9 Export is a stub. Phase 5b (R code generator) deferred — Step 5's R Code Preview is a placeholder; it should consume `prepare_snapshot` + the spec (incl. `purpose_specification`).
+- **Built 2026-09-19:** Phase 7b performance validation — Step 1 validation method (bootstrap / cross-validation / held-out test set, mutually exclusive), settings and Cancel-able runs in Model › Performance (§A1.4a, §A5.3).
+- **Planned:** Phase 8 export materials (§A10, with items disabled until created — §A5.3 Step 9); Phase S session save / load / autosave (§M8).
 
 ---
 
@@ -148,11 +152,11 @@ Found while building `docs_mod/`. Each needs a decision: change the code or chan
 - **Dead renderer.** `render_plot()` dispatches `trend_mean`, which no spec builder produces.
 - **Dataset signature.** §A3.2 specifies a structural signature; Step 1 stores a sha256 hash of the data (see the note in §A3.2).
 - **Type overrides without UI.** `column_type_overrides` exists in state and pipeline, but no UI sets it (§P4). Keep as a hook or remove.
-- **Two Table Ones, two report systems.** Explore › Report has its own Table One (`.build_tableone_df()`) and report assemblers; Analyze has gtsummary Table 1 and a planned Step 8 report. Decide: keep both deliberately, or converge.
+- **Two Table Ones, two report systems.** Explore › Report has its own Table One (`.build_tableone_df()`) and report assemblers; Analyze has gtsummary Table 1 and a planned Step 9 report. Decide: keep both deliberately, or converge.
 - **Zero baseline default.** `shared_state$trend_zero_baseline` initialises TRUE; the checkbox renders FALSE. §E5 documents FALSE.
 
 ### In progress
-- Analyze Step 8 (Phase 8) and Phase 5b code generator — see the build plan.
+- Analyze Step 6 Export (Phase 8) and Phase 5b code generator — see the build plan.
 
 ### High magnitude
 - Alternative plot types per variable combination (heat map, balloon plot, etc.)
@@ -160,7 +164,7 @@ Found while building `docs_mod/`. Each needs a decision: change the code or chan
 - Integrate studybuddy — working dataset → direct model creation and publication outputs
 
 ### Mid magnitude
-- Dataset export (§P9): working dataset to RDS / CSV; original dataset + Prepare spec to RDS. Share a writer with Step 8 and sessions (§M7).
+- Dataset export (§P9): working dataset to RDS / CSV; original dataset + Prepare spec to RDS. Share a writer with Step 9 and sessions (§M7).
 - Statistical tests in Explore › Correlate summary (num × fac → Kruskal-Wallis; fac × fac → chi-square / Fisher's) — reports already have them.
 - transform → row filter → transform does not show a warning on stage.
 - Warnings section in the Apply pane — mimic the "Stratify by" section header in Report › Full Report.
@@ -178,6 +182,9 @@ Found while building `docs_mod/`. Each needs a decision: change the code or chan
 - **`PF_LOOKS_CATEGORICAL` may be noisy** on genuine small counts (e.g. transfusion units 0–8). Threshold `.PF_CATEGORICAL_MAX_VALUES` (10).
 - **`postop_aki_stage` conflates "no AKI" with "missing"** — including it drops ~62% of rows and trips `PF_MISSING_GT50`. Consider `has_aki` + stage-among-AKI.
 - LASSO has no seed (`cv.glmnet` folds are random) — needed for the Phase 5b script to reproduce the app.
+- **Mixed models have no influence check** — Step 6 offers Cook's distance / leverage only for lm / glm. A cluster-level (leave-one-cluster-out) influence check would close the gap (§A11.2).
+- **Nine step pills wrap to two rows** at ~1500 px. Consider shorter labels (e.g. "Variables", "Covariates") or a vertical rail.
+- **Split variable choices include any factor** (e.g. `postop_aki_stage`, `transplant_center`). A split by centre is a legitimate external-style validation; nothing stops a nonsensical choice.
 
 ---
 

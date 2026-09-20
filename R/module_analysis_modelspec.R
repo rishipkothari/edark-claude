@@ -1,15 +1,21 @@
-#' Analysis Step 5 — Model Specification Module
+#' Analysis Step 5 — Model › Summary and Create
 #'
-#' UI and server for Step 5 of the Analysis workflow. Two tabs:
+#' UI and server for the first two sub-tabs of Step 5 (Model). The
+#' orchestrator (\code{module_analysis_main.R}) places the two UI fragments —
+#' \code{analysis_modelspec_summary_ui()} and
+#' \code{analysis_modelspec_create_ui()} — in the Model sub-tabs, both under
+#' the same namespace so one server drives them. Diagnostics, Performance and
+#' Results are the other sub-tabs, each its own module.
 #' \itemize{
 #'   \item \strong{Summary} — read-only account of every step that led to the
 #'     model, ending with all preflight checks (passes included). Built by
 #'     \code{build_analysis_summary()}.
-#'   \item \strong{Run Model} — sidebar with the model type (chosen from the
+#'   \item \strong{Create} — sidebar with the model type (chosen from the
 #'     outcome type and cluster roles; other types shown disabled with the
 #'     reason), the optimizer (mixed models, under Advanced), a live compact
 #'     preflight (errors and warnings), and Run Model; main panel with the
-#'     formula, the "Modelling:" line, and the results.
+#'     formula, the "Modelling:" line, the training-set line when Step 1
+#'     set a train/test split, and the results.
 #' }
 #'
 #' The model type is written to the spec automatically — there is only ever
@@ -17,6 +23,9 @@
 #' disabled Run Model button pulses the preflight box. Changing the optimizer
 #' after a fit asks, then clears the model and everything downstream
 #' (\code{reset_analysis_pipeline(from_step = 5)}).
+#'
+#' With a train/test split (Step 1, prediction purpose) the model is fitted
+#' to the training rows only; the test rows are used in Model › Performance.
 #'
 #' @param id Character. Module namespace ID.
 #' @param shared_state A Shiny \code{reactiveValues} object.
@@ -66,55 +75,52 @@ NULL
 
 #' @rdname module_analysis_modelspec
 #' @export
-analysis_modelspec_ui <- function(id) {
+analysis_modelspec_summary_ui <- function(id) {
+  ns <- shiny::NS(id)
+  shiny::tagList(
+    .ms_js(ns),
+    shiny::div(class = "pt-3", style = "max-width: 1000px;",
+               shiny::uiOutput(ns("summary_ui")))
+  )
+}
+
+
+#' @rdname module_analysis_modelspec
+#' @export
+analysis_modelspec_create_ui <- function(id) {
   ns <- shiny::NS(id)
   .hdr <- function(x) shiny::tags$p(x, class = "text-muted small text-uppercase fw-semibold mt-2 mb-1")
 
-  shiny::tagList(
-    .ms_js(ns),
-    bslib::navset_underline(
-      id = ns("tabs"),
-      bslib::nav_panel(
-        title = "Summary", value = "summary",
-        shiny::div(class = "pt-3", style = "max-width: 1000px;",
-                   shiny::uiOutput(ns("summary_ui")))
-      ),
-      bslib::nav_panel(
-        title = "Run Model", value = "run",
-        bslib::layout_sidebar(
-          class = "pt-2",
-          sidebar = bslib::sidebar(
-            position = "left",
-            width    = 340,
-            .hdr("Model"),
-            shiny::uiOutput(ns("model_select_ui")),
-            shiny::uiOutput(ns("advanced_ui")),
-            .hdr("Preflight"),
-            shiny::div(id = ns("preflight_box"), class = "p-1",
-                       shiny::uiOutput(ns("preflight_ui"))),
-            shiny::div(
-              id = ns("run_wrap"), class = "mt-3",
-              shinyjs::disabled(
-                shiny::actionButton(
-                  ns("btn_run"),
-                  label = shiny::tagList(shiny::icon("play"), " Run Model"),
-                  class = "btn-primary w-100"
-                )
-              )
-            ),
-            shiny::uiOutput(ns("run_hint_ui"))
-          ),
-          shiny::uiOutput(ns("model_header_ui")),
-          shiny::uiOutput(ns("results_ui")),
-          bslib::accordion(
-            open = FALSE, class = "mt-3",
-            bslib::accordion_panel(
-              "R Code Preview", icon = shiny::icon("code"),
-              shiny::tags$p(class = "text-muted fst-italic mb-0",
-                            "The reproducible R script for this analysis will appear here in a later phase.")
-            )
+  bslib::layout_sidebar(
+    sidebar = bslib::sidebar(
+      position = "left",
+      width    = 340,
+      .hdr("Model"),
+      shiny::uiOutput(ns("model_select_ui")),
+      shiny::uiOutput(ns("advanced_ui")),
+      .hdr("Preflight"),
+      shiny::div(id = ns("preflight_box"), class = "p-1",
+                 shiny::uiOutput(ns("preflight_ui"))),
+      shiny::div(
+        id = ns("run_wrap"), class = "mt-3",
+        shinyjs::disabled(
+          shiny::actionButton(
+            ns("btn_run"),
+            label = shiny::tagList(shiny::icon("play"), " Run Model"),
+            class = "btn-primary w-100"
           )
         )
+      ),
+      shiny::uiOutput(ns("run_hint_ui"))
+    ),
+    shiny::uiOutput(ns("model_header_ui")),
+    shiny::uiOutput(ns("results_ui")),
+    bslib::accordion(
+      open = FALSE, class = "mt-3",
+      bslib::accordion_panel(
+        "R Code Preview", icon = shiny::icon("code"),
+        shiny::tags$p(class = "text-muted fst-italic mb-0",
+                      "The reproducible R script for this analysis will appear here in a later phase.")
       )
     )
   )
@@ -366,6 +372,7 @@ analysis_modelspec_server <- function(id, shared_state) {
       mt <- spec$model_design$model_type
       ev <- analysis_outcome_event(spec, adata)
       fmla <- if (!is.null(mt)) paste(deparse(build_analysis_formula(spec), width.cutoff = 500L), collapse = " ")
+      sr   <- analysis_split_rows(spec, adata)
 
       bslib::card(
         bslib::card_body(
@@ -377,6 +384,12 @@ analysis_modelspec_server <- function(id, shared_state) {
                        shiny::span(class = "text-muted", "Modelling: "),
                        shiny::tags$strong(sprintf("%s = %s", ev$variable, ev$event)),
                        sprintf(" (vs %s)", ev$reference))
+          },
+          if (!is.null(sr)) {
+            shiny::div(class = "small",
+                       shiny::span(class = "text-muted", "Fitted on: "),
+                       sprintf("training set, %s = %s (%d rows); %d test rows held out for Performance",
+                               sr$variable, sr$training_level, sum(sr$training), sum(sr$test)))
           },
           if (!is.null(fmla)) {
             shiny::div(class = "small mt-1",

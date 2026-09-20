@@ -2,11 +2,14 @@
 % Please edit documentation in R/module_analysis_modelspec.R
 \name{module_analysis_modelspec}
 \alias{module_analysis_modelspec}
-\alias{analysis_modelspec_ui}
+\alias{analysis_modelspec_summary_ui}
+\alias{analysis_modelspec_create_ui}
 \alias{analysis_modelspec_server}
-\title{Analysis Step 5 — Model Specification Module}
+\title{Analysis Step 5 — Model › Summary and Create}
 \usage{
-analysis_modelspec_ui(id)
+analysis_modelspec_summary_ui(id)
+
+analysis_modelspec_create_ui(id)
 
 analysis_modelspec_server(id, shared_state)
 }
@@ -16,16 +19,22 @@ analysis_modelspec_server(id, shared_state)
 \item{shared_state}{A Shiny \code{reactiveValues} object.}
 }
 \description{
-UI and server for Step 5 of the Analysis workflow. Two tabs:
+UI and server for the first two sub-tabs of Step 5 (Model). The
+orchestrator (\code{module_analysis_main.R}) places the two UI fragments —
+\code{analysis_modelspec_summary_ui()} and
+\code{analysis_modelspec_create_ui()} — in the Model sub-tabs, both under
+the same namespace so one server drives them. Diagnostics, Performance and
+Results are the other sub-tabs, each its own module.
 \itemize{
 \item \strong{Summary} — read-only account of every step that led to the
 model, ending with all preflight checks (passes included). Built by
 \code{build_analysis_summary()}.
-\item \strong{Run Model} — sidebar with the model type (chosen from the
+\item \strong{Create} — sidebar with the model type (chosen from the
 outcome type and cluster roles; other types shown disabled with the
 reason), the optimizer (mixed models, under Advanced), a live compact
 preflight (errors and warnings), and Run Model; main panel with the
-formula, the "Modelling:" line, and the results.
+formula, the "Modelling:" line, the training-set line when Step 1
+set a train/test split, and the results.
 }
 }
 \details{
@@ -34,4 +43,7 @@ one valid choice. Preflight re-runs on every spec change. Clicking the
 disabled Run Model button pulses the preflight box. Changing the optimizer
 after a fit asks, then clears the model and everything downstream
 (\code{reset_analysis_pipeline(from_step = 5)}).
+
+With a train/test split (Step 1, prediction purpose) the model is fitted
+to the training rows only; the test rows are used in Model › Performance.
 }

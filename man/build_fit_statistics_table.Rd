@@ -8,7 +8,7 @@ build_fit_statistics_table(result)
 }
 \arguments{
 \item{result}{The \code{analysis_result}. Adds the AUC (and its 95\\% CI)
-when Step 6 computed it.}
+when Performance computed it, for each set of rows (apparent, test).}
 }
 \value{
 A data.frame(Statistic, Value) of display strings, or \code{NULL}.

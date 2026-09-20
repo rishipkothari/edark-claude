@@ -11,8 +11,7 @@ analysis_diagnostic_options(model_type)
 \code{"linear_mixed"}, \code{"logistic_mixed"}.}
 }
 \value{
-A \code{data.frame(id, category, label, description)};
-\code{category} is \code{"assumptions"} or \code{"prediction"}.
+A \code{data.frame(id, label, description)}.
 }
 \description{
 Diagnostic checks available for a model type

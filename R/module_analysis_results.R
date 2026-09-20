@@ -1,10 +1,10 @@
-#' Analysis Step 7 — Results Module
+#' Analysis Step 5 — Model › Results Module
 #'
-#' UI and server for Step 7 of the Analysis workflow. The sidebar lists the
+#' UI and server for the Results sub-tab of Step 5 (Model). The sidebar lists the
 #' outputs that can be generated — results table (with an optional
 #' unadjusted column), fit statistics, forest plot, methods paragraph — and
 #' one Generate Outputs button. Ticked outputs are created and stored in
-#' \code{analysis_result}; unticked ones are not created, so Step 8 cannot
+#' \code{analysis_result}; unticked ones are not created, so Step 6 (Export) cannot
 #' export them. The Summary tab (key numbers, no prose) is always shown and
 #' reads what already exists.
 #'
@@ -29,7 +29,7 @@ NULL
   list(id = "results_table", label = "Results table",
        description = "Estimate (95% CI) and p for every model variable"),
   list(id = "fit_statistics", label = "Fit statistics",
-       description = "Model fit from Step 5, plus the AUC if Step 6 computed it"),
+       description = "Model fit, plus the AUC if Performance computed it"),
   list(id = "forest_plot", label = "Forest plot",
        description = "Adjusted estimates for every model term"),
   list(id = "methods", label = "Methods paragraph",
@@ -68,7 +68,7 @@ analysis_results_ui <- function(id) {
                           class = "btn-primary w-100"),
       shiny::tags$p(class = "small text-muted mt-2 mb-0",
                     "Only the ticked outputs are created, and only created outputs can be",
-                    "exported in Step 8. The Summary tab is always shown.")
+                    "exported in Step 6. The Summary tab is always shown.")
     ),
     shiny::tags$script(shiny::HTML("
       function edarkCopyText(id, btn) {
@@ -160,7 +160,7 @@ analysis_results_server <- function(id, shared_state) {
     # ── Main: header ─────────────────────────────────────────────────────────
     output$header_ui <- shiny::renderUI({
       res <- shared_state$analysis_result
-      if (!has_model()) return(.ms_placeholder("Fit a model in Step 5 to see results."))
+      if (!has_model()) return(.ms_placeholder("Fit a model in the Create tab to see results."))
       snap <- res$specification_snapshot
       mt   <- snap$model_design$model_type
       gen  <- res$results_generation
@@ -297,7 +297,9 @@ analysis_results_server <- function(id, shared_state) {
   )
 
   n_excl <- rs$n_total - rs$n_used
+  sp <- analysis_split(snap)
   sample_card <- .rs_card("Sample",
+    if (!is.null(sp)) .rs_kv("Fitted on", sprintf("Training set (%s = %s)", sp$variable, sp$training_level)),
     .rs_kv("Observations used", format(rs$n_used, big.mark = ",")),
     .rs_kv("Excluded (missing data)", sprintf("%s (%.1f%%)", format(n_excl, big.mark = ","), 100 * n_excl / rs$n_total)),
     if (logit) .rs_kv("Events", sprintf("%s (%s)", .fs("n_events") %||% "\u2014", .fs("event_rate") %||% "\u2014")),
@@ -306,13 +308,24 @@ analysis_results_server <- function(id, shared_state) {
     })
   )
 
-  auc <- res$diagnostics$prediction
+  ps  <- res$performance$sets
+  .auc <- function(s) {
+    if (is.null(s$auc)) return(NULL)
+    if (is.null(s$auc_low)) edark_format_est(s$auc) else edark_format_ci(s$auc, s$auc_low, s$auc_high)
+  }
+  .slope <- function(s) if (!is.null(s$cal_slope)) edark_format_est(s$cal_slope)
   fit_rows <- list(
     if (mt == "linear") list("R\u00b2 / adjusted R\u00b2", paste(.fs("r2"), "/", .fs("adj_r2"))),
     if (mt == "logistic") list("Pseudo R\u00b2 (Nagelkerke)", .fs("r2_nagelkerke")),
     if (mixed) list("Marginal / conditional R\u00b2", paste(.fs("r2_marginal") %||% "\u2014", "/", .fs("r2_conditional") %||% "\u2014")),
     if (mixed) list("ICC (adjusted)", .fs("icc") %||% "\u2014"),
-    if (!is.null(auc$auc)) list("AUC (apparent)", edark_format_ci(auc$auc, auc$auc_low, auc$auc_high)),
+    if (!is.null(.auc(ps$apparent))) list("AUC (apparent)", .auc(ps$apparent)),
+    if (!is.null(.auc(ps$test))) list("AUC (test set)", .auc(ps$test)),
+    if (!is.null(.auc(ps$cv))) list("AUC (cross-validated)", .auc(ps$cv)),
+    if (!is.null(.auc(ps$bootstrap))) list("AUC (bootstrap-corrected)", .auc(ps$bootstrap)),
+    if (!is.null(.slope(ps$test))) list("Calibration slope (test set)", .slope(ps$test)),
+    if (!is.null(.slope(ps$cv))) list("Calibration slope (cross-validated)", .slope(ps$cv)),
+    if (!is.null(.slope(ps$bootstrap))) list("Calibration slope (bootstrap-corrected)", .slope(ps$bootstrap)),
     list("AIC", .fs("aic")),
     list("BIC", .fs("bic"))
   )
@@ -326,8 +339,11 @@ analysis_results_server <- function(id, shared_state) {
   checks_card <- .rs_card("Checks",
     .rs_kv("Preflight warnings at fit", n_pf_warn, if (n_pf_warn > 0) "warning"),
     .rs_kv("Fitting warnings", n_fit_warn, if (n_fit_warn > 0) "warning"),
-    .rs_kv("Diagnostics (Step 6)", if (is.na(n_dg_warn)) "Not run" else sprintf("Run \u2014 %d warning%s", n_dg_warn, if (n_dg_warn == 1L) "" else "s"),
+    .rs_kv("Diagnostics", if (is.na(n_dg_warn)) "Not run" else sprintf("Run \u2014 %d warning%s", n_dg_warn, if (n_dg_warn == 1L) "" else "s"),
            if (!is.na(n_dg_warn) && n_dg_warn > 0) "warning"),
+    .rs_kv("Performance", if (is.null(res$performance)) "Not run" else {
+      paste(vapply(res$performance$sets, `[[`, character(1), "label"), collapse = " + ")
+    }),
     if (!is.null(gen$unadjusted_status)) {
       bad <- sum(gen$unadjusted_status$status != "ok")
       .rs_kv("Unadjusted models with problems", bad, if (bad > 0) "warning")
