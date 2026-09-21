@@ -2,7 +2,7 @@
 
 **Scope:** everything from the dataset handed to `edark()` up to the working dataset used by Explore and Analyze — launch validation, type casting, column selection, variable transforms, row filters, Apply, and data preview.
 **Master PRD:** [PRD_0_Master.md](PRD_0_Master.md) — principles (§M2–M3), state ownership (§M5), cross-stage data flow (§M6).
-**Implementation details:** [IMPLEMENTATION_NOTES.md](IMPLEMENTATION_NOTES.md) §N3.
+**Implementation details:** [NOTE_implementation.md](NOTE_implementation.md) §N3.
 
 ---
 

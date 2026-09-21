@@ -1,11 +1,7 @@
 # EDARK v0.2 — UI Assessment & Staged Redesign
 
-> **This document lives at `PRD/UI_Redesign_Plan.md`.** It is the working plan for the UI
-> redesign, in the same spirit as `PRD/EDARK_Analysis_Build_Plan.md`. Work one stage per
-> session and tick it off below when it lands.
->
-> **To resume:** `implement Stage N of PRD/UI_Redesign_Plan.md`
-> A stage that needs its own design pass: `read PRD/UI_Redesign_Plan.md, then plan Stage N in detail`
+> The working plan for the UI redesign. Work one stage per session and tick it off below
+> when it lands. A stage that needs its own design pass gets planned in detail first.
 
 ## Status
 
@@ -52,7 +48,7 @@ Every module answers "where do controls go?" differently.
 | Sidebar side flips mid-workflow | `module_analysis_setup.R:138` and `module_analysis_covariate_confirm.R:147` use `position = "right"`; every other step uses left |
 | Sidebar vanishes entirely | Model › Summary (`module_analysis_modelspec.R:80`) and Step 6 (`module_analysis_export.R:18`) have no sidebar — the page furniture disappears mid-tab-strip |
 | Five sidebar widths | 405 / 390 / 360 / 360 / 390 / 340 — three different widths inside *one* step (`module_analysis_varinvestigation.R:127,164,186`) |
-| Sidebar contract inverted | Steps 1 and 4 put the *configuration* (role radios, covariate checkboxes) in the main-panel reactable and *status* in the sidebar — the opposite of every other step and of `.claude/UI principles.md:29-30` |
+| Sidebar contract inverted | Steps 1 and 4 put the *configuration* (role radios, covariate checkboxes) in the main-panel reactable and *status* in the sidebar — the opposite of every other step and of the sidebar-is-setup rule in `NOTE_UI-principles.md` |
 | Four main-panel idioms in one tab strip | Prepare's four sub-tabs are a `card` (`module_column_manager.R:18`), a bare `div` whose card only appears at render time (`module_transform_variables.R:30` vs `:130`), a flat `tagList` (`module_row_filter.R:20`), and a nested `navset_card_tab` (`module_data_preview.R:19`) |
 
 ### 1.2 Navigation depth

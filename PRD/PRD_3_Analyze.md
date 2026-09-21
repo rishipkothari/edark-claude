@@ -2,10 +2,12 @@
 
 **Scope:** the nine-step guided workflow that freezes the working dataset and takes the user from study framing to a fitted, diagnosed, evaluated, reported and exported model.
 **Master PRD:** [PRD_0_Master.md](PRD_0_Master.md) — principles (§M2–M3), state ownership (§M5), Prepare → Analyze hand-off (§M6.6), sessions (§M8).
-**Implementation details and as-built mechanics:** [IMPLEMENTATION_NOTES.md](IMPLEMENTATION_NOTES.md) §N6. Statistical methods registry: §N2.
-**Build sequence:** `PRD/EDARK_Analysis_Build_Plan.md`.
+**Implementation details and as-built mechanics:** [NOTE_implementation.md](NOTE_implementation.md) §N6. Statistical methods registry: §N2.
+**Build sequence:** [BUILD_Analysis.md](BUILD_Analysis.md).
 
-*Derived from `PRD/EDARK_Analysis_Module_PRD.md`. Section numbers are unchanged apart from the `A` prefix (old §8.6 = §A8.6). The old Global Mandates section is §A0; the old Section 13 (sessions) moved to §M8.*
+*Derived from the superseded monolithic Analyze PRD (now in `archive/`). Section numbers are unchanged apart from the `A` prefix (old §8.6 = §A8.6). The old Global Mandates section is §A0; the old Section 13 (sessions) moved to §M8.*
+
+> **Step numbering:** this document describes nine steps. The code has six, with Diagnostics / Performance / Results nested as sub-tabs under Step 5 Model and Export as Step 6. Read "Step 6/7/8" below as those sub-tabs and "Step 9" as Step 6 Export, until this document is renumbered.
 
 ---
 
@@ -13,7 +15,7 @@
 
 **Pipe operator:** `magrittr` `%>%` only — never the base pipe `|>`. Applies to all Analyze code and all generated R scripts.
 
-**Project conventions:** CLAUDE.md (index), §M2–M5 (architecture), `.claude/UI principles.md` (layout, actions, hierarchy).
+**Project conventions:** the PRD index, §M2–M5 (architecture), [NOTE_UI-principles.md](NOTE_UI-principles.md) (layout, actions, hierarchy).
 
 **Dependencies:** the app's runtime packages are listed in §M9.1 (authoritative: `DESCRIPTION`). Packages loaded by generated scripts: §A4.3. `pacman` is used in generated scripts only, never by the app.
 
@@ -1374,11 +1376,11 @@ R/
 
 ### A12.3 Coding Conventions
 
-All code follows: §M2–M5 (architecture rules, module convention, reactivity discipline), §N (implementation pitfalls), `.claude/UI principles.md` (layout, actions, hierarchy), and §A0 (`magrittr` `%>%`, no base R pipe).
+All code follows: §M2–M5 (architecture rules, module convention, reactivity discipline), §N (implementation pitfalls), [NOTE_UI-principles.md](NOTE_UI-principles.md) (layout, actions, hierarchy), and §A0 (`magrittr` `%>%`, no base R pipe).
 
 ### A12.4 Phased Build Plan
 
-The implementation is organized into sequential phases. The phased build plan is specified in a separate document: **`EDARK_Analysis_Build_Plan.md`**. See that document for phase definitions, acceptance criteria, "do not touch" lists, test datasets, and prompt briefs.
+The implementation is organized into sequential phases, specified in [BUILD_Analysis.md](BUILD_Analysis.md) — phase definitions, acceptance criteria, "do not touch" lists, test datasets, and prompt briefs.
 
 ---
 

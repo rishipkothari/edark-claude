@@ -1,11 +1,9 @@
 # EDARK Analysis Module — Phased Build Plan
 ## Implementation Sequence for Claude Code
 
-**Reference document:** `PRD/PRD_3_Analyze.md` (the PRD). Section references (§) below use the old numbering of `EDARK_Analysis_Module_PRD.md`; add the `A` prefix to find them (§5.3 = §A5.3). Session references (§13.x) are now §M8.x in `PRD/PRD_0_Master.md`.
+**Reference document:** the Analyze PRD. Section references (§) below use the old pre-split numbering; add the `A` prefix to find them (§5.3 = §A5.3). Session references (§13.x) are now §M8.x in the Master PRD.
 
 **Step numbering (changed 2026-09-19):** the workflow now has **nine** steps. Step 5 was renamed **Model Creation**; a new **Step 7 Performance** was inserted (Phase 6b), so Results became **Step 8** and Export **Step 9**. Phase numbers are unchanged — Phase 7 builds Step 8, Phase 8 builds Step 9. Text written before the change (Phases 0–7 "as built" and "original plan" notes) keeps the step numbers of its time unless marked.
-
-**Project context files:** `CLAUDE.md` (project root) and `PRD/CLAUDE.md` (index), `.claude/UI principles.md`.
 
 **Critical rule for all phases:** use `magrittr` `%>%` exclusively. No base R pipe `|>`.
 

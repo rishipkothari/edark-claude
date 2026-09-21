@@ -2,7 +2,7 @@
 
 **Scope:** the whole application — what EDARK is, the principles every part follows, how the app is laid out, and how its parts interact.
 **Stage PRDs:** [PRD_1_Prepare.md](PRD_1_Prepare.md) (§P) · [PRD_2_Explore.md](PRD_2_Explore.md) (§E, includes Report) · [PRD_3_Analyze.md](PRD_3_Analyze.md) (§A)
-**Implementation details and pitfalls:** [IMPLEMENTATION_NOTES.md](IMPLEMENTATION_NOTES.md) (§N)
+**Implementation details and pitfalls:** [NOTE_implementation.md](NOTE_implementation.md) (§N)
 
 **Section references.** Every section ID carries its document's prefix: §M (this document), §P, §E, §A, §N. A reference such as §A8.6 is unambiguous anywhere in the repo.
 
@@ -144,7 +144,7 @@ Missing columns, dropped factor levels, and variables that no longer exist are h
 | `generate_report()` / `generate_custom_report()` | Shiny-free report builders used by both the app and `edark_report()` (§E15). |
 
 ### M4.4 UI Conventions
-Layout, action placement and visual hierarchy follow `.claude/UI principles.md`. Summary of the recurring patterns:
+Layout, action placement and visual hierarchy follow [NOTE_UI-principles.md](NOTE_UI-principles.md). Summary of the recurring patterns:
 - Sidebars are flat: no card wrappers; section headers are small uppercase muted labels; one full-width primary button per sidebar.
 - Tables with interactive cells use `reactable`, patched in place rather than re-rendered (§N1).
 - Disabled controls explain themselves (tooltip or inline message).

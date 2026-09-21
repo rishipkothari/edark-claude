@@ -2,7 +2,7 @@
 
 **Scope:** Tab 2, which has two sub-tabs — **Plot** (interactive exploration: Describe, Correlate, Trend) and **Report** (Full and Custom PPTX / DOCX / HTML reports, plus the programmatic report API).
 **Master PRD:** [PRD_0_Master.md](PRD_0_Master.md) — principles (§M2–M3), state ownership (§M5), Explore → Report flow (§M6.4).
-**Implementation details:** [IMPLEMENTATION_NOTES.md](IMPLEMENTATION_NOTES.md) §N4 (Explore), §N5 (Report). Statistical rules: §A4.2 / §N2.
+**Implementation details:** [NOTE_implementation.md](NOTE_implementation.md) §N4 (Explore), §N5 (Report). Statistical rules: §A4.2 / §N2.
 
 ---
 

@@ -12,7 +12,7 @@ Every section ID now carries its document's prefix, so a reference is unambiguou
 | §P | `PRD_1_Prepare.md` |
 | §E | `PRD_2_Explore.md` (Plot + Report) |
 | §A | `PRD_3_Analyze.md` |
-| §N | `IMPLEMENTATION_NOTES.md` |
+| §N | `NOTE_implementation.md` |
 
 ## Mapping Rules
 

@@ -1,4 +1,4 @@
-# CLAUDE.md — Shiny UI Principles
+# Shiny UI Principles
 
 ## App pattern
 
