@@ -109,7 +109,7 @@ inst/
 ### In progress
 - **Analysis module** (Phases 1–9): Phases 0–7 and 6b complete; Step 6 (Export, Phase 8) is a placeholder stub. Phase 5b code generator (`service_analysis_codegen.R`) deferred — Step 5's R Code Preview is a placeholder; it should consume `prepare_snapshot` + the spec (incl. `purpose_specification`). Phase definitions and acceptance criteria: `PRD/BUILD_Analysis.md`.
 - **Performance validation follow-ups** (Phase 7b built 2026-09-19): optional shrunk-coefficient output from the bootstrap calibration slope; decision curve analysis; CV / bootstrap for mixed models with several cluster variables groups by the first one only.
-- **UI redesign** (Stages 0–6, none started): persistent step rail plus a standard config / canvas / status tri-pane on every page, a shared component library (`R/ui_helpers.R`), an SCSS token layer, and an IA restructure that promotes Report to a top-level stage and flattens the tab nesting. Spec, rationale and stage status table: `PRD/BUILD_UI-redesign.md`. Work one stage per session and tick off its status table.
+- **UI consistency** (Stages 1–6, none started): a shared component library (`R/ui_helpers.R`), honest step-locking and one status vocabulary, a ~80-line CSS file, one sidebar contract on every page, and a flattened IA that promotes Report to a top-level tab. Scoped to `bslib` + R — no Sass, no new JS, no shell rewrite. Assessment, rationale and stage status table: `PRD/BUILD_UI-redesign.md`. Work one stage per session and tick off its status table.
 
 ### High magnitude
 - Alternative plot types per variable combination (heat map, balloon plot, etc.)
@@ -117,11 +117,12 @@ inst/
 - Propensity score model subtypes - matching, score adjusted, IPTW, etc
 
 ### Mid magnitude
-- Dataset export (§P9): working dataset to RDS / CSV; original dataset + Prepare spec to RDS. Share a writer with Step 9 and sessions (§M7).
+- Export (§P9): working dataset, prepare/analyze spec, model ouptuts/results (including diagnostics). Formats for results would be individual files vs single document/report (select output type word, pdf, HTML). Zip all files. Share a writer with Step 9 and sessions (§M7).
 - Statistical tests in the Explore › Relationship summary panel (num × fac → Kruskal-Wallis; fac × fac → chi-square / Fisher's). Reports already have these via the table helpers; the Explore summary does not.
 - transform → row filter → transform does not show a warning on stage.
 - Warnings section in the Apply pane — mimic the "Stratify by" section header in Report › Full Report.
 - Async report generation (synchronous now; cancel needs `future` / `promises`).
+- varaible labels - in Prepare phase, column in master table that has a textbox for custom column labels. Buttons to apply some function (str to title, capitalize first only, variable name) to change all labels quickly for basic presentation purposes. 
 
 ### Small magnitude
 - Report contents option: collinearity investigation.

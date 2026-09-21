@@ -17,7 +17,7 @@ This file is the **index**: where to find things, the rules that must never be b
 | [NOTE_implementation.md](NOTE_implementation.md) | §N | Pitfalls, the **statistical methods registry** (§N2), and as-built mechanics per stage |
 | [NOTE_UI-principles.md](NOTE_UI-principles.md) | — | Layout, action placement, visual hierarchy. Read before any UI work so it isn't reinvented each time |
 | [BUILD_Analysis.md](BUILD_Analysis.md) | — | Analyze build phases and acceptance criteria (incl. Phase 5b code generator, Phase 8 export, Phase S sessions) |
-| [BUILD_UI-redesign.md](BUILD_UI-redesign.md) | — | **UI assessment and staged redesign** — tri-pane + step-rail shell, component library, IA restructure. Stage status table at the top; work one stage per session |
+| [BUILD_UI-redesign.md](BUILD_UI-redesign.md) | — | **UI assessment and consistency plan** — component library, honest locking, sidebar contract, IA flattening. Scoped to `bslib` + R. Stage status table at the top; work one stage per session |
 | [Codex proofing.md](Codex%20proofing.md) | — | Briefing notes for an external proofing agent |
 | [tools/PRD_section_map.md](tools/PRD_section_map.md) | — | Old → new section numbers (migration aid), plus the scripts that generated it |
 
@@ -118,7 +118,7 @@ What each file does is in the root `CLAUDE.md`. This is the § lookup.
 - **Analyze:** Phases 0–7 and 6b complete — Setup (incl. model purpose + train/test split), Table 1, Variable Investigation, Covariate Confirmation, Model Creation, Diagnostics, Performance, Results.
 - **Built 2026-09-19:** Phase 7b performance validation — Step 1 validation method (bootstrap / cross-validation / held-out test set, mutually exclusive), settings and Cancel-able runs in Model › Performance (§A1.4a, §A5.3).
 - **Stubs and deferrals:** Export (`module_analysis_export.R`, `service_analysis_export.R`) is a placeholder; Phase 8 fills it with export materials, items disabled until created (§A10, §A5.3). Phase 5b's R code generator (`service_analysis_codegen.R`) is deferred — the R Code Preview is a placeholder; it should consume `prepare_snapshot` + the spec (incl. `purpose_specification`).
-- **Not started:** Phase S session save / load / autosave (§M8); UI redesign Stages 0–6 ([BUILD_UI-redesign.md](BUILD_UI-redesign.md)).
+- **Not started:** Phase S session save / load / autosave (§M8); UI consistency Stages 1–6 ([BUILD_UI-redesign.md](BUILD_UI-redesign.md)).
 
 ---
 
