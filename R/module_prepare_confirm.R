@@ -95,7 +95,7 @@ prepare_confirm_server <- function(id, shared_state) {
           shiny::tags$td(
             class = "small align-middle",
             if (is.null(r) || is.na(r)) {
-              shiny::tags$em(class = "text-muted", "\u2014")
+              shiny::tags$em(class = "text-muted", "-")
             } else {
               shiny::tags$span(
                 class = paste0("badge ", badge_class),
@@ -471,7 +471,7 @@ apply_prepare_pipeline <- function(shared_state) {
     conflict_cols <- intersect(pending_tx_cols, names(filters))
     if (length(conflict_cols) > 0) {
       groups <- c(groups, list(list(
-        title = "Transform staged on column(s) with active row filter \u2014 filter will be removed on Apply:",
+        title = "Transform staged on column(s) with active row filter - filter will be removed on Apply:",
         items = as.list(conflict_cols)
       )))
     }
@@ -483,7 +483,7 @@ apply_prepare_pipeline <- function(shared_state) {
     excluded_filtered <- setdiff(names(filters), included)
     if (length(excluded_filtered) > 0) {
       groups <- c(groups, list(list(
-        title = "Excluded column(s) have active row filters \u2014 filters will be removed on Apply:",
+        title = "Excluded column(s) have active row filters - filters will be removed on Apply:",
         items = as.list(excluded_filtered)
       )))
     }

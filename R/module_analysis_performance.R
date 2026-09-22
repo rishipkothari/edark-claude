@@ -68,7 +68,7 @@ analysis_performance_ui <- function(id) {
                           label = shiny::tagList(shiny::icon("play"), " Run Performance"),
                           class = "btn-primary w-100"),
       shiny::tags$p(class = "small text-muted mt-2 mb-0",
-                    "Performance is advisory \u2014 it never blocks the next steps.")
+                    "Performance is advisory - it never blocks the next steps.")
     ),
     shiny::uiOutput(ns("header_ui")),
     shiny::uiOutput(ns("results_ui"))
@@ -309,7 +309,7 @@ analysis_performance_server <- function(id, shared_state) {
           running(FALSE)
           runner$job <- NULL
           shiny::removeModal()
-          shiny::showNotification("Performance cancelled \u2014 previous results kept.",
+          shiny::showNotification("Performance cancelled - previous results kept.",
                                   type = "warning", duration = 5)
           return()
         }
@@ -351,7 +351,7 @@ analysis_performance_server <- function(id, shared_state) {
       n_warn <- sum(pf$messages$level == "warning")
       shiny::showNotification(
         sprintf("Performance evaluated%s.",
-                if (n_warn > 0L) sprintf(" \u2014 %d warning%s", n_warn, if (n_warn == 1L) "" else "s") else ""),
+                if (n_warn > 0L) sprintf(" - %d warning%s", n_warn, if (n_warn == 1L) "" else "s") else ""),
         type = "message", duration = 4)
     }
 
@@ -381,7 +381,7 @@ analysis_performance_server <- function(id, shared_state) {
           },
           if (!is.null(pf)) {
             shiny::div(class = "small text-muted mt-1",
-                       sprintf("Evaluated %s \u2014 %s", format(pf$run_at, "%H:%M:%S"),
+                       sprintf("Evaluated %s - %s", format(pf$run_at, "%H:%M:%S"),
                                .pm_validation_text(pf$validation)))
           }
         )
@@ -442,7 +442,7 @@ analysis_performance_server <- function(id, shared_state) {
 
 # Estimates for display; float noise (e.g. an in-sample intercept of 1e-14) shows as 0
 .pm_est <- function(x) {
-  if (is.null(x) || !is.finite(x)) return("\u2014")
+  if (is.null(x) || !is.finite(x)) return("-")
   edark_format_est(if (abs(x) < 1e-10) 0 else x)
 }
 
@@ -478,7 +478,7 @@ analysis_performance_server <- function(id, shared_state) {
 
 .pm_fmt_cell <- function(m, s, k) {
   r <- m[m$set == s & m$key == k, , drop = FALSE]
-  if (nrow(r) == 0L) return("\u2014")
+  if (nrow(r) == 0L) return("-")
   if (k == "auc") {
     lo <- m$value[m$set == s & m$key == "auc_low"]
     hi <- m$value[m$set == s & m$key == "auc_high"]

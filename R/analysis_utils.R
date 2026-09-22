@@ -349,10 +349,10 @@ compute_covariate_sample <- function(data, outcome, exposure = NULL,
     epv <- min(outcome_counts) / n_params
     if (epv < 5) {
       issues <- c(issues, list(.issue("warning", outcome, sprintf(
-        "Only %.1f events per parameter (EPV < 5) \u2014 estimates are likely unstable.", epv))))
+        "Only %.1f events per parameter (EPV < 5) - estimates are likely unstable.", epv))))
     } else if (epv < 10) {
       issues <- c(issues, list(.issue("warning", outcome, sprintf(
-        "%.1f events per parameter (EPV < 10) \u2014 consider fewer covariates.", epv))))
+        "%.1f events per parameter (EPV < 10) - consider fewer covariates.", epv))))
     }
   }
 
@@ -368,7 +368,7 @@ compute_covariate_sample <- function(data, outcome, exposure = NULL,
     n_distinct <- length(unique(x[!is.na(x)]))
     if (n_distinct < 2L) {
       issues <- c(issues, list(.issue("warning", v, sprintf(
-        "%s has %d distinct value%s in the complete rows \u2014 mixed models will be unavailable.",
+        "%s has %d distinct value%s in the complete rows - mixed models will be unavailable.",
         v, n_distinct, if (n_distinct == 1L) "" else "s"))))
     }
   }

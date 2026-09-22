@@ -268,7 +268,7 @@ analysis_results_server <- function(id, shared_state) {
     if (is.null(exposure)) {
       .rs_kv("Exposure", "None (risk-factor study)")
     } else if (is.null(exp_rows) || nrow(exp_rows) == 0L) {
-      .rs_kv("Estimate", "\u2014")
+      .rs_kv("Estimate", "-")
     } else {
       lapply(seq_len(nrow(exp_rows)), function(i) {
         r   <- exp_rows[i, ]
@@ -278,9 +278,9 @@ analysis_results_server <- function(id, shared_state) {
           if (nrow(u)) sprintf("%s, %s", edark_format_ci(u$unadj_est, u$unadj_low, u$unadj_high), .p(u$unadj_p))
         }
         shiny::tagList(
-          .rs_kv(sprintf("%s \u2014 adjusted %s", lab, measure),
+          .rs_kv(sprintf("%s - adjusted %s", lab, measure),
                  sprintf("%s, %s", edark_format_ci(r$effect, r$effect.low, r$effect.high), .p(r$p.value))),
-          if (!is.null(un)) .rs_kv(sprintf("%s \u2014 unadjusted %s", lab, measure), un)
+          if (!is.null(un)) .rs_kv(sprintf("%s - unadjusted %s", lab, measure), un)
         )
       })
     }
@@ -302,9 +302,9 @@ analysis_results_server <- function(id, shared_state) {
     if (!is.null(sp)) .rs_kv("Fitted on", sprintf("Training set (%s = %s)", sp$variable, sp$training_level)),
     .rs_kv("Observations used", format(rs$n_used, big.mark = ",")),
     .rs_kv("Excluded (missing data)", sprintf("%s (%.1f%%)", format(n_excl, big.mark = ","), 100 * n_excl / rs$n_total)),
-    if (logit) .rs_kv("Events", sprintf("%s (%s)", .fs("n_events") %||% "\u2014", .fs("event_rate") %||% "\u2014")),
+    if (logit) .rs_kv("Events", sprintf("%s (%s)", .fs("n_events") %||% "-", .fs("event_rate") %||% "-")),
     if (mixed) lapply(vr$cluster_variables, function(cl) {
-      .rs_kv(sprintf("Clusters (%s)", cl), .fs(paste0("n_groups_", cl)) %||% "\u2014")
+      .rs_kv(sprintf("Clusters (%s)", cl), .fs(paste0("n_groups_", cl)) %||% "-")
     })
   )
 
@@ -317,8 +317,8 @@ analysis_results_server <- function(id, shared_state) {
   fit_rows <- list(
     if (mt == "linear") list("R\u00b2 / adjusted R\u00b2", paste(.fs("r2"), "/", .fs("adj_r2"))),
     if (mt == "logistic") list("Pseudo R\u00b2 (Nagelkerke)", .fs("r2_nagelkerke")),
-    if (mixed) list("Marginal / conditional R\u00b2", paste(.fs("r2_marginal") %||% "\u2014", "/", .fs("r2_conditional") %||% "\u2014")),
-    if (mixed) list("ICC (adjusted)", .fs("icc") %||% "\u2014"),
+    if (mixed) list("Marginal / conditional R\u00b2", paste(.fs("r2_marginal") %||% "-", "/", .fs("r2_conditional") %||% "-")),
+    if (mixed) list("ICC (adjusted)", .fs("icc") %||% "-"),
     if (!is.null(.auc(ps$apparent))) list("AUC (apparent)", .auc(ps$apparent)),
     if (!is.null(.auc(ps$test))) list("AUC (test set)", .auc(ps$test)),
     if (!is.null(.auc(ps$cv))) list("AUC (cross-validated)", .auc(ps$cv)),
@@ -329,7 +329,7 @@ analysis_results_server <- function(id, shared_state) {
     list("AIC", .fs("aic")),
     list("BIC", .fs("bic"))
   )
-  fit_card <- .rs_card("Fit", lapply(Filter(Negate(is.null), fit_rows), function(r) .rs_kv(r[[1]], r[[2]] %||% "\u2014")))
+  fit_card <- .rs_card("Fit", lapply(Filter(Negate(is.null), fit_rows), function(r) .rs_kv(r[[1]], r[[2]] %||% "-")))
 
   rm <- rs$run_messages
   n_fit_warn <- if (is.null(rm)) 0L else sum(rm$level == "warning")
@@ -339,7 +339,7 @@ analysis_results_server <- function(id, shared_state) {
   checks_card <- .rs_card("Checks",
     .rs_kv("Preflight warnings at fit", n_pf_warn, if (n_pf_warn > 0) "warning"),
     .rs_kv("Fitting warnings", n_fit_warn, if (n_fit_warn > 0) "warning"),
-    .rs_kv("Diagnostics", if (is.na(n_dg_warn)) "Not run" else sprintf("Run \u2014 %d warning%s", n_dg_warn, if (n_dg_warn == 1L) "" else "s"),
+    .rs_kv("Diagnostics", if (is.na(n_dg_warn)) "Not run" else sprintf("Run - %d warning%s", n_dg_warn, if (n_dg_warn == 1L) "" else "s"),
            if (!is.na(n_dg_warn) && n_dg_warn > 0) "warning"),
     .rs_kv("Performance", if (is.null(res$performance)) "Not run" else {
       paste(vapply(res$performance$sets, `[[`, character(1), "label"), collapse = " + ")

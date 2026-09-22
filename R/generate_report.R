@@ -101,9 +101,9 @@
   num_cols <- c("Min", "Max", "Mean", "SD", "Median", "IQR", "Skewness", "Kurtosis")
   df_disp  <- df
   for (col in num_cols) {
-    df_disp[[col]] <- ifelse(is.na(df_disp[[col]]), "\u2014", as.character(df_disp[[col]]))
+    df_disp[[col]] <- ifelse(is.na(df_disp[[col]]), "-", as.character(df_disp[[col]]))
   }
-  df_disp$Top_values <- ifelse(is.na(df_disp$Top_values), "\u2014", df_disp$Top_values)
+  df_disp$Top_values <- ifelse(is.na(df_disp$Top_values), "-", df_disp$Top_values)
 
   right_cols <- c("N", "N_missing", "Pct_miss", "N_unique",
                   "Min", "Max", "Mean", "SD", "Median", "IQR", "Skewness", "Kurtosis")
@@ -986,7 +986,7 @@ generate_report <- function(dataset,
       stop("primary_variable must be specified for report_type = 'primary_vs_others'")
     secondary_vars <- setdiff(variables, primary_variable)
     if (length(secondary_vars) == 0)
-      stop("No secondary variables to plot \u2014 ensure variables contains columns besides primary_variable.")
+      stop("No secondary variables to plot - ensure variables contains columns besides primary_variable.")
     .build_primary_vs_others_sections(
       dataset, column_types, secondary_vars,
       primary_variable, primary_role, stratify_variable,
@@ -995,7 +995,7 @@ generate_report <- function(dataset,
   }
 
   if (length(sections) == 0)
-    stop("No sections could be built \u2014 check that selected variables exist in the dataset.")
+    stop("No sections could be built - check that selected variables exist in the dataset.")
 
   # Build linked_var_anchors for HTML: named vector mapping variable name → anchor ID.
   # For all_vars: every section variable links to its section.

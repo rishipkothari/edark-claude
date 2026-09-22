@@ -21,7 +21,7 @@ analysis_export_ui <- function(id) {
       shiny::tags$p(
         class = "text-muted fst-italic text-center mt-4",
         shiny::icon("clock"),
-        " Step 6 \u2014 Export: available in Phase 8."
+        " Step 6 - Export: available in Phase 8."
       )
     )
   )

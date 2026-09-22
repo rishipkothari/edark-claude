@@ -71,7 +71,7 @@ edark_inference_note <- function(model_type) {
 edark_format_p <- function(p) {
   p <- suppressWarnings(as.numeric(p))
   out <- ifelse(p < 0.001, "< 0.001", sprintf("%.3f", p))
-  out[is.na(p)] <- "\u2014"
+  out[is.na(p)] <- "-"
   out
 }
 
@@ -91,7 +91,7 @@ edark_format_est <- function(x) {
          ifelse(abs(x) >= 0.1, sprintf("%.2f", x),
                 formatC(signif(x, 3), format = "fg", digits = 3)))
   out[!is.na(x) & x == 0] <- "0.00"
-  out[is.na(x)] <- "\u2014"
+  out[is.na(x)] <- "-"
   out
 }
 
@@ -104,7 +104,7 @@ edark_format_ci <- function(est, low, high) {
   sep <- ifelse(!is.na(low) & !is.na(high) & (low < 0 | high < 0), " to ", "\u2013")
   out <- sprintf("%s (%s%s%s)", edark_format_est(est), edark_format_est(low), sep,
                  edark_format_est(high))
-  out[is.na(est)] <- "\u2014"
+  out[is.na(est)] <- "-"
   out
 }
 

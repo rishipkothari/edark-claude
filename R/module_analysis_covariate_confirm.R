@@ -391,7 +391,7 @@ analysis_covariate_confirm_server <- function(id, shared_state) {
       shiny::tagList(
         shiny::tags$p(
           class = "text-muted small mb-2",
-          "Check the covariates to include in the model \u2014 selections are saved as",
+          "Check the covariates to include in the model - selections are saved as",
           "you go. Role variables from Step 1 are locked at the top. Reference levels",
           "list only the levels present in the rows that remain after missing data",
           "are removed."
@@ -515,11 +515,11 @@ analysis_covariate_confirm_server <- function(id, shared_state) {
             switch(s$state,
               yes = htmltools::tags$span(class = "text-success fw-semibold",
                                          paste0("\u2713", .fmt_p(s$p))),
-              no  = htmltools::tags$span(class = "text-danger", "\u2014"),
+              no  = htmltools::tags$span(class = "text-danger", "-"),
               na  = htmltools::tags$span(class = "text-muted",
                                          title = if (is.na(s$reason)) "" else s$reason,
                                          style = "cursor:help;", "n/a"),
-              htmltools::tags$span(class = "text-muted", "\u2014")
+              htmltools::tags$span(class = "text-muted", "-")
             )
           },
           style = function(value, index) {
@@ -621,10 +621,10 @@ analysis_covariate_confirm_server <- function(id, shared_state) {
               role <- roles_col[index]
               if (role %in% .CC_GROUPING_ROLES) {
                 return(htmltools::tags$span(class = "text-muted small",
-                                            "grouping \u2014 no reference"))
+                                            "grouping - no reference"))
               }
               if (!is.factor(adata[[value]])) {
-                return(htmltools::tags$span("\u2014", class = "text-muted"))
+                return(htmltools::tags$span("-", class = "text-muted"))
               }
               # Options and selection come from the patch (see module docs)
               htmltools::tags$div(
@@ -902,7 +902,7 @@ analysis_covariate_confirm_server <- function(id, shared_state) {
 # of the baseline and have no cost of their own.
 .cc_cost_text <- function(v, si, n, checked, oe) {
   if (oe || is.null(si) || !v %in% names(si$row_cost)) {
-    return(list(text = "\u2014", class = "edark-cc-cost text-muted"))
+    return(list(text = "-", class = "edark-cc-cost text-muted"))
   }
   k <- si$row_cost[[v]]
   if (k == 0L) return(list(text = "0", class = "edark-cc-cost text-muted"))

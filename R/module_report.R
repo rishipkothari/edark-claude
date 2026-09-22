@@ -435,17 +435,17 @@ report_server <- function(id, shared_state) {
       type_label <- switch(input$report_type,
         all_vars          = "Describe Variables",
         primary_vs_others = "Correlation",
-        "\u2014"
+        "-"
       )
       format_label <- switch(input$output_format %||% "pptx",
         pptx = "PowerPoint (.pptx)",
         docx = "Word (.docx)",
         html = "HTML (.html)",
-        "\u2014"
+        "-"
       )
 
-      n_rows <- if (!is.null(ds)) nrow(ds) else "\u2014"
-      n_cols <- if (!is.null(ds)) ncol(ds) else "\u2014"
+      n_rows <- if (!is.null(ds)) nrow(ds) else "-"
+      n_cols <- if (!is.null(ds)) ncol(ds) else "-"
 
       sv <- input$stratify_variable
       strat_label <- if (is.null(sv) || !nzchar(sv)) "None" else sv
@@ -460,12 +460,12 @@ report_server <- function(id, shared_state) {
       n_sections <- length(sec_vars)
 
       primary_row <- if (input$report_type == "primary_vs_others") {
-        pv   <- input$primary_variable %||% "\u2014"
+        pv   <- input$primary_variable %||% "-"
         role <- if ((input$primary_role %||% "exposure") == "exposure") "Exposure (X)" else "Outcome (Y)"
         shiny::tagList(
           shiny::tags$tr(
             shiny::tags$th("Primary variable"),
-            shiny::tags$td(paste0(pv, " \u2014 ", role))
+            shiny::tags$td(paste0(pv, " - ", role))
           ),
           shiny::tags$tr(
             shiny::tags$th("Stratify by"),

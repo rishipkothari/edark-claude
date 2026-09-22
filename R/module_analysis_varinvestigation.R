@@ -61,7 +61,7 @@ NULL
       class = "mb-0 ps-3",
       lapply(seq_len(nrow(excluded)), function(i) {
         shiny::tags$li(shiny::tags$code(excluded$variable[i]),
-                       " \u2014 ", excluded$reason[i])
+                       " - ", excluded$reason[i])
       })
     )
   )
@@ -297,7 +297,7 @@ analysis_varinvestigation_server <- function(id, shared_state) {
     })
 
     # Threshold change: persist to spec and re-flag the stored screen result
-    # (no refit \u2014 p-values are unchanged, only the cut-off moves).
+    # (no refit - p-values are unchanged, only the cut-off moves).
     shiny::observeEvent(univ_threshold(), {
       thr <- univ_threshold()
 
@@ -423,7 +423,7 @@ analysis_varinvestigation_server <- function(id, shared_state) {
 
       num_col <- function(name) {
         reactable::colDef(name = name, format = reactable::colFormat(digits = 3L),
-                          na = "\u2014", align = "right")
+                          na = "-", align = "right")
       }
 
       reactable::reactable(
@@ -431,7 +431,7 @@ analysis_varinvestigation_server <- function(id, shared_state) {
         columns = list(
           variable        = reactable::colDef(name = "Variable", minWidth = 140),
           term            = reactable::colDef(name = "Term", minWidth = 140),
-          reference_level = reactable::colDef(name = "Reference", na = "\u2014"),
+          reference_level = reactable::colDef(name = "Reference", na = "-"),
           estimate        = num_col(est_label),
           conf.low        = num_col("95% CI Low"),
           conf.high       = num_col("95% CI High"),

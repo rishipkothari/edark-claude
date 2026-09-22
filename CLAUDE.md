@@ -104,37 +104,67 @@ inst/
 
 ---
 
+## Coding philosophy
+- do not use /u2014 dashes, use hyphens or other simple ASCII characters where appropriate
+
+---
+
 ## TO-DOs
 
-### In progress
-- **Analysis module** (Phases 1–9): Phases 0–7 and 6b complete; Step 6 (Export, Phase 8) is a placeholder stub. Phase 5b code generator (`service_analysis_codegen.R`) deferred — Step 5's R Code Preview is a placeholder; it should consume `prepare_snapshot` + the spec (incl. `purpose_specification`). Phase definitions and acceptance criteria: `PRD/BUILD_Analysis.md`.
-- **Performance validation follow-ups** (Phase 7b built 2026-09-19): optional shrunk-coefficient output from the bootstrap calibration slope; decision curve analysis; CV / bootstrap for mixed models with several cluster variables groups by the first one only.
-- **UI consistency** (Stages 1–6, none started): a shared component library (`R/ui_helpers.R`), honest step-locking and one status vocabulary, a ~80-line CSS file, one sidebar contract on every page, and a flattened IA that promotes Report to a top-level tab. Scoped to `bslib` + R — no Sass, no new JS, no shell rewrite. Assessment, rationale and stage status table: `PRD/BUILD_UI-redesign.md`. Work one stage per session and tick off its status table.
+### Prepare
 
-### High magnitude
-- Alternative plot types per variable combination (heat map, balloon plot, etc.)
-- Word report: reference `.docx` template with defined heading styles
-- Propensity score model subtypes - matching, score adjusted, IPTW, etc
+#### High magnitude
 
-### Mid magnitude
-- Export (§P9): working dataset, prepare/analyze spec, model ouptuts/results (including diagnostics). Formats for results would be individual files vs single document/report (select output type word, pdf, HTML). Zip all files. Share a writer with Step 9 and sessions (§M7).
-- Statistical tests in the Explore › Relationship summary panel (num × fac → Kruskal-Wallis; fac × fac → chi-square / Fisher's). Reports already have these via the table helpers; the Explore summary does not.
+#### Mid magnitude
 - transform → row filter → transform does not show a warning on stage.
 - Warnings section in the Apply pane — mimic the "Stratify by" section header in Report › Full Report.
-- Async report generation (synchronous now; cancel needs `future` / `promises`).
 - varaible labels - in Prepare phase, column in master table that has a textbox for custom column labels. Buttons to apply some function (str to title, capitalize first only, variable name) to change all labels quickly for basic presentation purposes. 
 
-### Small magnitude
+#### Low magnitude
+
+
+### Explore
+
+#### High magnitude
+- Alternative plot types per variable combination (heat map, balloon plot, etc.)
+
+#### Mid magnitude
+- Word report: reference `.docx` template with defined heading styles
+- Statistical tests in the Explore › Relationship summary panel (num × fac → Kruskal-Wallis; fac × fac → chi-square / Fisher's). Reports already have these via the table helpers; the Explore summary does not.
+- Async report generation (synchronous now; cancel needs `future` / `promises`).
+
+#### Low magnitude
 - Report contents option: collinearity investigation.
-- `shinytest2` module tests + `testthat` unit tests.
 - **Bug — centre tables in PPT + HTML reports:** `flextable::set_table_properties(align = "center")` is set in both `.style_dataset_summary_ft()` and `.style_section_ft()` in `generate_report.R`, but tables still render left-aligned in PPT and HTML (DOCX may work). Investigate `officer` slide content alignment for PPT and the Rmd template's table rendering for HTML.
 
-### Analyze debugging
+### Analyze
+
+### In progress
+Phases 0–7 and 6b complete; Step 6 (Export, Phase 8) is a placeholder stub. Phase 5b code generator (`service_analysis_codegen.R`) deferred — Step 5's R Code Preview is a placeholder; it should consume `prepare_snapshot` + the spec (incl. `purpose_specification`). Phase definitions and acceptance criteria: `PRD/BUILD_Analysis.md`.
+- **Performance validation follow-ups** (Phase 7b built 2026-09-19): optional shrunk-coefficient output from the bootstrap calibration slope; decision curve analysis; CV / bootstrap for mixed models with several cluster variables groups by the first one only.
+
+#### High magnitude
+- Propensity score model subtypes - matching, score adjusted, IPTW, etc
+
+#### Mid magnitude
 - Univariable screen flags a multi-level factor as suggested if *any* level term clears the threshold; an overall per-variable likelihood-ratio p would be more correct (`service_analysis_variable_selection.R`).
-- Collinearity plot base size should scale with the number of variables; still too small with few.
+
+#### Low magnitude
 - **`PF_LOOKS_CATEGORICAL` may be noisy** on genuine small counts (e.g. transfusion units 0–8). Threshold `.PF_CATEGORICAL_MAX_VALUES` (10) in `service_analysis_validation.R`.
-- **`postop_aki_stage` conflates "no AKI" with "missing"** — `NA` means the patient had no AKI, but every complete-case path reads it as missing. Including it as a covariate silently drops ~62% of rows and trips `PF_MISSING_GT50`. Consider a `has_aki` logical plus stage-among-those-with-AKI.
+- Collinearity plot base size should scale with the number of variables; still too small with few.
 - LASSO has no seed (`cv.glmnet` folds are random) — needed for the Phase 5b script to reproduce the app.
 - **Mixed models have no influence check** — Model › Diagnostics offers Cook's distance / leverage for lm / glm only. A cluster-level (leave-one-cluster-out) influence check would close the gap (§A11.2).
-- **Nine step pills wrap to two rows** at ~1500 px. Consider shorter labels (e.g. "Variables", "Covariates") or a vertical rail.
-- **Split variable choices include any factor** (e.g. `postop_aki_stage`, `transplant_center`). A split by centre is a legitimate external-style validation; nothing stops a nonsensical choice.
+
+### Other
+
+#### High magnitude
+- **UI consistency** (Stages 1–6, none started): a shared component library (`R/ui_helpers.R`), honest step-locking and one status vocabulary, a ~80-line CSS file, one sidebar contract on every page, and a flattened IA that promotes Report to a top-level tab. Scoped to `bslib` + R — no Sass, no new JS, no shell rewrite. Assessment, rationale and stage status table: `PRD/BUILD_UI-redesign.md`. Work one stage per session and tick off its status table.
+- investigate reset pipeline and what it looks like
+    - also with UI refresh, might be able to eliminate some of the click to lock in steps, should evaluate
+    - **Nine step pills wrap to two rows** at ~1500 px. Consider shorter labels (e.g. "Variables", "Covariates") or a vertical rail.
+
+#### Mid magnitude
+- Export (§P9): working dataset, prepare/analyze spec, model ouptuts/results (including diagnostics). Formats for results would be individual files vs single document/report (select output type word, pdf, HTML). Zip all files. Share a writer with Step 9 and sessions (§M7).
+
+### Low magnitude
+- `shinytest2` module tests + `testthat` unit tests.

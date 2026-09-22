@@ -569,7 +569,7 @@ analysis_setup_server <- function(id, shared_state) {
         htmltools::tags$span(class = cls, style = "font-size:0.7rem;", t)
       }
 
-      .dash <- function() htmltools::tags$span("\u2014", class = "text-muted")
+      .dash <- function() htmltools::tags$span("-", class = "text-muted")
 
       .radio_cell <- function(role_key) {
         function(value, index) {
@@ -655,7 +655,7 @@ analysis_setup_server <- function(id, shared_state) {
                 col  <- adata[[v]]
                 lvls <- if (is.factor(col)) levels(col) else character(0)
                 if (length(lvls) == 0) {
-                  return(htmltools::tags$span("\u2014", class = "text-muted"))
+                  return(htmltools::tags$span("-", class = "text-muted"))
                 }
                 htmltools::tags$select(
                   class       = "edark-role-reflevel form-select form-select-sm",
@@ -664,7 +664,7 @@ analysis_setup_server <- function(id, shared_state) {
                   lapply(lvls, function(lev) htmltools::tags$option(value = lev, lev))
                 )
               } else {
-                htmltools::tags$span("\u2014", class = "text-muted")
+                htmltools::tags$span("-", class = "text-muted")
               }
             }
           ),
@@ -783,7 +783,7 @@ analysis_setup_server <- function(id, shared_state) {
         shiny::tags$p(
           class = "text-muted small mt-1 mb-0",
           shiny::icon("circle-info"),
-          " Exposure assigned but no outcome \u2014 descriptive summaries only."
+          " Exposure assigned but no outcome - descriptive summaries only."
         )
       } else NULL
 
@@ -841,7 +841,7 @@ analysis_setup_server <- function(id, shared_state) {
         shiny::tags$p(
           class = "text-muted small mb-1",
           "Association: estimate how the exposure or risk factors relate to the outcome.",
-          "Prediction: build a model to predict the outcome for new patients \u2014",
+          "Prediction: build a model to predict the outcome for new patients -",
           "judged by its performance (Step 5 \u203a Performance)."
         ),
         shiny::conditionalPanel(
@@ -852,11 +852,11 @@ analysis_setup_server <- function(id, shared_state) {
             ns("validation_method"), label = NULL, width = "100%",
             choiceNames = list(
               shiny::span("Bootstrap", shiny::span(class = "small text-muted",
-                "\u2014 optimism correction")),
+                "- optimism correction")),
               shiny::span("Cross-validation", shiny::span(class = "small text-muted",
-                "\u2014 k-fold")),
+                "- k-fold")),
               shiny::span("Held-out test set", shiny::span(class = "small text-muted",
-                "\u2014 e.g. other centres"))
+                "- e.g. other centres"))
             ),
             choiceValues = c("bootstrap", "cv", "split"),
             selected = ps$validation_method %||% "bootstrap"
@@ -1003,17 +1003,17 @@ analysis_setup_server <- function(id, shared_state) {
         shiny::tags$p("Role Summary",
           class = "text-muted small text-uppercase fw-semibold mt-3 mb-1"),
         .row("Outcome",    if (length(outcome) == 0)
-                             shiny::span("\u2014", class = "text-muted fw-normal")
+                             shiny::span("-", class = "text-muted fw-normal")
                            else outcome[1]),
         .row("Exposure",   if (length(exposure) == 0)
-                             shiny::span("\u2014", class = "text-muted fw-normal")
+                             shiny::span("-", class = "text-muted fw-normal")
                            else exposure[1]),
         .row("Candidates", if (length(candidates) == 0)
-                             shiny::span("\u2014", class = "text-muted fw-normal")
+                             shiny::span("-", class = "text-muted fw-normal")
                            else sprintf("%d variable%s", length(candidates),
                                         if (length(candidates) != 1L) "s" else "")),
         .row("Clusters",   if (length(clusters) == 0)
-                             shiny::span("\u2014", class = "text-muted fw-normal")
+                             shiny::span("-", class = "text-muted fw-normal")
                            else paste(clusters, collapse = ", "))
       )
     })

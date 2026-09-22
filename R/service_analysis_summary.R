@@ -59,7 +59,7 @@ build_analysis_summary <- function(spec, result, data, validation = NULL) {
 .none <- "None"
 .plural <- function(n, word) sprintf("%d %s%s", n, word, if (n == 1L) "" else "s")
 .dims <- function(d) {
-  if (is.null(d)) return("\u2014")
+  if (is.null(d)) return("-")
   sprintf("%s rows \u00d7 %s columns", format(d[["rows"]], big.mark = ","), d[["cols"]])
 }
 
@@ -133,7 +133,7 @@ build_analysis_summary <- function(spec, result, data, validation = NULL) {
   md <- spec$specification_metadata
   n_cols <- length(setdiff(names(data), ".edark_row_id"))
   .ssection("dataset", "Analysis dataset", list(
-    .srow("Frozen at", if (!is.null(md$created_at)) format(md$created_at, "%Y-%m-%d %H:%M") else "\u2014"),
+    .srow("Frozen at", if (!is.null(md$created_at)) format(md$created_at, "%Y-%m-%d %H:%M") else "-"),
     .srow("Size", sprintf("%s rows \u00d7 %d columns", format(nrow(data), big.mark = ","), n_cols)),
     .srow("Complete rows (all columns)", sprintf("%d (%d%%)", sum(stats::complete.cases(data)),
                                                  round(mean(stats::complete.cases(data)) * 100)))
@@ -155,7 +155,7 @@ build_analysis_summary <- function(spec, result, data, validation = NULL) {
   ev <- analysis_outcome_event(spec, data)
 
   .var <- function(v) {
-    if (is.null(v) || !v %in% names(data)) return("\u2014")
+    if (is.null(v) || !v %in% names(data)) return("-")
     sprintf("%s (%s)", v, .var_kind(data[[v]]))
   }
 
@@ -170,16 +170,16 @@ build_analysis_summary <- function(spec, result, data, validation = NULL) {
   split_row <- switch(vl$method,
     split = if (!is.null(sr)) {
       .srow("Validation",
-            sprintf("Held-out test set \u2014 %s: training = %s (%d rows); test = %s (%d rows)%s", sr$variable,
+            sprintf("Held-out test set - %s: training = %s (%d rows); test = %s (%d rows)%s", sr$variable,
                     sr$training_level, sum(sr$training), paste(sr$test_levels, collapse = ", "),
                     sum(sr$test),
                     if (sr$n_missing > 0L) sprintf("; %d rows in neither", sr$n_missing) else ""))
     } else {
-      .srow("Validation", "Held-out test set \u2014 choose a variable and training level in Step 1", level = "warning")
+      .srow("Validation", "Held-out test set - choose a variable and training level in Step 1", level = "warning")
     },
-    cv        = .srow("Validation", sprintf("Cross-validation \u2014 %d-fold \u00d7 %d repeat%s, seed %d (set in Performance)",
+    cv        = .srow("Validation", sprintf("Cross-validation - %d-fold \u00d7 %d repeat%s, seed %d (set in Performance)",
                                             vl$cv_folds, vl$cv_repeats, if (vl$cv_repeats == 1L) "" else "s", vl$seed)),
-    bootstrap = .srow("Validation", sprintf("Bootstrap optimism correction \u2014 %d resamples, seed %d (set in Performance)",
+    bootstrap = .srow("Validation", sprintf("Bootstrap optimism correction - %d resamples, seed %d (set in Performance)",
                                             vl$bootstrap_reps, vl$seed)),
     NULL)
 
@@ -218,7 +218,7 @@ build_analysis_summary <- function(spec, result, data, validation = NULL) {
 
 .excluded_items <- function(ex) {
   if (is.null(ex) || nrow(ex) == 0L) return(NULL)
-  paste0("excluded: ", ex$variable, " \u2014 ", ex$reason)
+  paste0("excluded: ", ex$variable, " - ", ex$reason)
 }
 
 .summary_investigation <- function(spec, result) {
@@ -231,7 +231,7 @@ build_analysis_summary <- function(spec, result, data, validation = NULL) {
   } else {
     sugg <- unique(univ$variable[univ$suggested])
     .srow("Univariable screen",
-          sprintf("p < %s \u2014 %d of %d suggested", vsel$univariable_p_threshold %||% 0.2,
+          sprintf("p < %s - %d of %d suggested", vsel$univariable_p_threshold %||% 0.2,
                   length(sugg), length(unique(univ$variable))),
           items = c(sugg, .excluded_items(attr(univ, "excluded_variables") %||% vi$univariable_excluded)))
   }
@@ -240,7 +240,7 @@ build_analysis_summary <- function(spec, result, data, validation = NULL) {
     if (is.null(x)) return(.srow(label, "Not run"))
     if (!is.null(x$error)) return(.srow(label, paste("Failed:", x$error), level = "warning"))
     held <- if (length(x$held_variables)) paste0("; exposure held (", paste(x$held_variables, collapse = ", "), ")") else ""
-    .srow(label, sprintf("%s \u2014 %s selected%s", params, .plural(length(x$selected_variables), "variable"), held),
+    .srow(label, sprintf("%s - %s selected%s", params, .plural(length(x$selected_variables), "variable"), held),
           items = c(x$selected_variables, .excluded_items(x$excluded_variables)))
   }
   sw <- vi$stepwise
@@ -278,7 +278,7 @@ build_analysis_summary <- function(spec, result, data, validation = NULL) {
   )
   cov_items <- vapply(covs, function(v) {
     by <- names(sugg)[vapply(sugg, function(s) v %in% s, logical(1))]
-    paste0(v, if (length(by)) paste0(" \u2014 suggested by ", paste(by, collapse = ", ")) else " \u2014 not suggested by any method")
+    paste0(v, if (length(by)) paste0(" - suggested by ", paste(by, collapse = ", ")) else " - not suggested by any method")
   }, character(1))
 
   model_vars <- c(vr$outcome_variable, vr$exposure_variable, covs)
@@ -302,7 +302,7 @@ build_analysis_summary <- function(spec, result, data, validation = NULL) {
 
   c_rows <- list(
     .srow("Covariates in the model",
-          if (length(covs)) length(covs) else "None \u2014 unadjusted (exposure only)",
+          if (length(covs)) length(covs) else "None - unadjusted (exposure only)",
           items = unname(cov_items)),
     .srow("Reference levels", if (length(ref_items)) length(ref_items) else .none, items = ref_items),
     if (!is.null(si)) .srow("Complete-case sample",
@@ -334,7 +334,7 @@ build_analysis_summary <- function(spec, result, data, validation = NULL) {
   } else if (identical(rs$status, "failed")) {
     .srow("Status", paste("Last run failed:", rs$error %||% ""), level = "error")
   } else if (analysis_fit_is_stale(spec, result)) {
-    .srow("Status", sprintf("Fitted %s, but the specification has changed since \u2014 re-run the model",
+    .srow("Status", sprintf("Fitted %s, but the specification has changed since - re-run the model",
                             format(rs$fitted_at, "%H:%M")), level = "warning")
   } else {
     .srow("Status", sprintf("Fitted %s on %d rows", format(rs$fitted_at, "%Y-%m-%d %H:%M"),

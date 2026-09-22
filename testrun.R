@@ -1,3 +1,6 @@
+options(repos = c(CRAN = "https://packagemanager.posit.co/cran/latest"))
+options(pkgType="binary")
+options(install.packages.compile.from.source = "never")
 devtools::load_all(".", quiet = TRUE)
 shiny::runApp(
   edark(liver_tx),

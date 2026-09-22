@@ -262,7 +262,7 @@ fit_analysis_model <- function(spec, data) {
   if (singular) {
     .msg("warning", "fit", paste(
       "Singular fit: a random-effect variance is estimated at or near zero.",
-      "The random-effects structure may be too complex for the data \u2014",
+      "The random-effects structure may be too complex for the data -",
       "consider removing a cluster variable."))
   }
 
@@ -372,21 +372,21 @@ fit_analysis_model <- function(spec, data) {
 # Add a plain-language hint to the fitting warnings users most often see.
 .explain_fit_warning <- function(w) {
   if (grepl("converge", w, ignore.case = TRUE)) {
-    return(paste0(w, " \u2014 The estimates may not be reliable. Try a different ",
+    return(paste0(w, " - The estimates may not be reliable. Try a different ",
                   "optimizer under Advanced; if the estimates agree, the warning can ",
                   "usually be ignored."))
   }
   if (grepl("fitted probabilities numerically 0 or 1", w, fixed = TRUE)) {
-    return(paste0(w, " \u2014 Usually (quasi-)separation: a predictor perfectly ",
+    return(paste0(w, " - Usually (quasi-)separation: a predictor perfectly ",
                   "predicts the outcome for some rows. Check sparse factor levels."))
   }
   if (grepl("Rescale variables", w, fixed = TRUE)) {
-    return(paste0(w, " \u2014 A predictor is on a much larger scale than the others ",
+    return(paste0(w, " - A predictor is on a much larger scale than the others ",
                   "(e.g. mL next to units). Estimates are usually fine; rescaling it ",
                   "in Prepare (e.g. mL \u2192 L, or Standardize) removes the warning."))
   }
   if (grepl("algorithm did not converge", w, fixed = TRUE)) {
-    return(paste0(w, " \u2014 Often caused by separation or very sparse data."))
+    return(paste0(w, " - Often caused by separation or very sparse data."))
   }
   w
 }

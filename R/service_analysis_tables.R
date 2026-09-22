@@ -251,11 +251,11 @@ build_results_table <- function(result, unadjusted = NULL) {
     w <- st[st$status == "warning", , drop = FALSE]
     f <- st[st$status == "failed", , drop = FALSE]
     if (nrow(w) > 0L) {
-      fn <- c(fn, paste0("\u2020 Unadjusted model fitted with a warning \u2014 ",
+      fn <- c(fn, paste0("\u2020 Unadjusted model fitted with a warning - ",
                          paste(sprintf("%s: %s", w$variable, w$message), collapse = "; "), "."))
     }
     if (nrow(f) > 0L) {
-      fn <- c(fn, paste0("\u2021 Unadjusted model could not be fitted \u2014 ",
+      fn <- c(fn, paste0("\u2021 Unadjusted model could not be fitted - ",
                          paste(sprintf("%s: %s", f$variable, f$message), collapse = "; "), "."))
     }
   }

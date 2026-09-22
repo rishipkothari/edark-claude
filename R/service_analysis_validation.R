@@ -341,7 +341,7 @@ validate_analysis <- function(spec, data, tier = "full", verbose = FALSE) {
                paste0(n_shared, " value", if (n_shared != 1L) "s" else "", " of '", fine,
                       "' appear under more than one '", coarse, "'. If '", fine,
                       "' IDs are only unique within a '", coarse,
-                      "', those clusters will be merged \u2014 make the IDs unique first. ",
+                      "', those clusters will be merged - make the IDs unique first. ",
                       "If the two groupings are crossed, ignore this."))
         }
       }
@@ -503,7 +503,7 @@ validate_analysis <- function(spec, data, tier = "full", verbose = FALSE) {
 
     if (!is.null(exposure) && exposure %in% predictors && length(predictors) == 1L) {
       .add("PF_SINGLE_COVARIATE", "note",
-           "No covariates selected \u2014 the model is unadjusted (exposure only).")
+           "No covariates selected - the model is unadjusted (exposure only).")
     } else if (length(predictors) == 1L) {
       .add("PF_SINGLE_COVARIATE", "note", "Model has a single predictor.")
     }

@@ -187,7 +187,7 @@ analysis_modelspec_server <- function(id, shared_state) {
         return(shiny::tags$p(class = "small text-muted", "Start the analysis in Step 1."))
       }
       rec <- attr(o, "recommended")
-      labels <- ifelse(o$available, o$label, paste0(o$label, " \u2014 ", o$reason))
+      labels <- ifelse(o$available, o$label, paste0(o$label, " - ", o$reason))
       sel <- shiny::selectInput(
         ns("model_type"), label = NULL,
         choices  = stats::setNames(o$model_type, labels),
@@ -222,7 +222,7 @@ analysis_modelspec_server <- function(id, shared_state) {
           shiny::tags$p(
             class = "small text-muted mb-0",
             "The search method used to estimate a mixed model. bobyqa almost always works.",
-            "If you see a convergence warning, re-run with another optimizer \u2014 if the",
+            "If you see a convergence warning, re-run with another optimizer - if the",
             "estimates agree, the warning can usually be ignored."
           )
         )
@@ -502,7 +502,7 @@ analysis_modelspec_server <- function(id, shared_state) {
 }
 
 .ms_fmt_p <- function(p) {
-  if (is.null(p)) return("\u2014")
+  if (is.null(p)) return("-")
   edark_format_p(p)
 }
 
@@ -521,7 +521,7 @@ analysis_modelspec_server <- function(id, shared_state) {
 
   body <- if (is.null(exposure)) {
     shiny::tags$p(class = "small text-muted mb-0",
-                  "No exposure assigned (risk-factor study) \u2014 all estimates are in the table below.")
+                  "No exposure assigned (risk-factor study) - all estimates are in the table below.")
   } else if (is.null(rows) || nrow(rows) == 0L) {
     shiny::tags$p(class = "small text-warning mb-0", "The exposure has no estimate in this model.")
   } else {
@@ -553,7 +553,7 @@ analysis_modelspec_server <- function(id, shared_state) {
       shiny::span("Primary result"),
       shiny::span(class = "small text-muted",
                   sprintf("N analysed %d%s", rs$n_used,
-                          if (n_excl > 0) sprintf(" (%d excluded \u2014 missing data)", n_excl) else ""))
+                          if (n_excl > 0) sprintf(" (%d excluded - missing data)", n_excl) else ""))
     ),
     bslib::card_body(body)
   )

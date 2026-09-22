@@ -66,7 +66,7 @@ analysis_diagnostics_ui <- function(id) {
                           class = "btn-primary w-100"),
       shiny::tags$p(class = "small text-muted mt-2 mb-0",
                     "Sample accounting and fitting warnings are always included.",
-                    "Diagnostics are advisory \u2014 they never block the next steps.")
+                    "Diagnostics are advisory - they never block the next steps.")
     ),
     shiny::uiOutput(ns("header_ui")),
     shiny::uiOutput(ns("results_ui"))
@@ -165,7 +165,7 @@ analysis_diagnostics_server <- function(id, shared_state) {
       n_warn <- sum(dg$messages$level == "warning")
       shiny::showNotification(
         sprintf("Diagnostics complete%s.",
-                if (n_warn > 0L) sprintf(" \u2014 %d warning%s", n_warn, if (n_warn == 1L) "" else "s") else ""),
+                if (n_warn > 0L) sprintf(" - %d warning%s", n_warn, if (n_warn == 1L) "" else "s") else ""),
         type = "message", duration = 4)
     }, ignoreInit = TRUE)
 
@@ -420,7 +420,7 @@ analysis_diagnostics_server <- function(id, shared_state) {
       "Each continuous predictor enters the model as a straight line",
       if (!is.null(lin$inside)) "on the log-odds scale" else "",
       "(one slope per unit). If the residuals trend or curve against a predictor,",
-      "that line misses its shape \u2014 consider a transform in Prepare (e.g. log,",
+      "that line misses its shape - consider a transform in Prepare (e.g. log,",
       "or cut-points) and refit. A predictor that is a confounder can still be",
       "adjusted for adequately with a modest misfit."
     ),
@@ -453,7 +453,7 @@ analysis_diagnostics_server <- function(id, shared_state) {
     .dg_note(sprintf(paste(
       "How much each estimate's variance is inflated by correlation with the other predictors.",
       "%d\u2013%d is moderate and > %d high. Factors use the generalised VIF. VIF is shown for",
-      "transparency \u2014 correlated confounders often belong in the model together."),
+      "transparency - correlated confounders often belong in the model together."),
       .DIAG_VIF_MODERATE, .DIAG_VIF_HIGH, .DIAG_VIF_HIGH)),
     reactable::reactableOutput(ns("vif_table"))
   )
