@@ -127,7 +127,7 @@ Row filters run last so they act on the final (possibly transformed) values.
 
 ### P7.5 Reset and the Custom-Report Guard
 - **Reset to Original** clears all staged specs and restores the working dataset to the original.
-- If Explore custom report items exist, Apply, Reset and auto-apply first show **"Custom Report May Be Affected"**: continue (and clear the custom report) or **go back and revert** — which restores every staged spec to the last applied state and resyncs every Prepare tab (§M6.5).
+- If Explore custom report items exist, Apply, Reset and auto-apply first show **"Custom Report Will Use the Changed Data"**: the items are kept and re-drawn from the changed dataset when the report is generated (their thumbnails still show the old data; an item whose columns were removed renders a placeholder, §E12). The user can continue (**Apply Changes** / **Reset to Original**) or **go back and revert**, which restores every staged spec to the last applied state and resyncs every Prepare tab (§M6.5). One modal helper, `.custom_items_modal()` in `module_prepare_confirm.R`, serves all three paths.
 
 ---
 

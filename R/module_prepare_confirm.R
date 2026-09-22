@@ -221,19 +221,7 @@ prepare_confirm_server <- function(id, shared_state) {
     .custom_items_guard <- function(action_label, confirm_btn_id, cancel_btn_id) {
       n_items <- length(shiny::isolate(shared_state$custom_report_items))
       if (n_items == 0) return(FALSE)  # no guard needed
-      shiny::showModal(shiny::modalDialog(
-        title = "Custom Report May Be Affected",
-        paste0(
-            "You have ", n_items, " item(s) in your custom report. ",
-            "Dataset changes will clear custom report items. Would you like to proceed?"
-        ),
-        footer = shiny::tagList(
-          shiny::actionButton(ns(cancel_btn_id), "Go Back & Revert Changes",
-                              class = "btn-outline-secondary"),
-          shiny::actionButton(ns(confirm_btn_id), action_label, class = "btn-warning")
-        ),
-        easyClose = FALSE
-      ))
+      .custom_items_modal(n_items, ns(cancel_btn_id), ns(confirm_btn_id), action_label)
       TRUE  # guard was triggered
     }
 
@@ -253,7 +241,7 @@ prepare_confirm_server <- function(id, shared_state) {
       }
 
       # Warn if custom report items exist
-      if (.custom_items_guard("Apply and Clear Custom Report", "confirm_apply_btn", "cancel_apply_btn")) return()
+      if (.custom_items_guard("Apply Changes", "confirm_apply_btn", "cancel_apply_btn")) return()
 
       do_apply()
     })
@@ -272,7 +260,7 @@ prepare_confirm_server <- function(id, shared_state) {
     # ── Reset button ──────────────────────────────────────────────────────────
     shiny::observeEvent(input$reset_btn, {
       # Warn if custom report items exist
-      if (.custom_items_guard("Reset and Clear Custom Report", "confirm_reset_btn", "cancel_reset_btn")) return()
+      if (.custom_items_guard("Reset to Original", "confirm_reset_btn", "cancel_reset_btn")) return()
       do_reset()
     })
 
@@ -543,4 +531,28 @@ apply_prepare_pipeline <- function(shared_state) {
   }
 
   invisible(NULL)
+}
+
+
+# Confirmation modal shown before Prepare changes are applied or reset while
+# the custom report has items. Items store only a plot spec and are re-drawn
+# from the working dataset when the custom report is generated, so they are
+# kept and will reflect the new data - nothing is cleared. Shared by the
+# Apply / Reset buttons here and the tab-switch auto-apply in edark.R, which
+# pass fully namespaced button ids.
+.custom_items_modal <- function(n_items, cancel_id, confirm_id, confirm_label) {
+  shiny::showModal(shiny::modalDialog(
+    title = "Custom Report Will Use the Changed Data",
+    paste0(
+      "You have ", n_items, " item(s) in your custom report. They will be kept ",
+      "and re-drawn from the changed dataset when you generate the report. ",
+      "Their thumbnails still show the current data. Would you like to proceed?"
+    ),
+    footer = shiny::tagList(
+      shiny::actionButton(cancel_id, "Go Back & Revert Changes",
+                          class = "btn-outline-secondary"),
+      shiny::actionButton(confirm_id, confirm_label, class = "btn-warning")
+    ),
+    easyClose = FALSE
+  ))
 }

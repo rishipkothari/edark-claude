@@ -17,11 +17,11 @@ This file is the **index**: where to find things, the rules that must never be b
 | [NOTE_implementation.md](NOTE_implementation.md) | §N | Pitfalls, the **statistical methods registry** (§N2), and as-built mechanics per stage |
 | [NOTE_UI-principles.md](NOTE_UI-principles.md) | — | Layout, action placement, visual hierarchy. Read before any UI work so it isn't reinvented each time |
 | [BUILD_Analysis.md](BUILD_Analysis.md) | — | Analyze build phases and acceptance criteria (incl. Phase 5b code generator, Phase 8 export, Phase S sessions) |
-| [BUILD_UI-redesign.md](BUILD_UI-redesign.md) | — | **UI assessment and consistency plan** — component library, honest locking, sidebar contract, IA flattening. Scoped to `bslib` + R. Stage status table at the top; work one stage per session |
+| [BUILD_UI-redesign.md](BUILD_UI-redesign.md) | — | **The single UI plan** (Claude + Codex assessments merged 2026-09-22): settled decisions, assessment, and Stages 0-6 - honest locking first, component library, CSS theme, config / result / info page contract with a messages area, flatter navigation. `bslib` + R + plain CSS only. Stage status table at the top; work one stage per session |
 | [Codex proofing.md](Codex%20proofing.md) | — | Briefing notes for an external proofing agent |
 | [tools/PRD_section_map.md](tools/PRD_section_map.md) | — | Old → new section numbers (migration aid), plus the scripts that generated it |
 
-`BUILD_*` files are build plans for a specific piece of functionality, added as that work is planned. `archive/` holds the superseded monolithic PRDs (`EDARK V0.2 - PRD.md`, `EDARK_Analysis_Module_PRD.md`) — kept for history only; never cite them.
+`BUILD_*` files are build plans for a specific piece of functionality, added as that work is planned. `archive/` holds the superseded monolithic PRDs (`EDARK V0.2 - PRD.md`, `EDARK_Analysis_Module_PRD.md`) and the superseded Codex UI assessment (`BUILD_UI-redesign_CODEX.md`) — kept for history only; never cite them.
 
 **Quick lookup**
 
@@ -118,7 +118,7 @@ What each file does is in the root `CLAUDE.md`. This is the § lookup.
 - **Analyze:** Phases 0–7 and 6b complete — Setup (incl. model purpose + train/test split), Table 1, Variable Investigation, Covariate Confirmation, Model Creation, Diagnostics, Performance, Results.
 - **Built 2026-09-19:** Phase 7b performance validation — Step 1 validation method (bootstrap / cross-validation / held-out test set, mutually exclusive), settings and Cancel-able runs in Model › Performance (§A1.4a, §A5.3).
 - **Stubs and deferrals:** Export (`module_analysis_export.R`, `service_analysis_export.R`) is a placeholder; Phase 8 fills it with export materials, items disabled until created (§A10, §A5.3). Phase 5b's R code generator (`service_analysis_codegen.R`) is deferred — the R Code Preview is a placeholder; it should consume `prepare_snapshot` + the spec (incl. `purpose_specification`).
-- **Not started:** Phase S session save / load / autosave (§M8); UI consistency Stages 1–6 ([BUILD_UI-redesign.md](BUILD_UI-redesign.md)).
+- **Not started:** Phase S session save / load / autosave (§M8); UI consistency Stages 1–6 ([BUILD_UI-redesign.md](BUILD_UI-redesign.md); Stage 0 quick fixes done 2026-09-22).
 
 ---
 
@@ -132,7 +132,7 @@ Each needs a decision: change the code or change the doc.
 - **Dead renderer.** `render_plot()` dispatches `trend_mean`, which no spec builder produces.
 - **Dataset signature.** §A3.2 specifies a structural signature; Step 1 stores a sha256 hash of the data (see the note in §A3.2).
 - **Type overrides without UI.** `column_type_overrides` exists in state and pipeline, but no UI sets it (§P4). Keep as a hook or remove.
-- **Two Table Ones, two report systems.** Explore › Report has its own Table One (`.build_tableone_df()`) and report assemblers; Analyze has gtsummary Table 1 and a planned export report. Decide: keep both deliberately, or converge.
+- **Two Table Ones.** Explore › Report has its own Table One (`.build_tableone_df()`); Analyze has the gtsummary Table 1. Decide: keep both deliberately, or converge. (The two *report systems* are kept separate on purpose - decided 2026-09-22: Explore › Report compiles one document, Analyze › Export produces individual files plus a compilation. See BUILD_UI-redesign.md D1.)
 - **Zero baseline default.** `shared_state$trend_zero_baseline` initialises TRUE; the checkbox renders FALSE. §E5 documents FALSE.
 
 ---

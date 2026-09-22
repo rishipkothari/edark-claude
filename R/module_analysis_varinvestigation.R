@@ -162,9 +162,7 @@ analysis_varinvestigation_ui <- function(id) {
         sidebar = bslib::sidebar(
           position = "left",
           width    = 360,
-          shiny::tags$p("Threshold",
-            class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
-          shiny::tags$p(class = "small", "Pairs above 0.7 are flagged."),
+          shiny::tags$p(class = "small mt-2", "Pairs above 0.7 are flagged."),
           shiny::uiOutput(ns("collin_summary"))
         ),
 

@@ -297,22 +297,8 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
         # Guard: warn if custom report items exist (same guard as Apply button).
         n_items <- length(shiny::isolate(shared_state$custom_report_items))
         if (n_items > 0) {
-          shiny::showModal(shiny::modalDialog(
-            title = "Custom Report May Be Affected",
-            paste0(
-              "You have ", n_items, " item(s) in your custom report. ",
-              "Dataset changes will clear custom report items. Would you like to proceed?"
-            ),
-            footer = shiny::tagList(
-              shiny::actionButton("cancel_nav_apply_btn",
-                                  "Go Back & Revert Changes",
-                                  class = "btn-outline-secondary"),
-              shiny::actionButton("confirm_nav_apply_btn",
-                                  "Apply and Clear Custom Report",
-                                  class = "btn-warning")
-            ),
-            easyClose = FALSE
-          ))
+          .custom_items_modal(n_items, "cancel_nav_apply_btn",
+                              "confirm_nav_apply_btn", "Apply Changes")
           return()  # do NOT update last_prepare_tab — stays on old tab
         }
         .do_nav_apply()

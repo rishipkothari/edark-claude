@@ -26,10 +26,14 @@ Design for this flow explicitly.
 ## Layout
 
 ### Structure
-- Sidebar = setup
+- Left sidebar = setup (config + the one primary action)
 - Main panel = results + interpretation
+- Right pane = what the current settings produce (neutral, factual, live)
+- Top of main panel = messages (warnings, errors, blockers, stale notices) - one place only
 
-Do not overload the sidebar with explanation or multiple unrelated tasks.
+Do not overload the sidebar with explanation or multiple unrelated tasks. Do not put warnings
+in the info pane or info in the messages area. EDARK's concrete page contract, widths and
+per-page mapping: `BUILD_UI-redesign.md` Stage 4.
 
 ---
 

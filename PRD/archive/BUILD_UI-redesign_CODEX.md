@@ -1,5 +1,7 @@
 # EDARK v0.2 — Shiny-Native UI Redesign Assessment
 
+> **ARCHIVED 2026-09-22.** Merged into [../BUILD_UI-redesign.md](../BUILD_UI-redesign.md), which is the single UI plan. Kept for history only - do not work from this file. Note: its promotion of Report to a top-level tab was rejected (D1 in the merged plan).
+
 > A competing assessment of [BUILD_UI-redesign.md](BUILD_UI-redesign.md), with a
 > lower-complexity redesign recommendation that stays close to standard Shiny and
 > `bslib` patterns.
