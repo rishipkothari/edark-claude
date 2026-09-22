@@ -157,7 +157,7 @@ Phases 0–7 and 6b complete; Step 6 (Export, Phase 8) is a placeholder stub. Ph
 ### Other
 
 #### High magnitude
-- **UI consistency** (Stage 0 quick fixes done; Stages 1–6 not started): honest step-locking first, then a shared component library (`R/ui_helpers.R`), one plain-CSS theme file, a config (left) / result / info (right) page contract with a dedicated messages area, and flatter navigation. Report stays inside Explore. Scoped to `bslib` + R + CSS — no SCSS, no new JS, no shell rewrite. Decisions, assessment and stage status table: `PRD/BUILD_UI-redesign.md`. One open decision (D8, sub-step tab look). Work one stage per session and tick off its status table.
+- **UI consistency** (Stage 0 quick fixes done; Stages 1-6 not started): honest step-locking first, then a shared component library (`R/ui_helpers.R`), one plain-CSS theme file, a config (left) / result / info (right) page contract with a dedicated messages area, and flatter navigation. Report stays inside Explore. Scoped to `bslib` + R + CSS - no SCSS, no new JS, no shell rewrite. Decisions, assessment and stage status table: `PRD/BUILD_UI-redesign.md`. One open decision (D8, sub-step tab look). Work one stage per session and tick off its status table.
 - investigate reset pipeline and what it looks like
     - also with UI refresh, might be able to eliminate some of the click to lock in steps, should evaluate
     - **Nine step pills wrap to two rows** at ~1500 px. Consider shorter labels (e.g. "Variables", "Covariates") or a vertical rail.

@@ -17,11 +17,11 @@ This file is the **index**: where to find things, the rules that must never be b
 | [NOTE_implementation.md](NOTE_implementation.md) | §N | Pitfalls, the **statistical methods registry** (§N2), and as-built mechanics per stage |
 | [NOTE_UI-principles.md](NOTE_UI-principles.md) | — | Layout, action placement, visual hierarchy. Read before any UI work so it isn't reinvented each time |
 | [BUILD_Analysis.md](BUILD_Analysis.md) | — | Analyze build phases and acceptance criteria (incl. Phase 5b code generator, Phase 8 export, Phase S sessions) |
-| [BUILD_UI-redesign.md](BUILD_UI-redesign.md) | — | **The single UI plan** (Claude + Codex assessments merged 2026-09-22): settled decisions, assessment, and Stages 0-6 - honest locking first, component library, CSS theme, config / result / info page contract with a messages area, flatter navigation. `bslib` + R + plain CSS only. Stage status table at the top; work one stage per session |
+| [BUILD_UI-redesign.md](BUILD_UI-redesign.md) | - | **The single UI plan** (Claude + Codex assessments merged 2026-09-22): settled decisions, assessment, and Stages 0-6 - honest locking first, component library, CSS theme, config / result / info page contract with a messages area, flatter navigation. `bslib` + R + plain CSS only. Stage status table at the top; work one stage per session |
 | [Codex proofing.md](Codex%20proofing.md) | — | Briefing notes for an external proofing agent |
 | [tools/PRD_section_map.md](tools/PRD_section_map.md) | — | Old → new section numbers (migration aid), plus the scripts that generated it |
 
-`BUILD_*` files are build plans for a specific piece of functionality, added as that work is planned. `archive/` holds the superseded monolithic PRDs (`EDARK V0.2 - PRD.md`, `EDARK_Analysis_Module_PRD.md`) and the superseded Codex UI assessment (`BUILD_UI-redesign_CODEX.md`) — kept for history only; never cite them.
+`BUILD_*` files are build plans for a specific piece of functionality, added as that work is planned. `archive/` holds the superseded monolithic PRDs (`EDARK V0.2 - PRD.md`, `EDARK_Analysis_Module_PRD.md`) and the superseded Codex UI assessment (`BUILD_UI-redesign_CODEX.md`) - kept for history only; never cite them.
 
 **Quick lookup**
 
