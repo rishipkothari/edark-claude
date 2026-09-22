@@ -329,8 +329,9 @@ analysis_covariate_confirm_server <- function(id, shared_state) {
           "Direction: %s\nCriterion: %s", sw$direction, sw$criterion),
           sprintf("Stepwise (%s, %s)", sw$direction, sw$criterion)),
         lasso = .sl_info(la, if (!is.null(la)) sprintf(
-          "Lambda: %s (%s)", la$lambda_type,
-          if (is.numeric(la$lambda_selected)) signif(la$lambda_selected, 3) else "?"),
+          "Lambda: %s (%s)\nSeed: %s", la$lambda_type,
+          if (is.numeric(la$lambda_selected)) signif(la$lambda_selected, 3) else "?",
+          la$seed %||% "?"),
           sprintf("LASSO (%s)", la$lambda_type))
       )
     })

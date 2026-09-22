@@ -667,6 +667,9 @@ analysis_varinvestigation_server <- function(id, shared_state) {
           )
         )
       } else {
+        # Start from the stored settings (defaults on a fresh spec)
+        spec <- shiny::isolate(shared_state$analysis_spec)
+        vsel <- spec$variable_selection_specification
         shiny::tagList(
           shiny::tags$p("Lambda Selection",
             class = "text-muted small text-uppercase fw-semibold mt-3 mb-1"),
@@ -676,8 +679,16 @@ analysis_varinvestigation_server <- function(id, shared_state) {
               "lambda.1se (more regularized)" = "lambda.1se",
               "lambda.min (least error)"      = "lambda.min"
             ),
-            selected = "lambda.1se"
-          )
+            selected = vsel$lasso_lambda %||% "lambda.1se"
+          ),
+          shiny::tags$p("Random Seed",
+            class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+          shiny::numericInput(
+            ns("lasso_seed"), label = NULL,
+            value = lasso_seed(spec), min = 1, max = .Machine$integer.max, step = 1
+          ),
+          shiny::tags$p(class = "small text-muted mt-n2",
+                        "Fixes the random cross-validation folds so a run can be repeated.")
         )
       }
     })
@@ -701,7 +712,16 @@ analysis_varinvestigation_server <- function(id, shared_state) {
                                input$sw_direction, input$sw_criterion)
       } else {
         spec$variable_selection_specification$lasso_lambda <- input$lasso_lambda
-        modal_title <- sprintf("Running LASSO (%s)\u2026", input$lasso_lambda)
+        # An empty or invalid entry falls back to the stored / default seed
+        seed_in <- suppressWarnings(as.integer(input$lasso_seed))
+        if (length(seed_in) == 1L && !is.na(seed_in) && seed_in >= 1L) {
+          spec$variable_selection_specification$lasso_seed <- seed_in
+        }
+        spec$variable_selection_specification$lasso_seed <- lasso_seed(spec)
+        shiny::updateNumericInput(session, "lasso_seed",
+                                  value = spec$variable_selection_specification$lasso_seed)
+        modal_title <- sprintf("Running LASSO (%s, seed %d)\u2026", input$lasso_lambda,
+                               spec$variable_selection_specification$lasso_seed)
       }
 
       shiny::showModal(.analysis_progress_modal(modal_title))

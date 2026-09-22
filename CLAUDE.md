@@ -152,7 +152,6 @@ Phases 0–7 and 6b complete; Step 6 (Export, Phase 8) is a placeholder stub. Ph
 #### Low magnitude
 - **`PF_LOOKS_CATEGORICAL` may be noisy** on genuine small counts (e.g. transfusion units 0–8). Threshold `.PF_CATEGORICAL_MAX_VALUES` (10) in `service_analysis_validation.R`.
 - Collinearity plot base size should scale with the number of variables; still too small with few.
-- LASSO has no seed (`cv.glmnet` folds are random) — needed for the Phase 5b script to reproduce the app.
 - **Mixed models have no influence check** — Model › Diagnostics offers Cook's distance / leverage for lm / glm only. A cluster-level (leave-one-cluster-out) influence check would close the gap (§A11.2).
 
 ### Other

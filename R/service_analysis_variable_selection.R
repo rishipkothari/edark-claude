@@ -424,20 +424,36 @@ run_stepwise <- function(data, spec) {
 }
 
 
+#' Random seed for LASSO cross-validation
+#'
+#' Reads \code{variable_selection_specification$lasso_seed}, falling back to
+#' the default when it is missing or not a positive whole number.
+#'
+#' @param spec An \code{analysis_spec} list.
+#' @return A single integer.
+#' @export
+lasso_seed <- function(spec) {
+  x <- suppressWarnings(as.integer(spec$variable_selection_specification$lasso_seed))
+  if (length(x) != 1L || is.na(x) || x < 1L) .default_variable_selection_specification()$lasso_seed else x
+}
+
+
 #' Run LASSO variable selection
 #'
 #' Applies \code{glmnet::cv.glmnet} with alpha = 1 (LASSO). Factor variables
 #' are expanded via \code{model.matrix()}; a factor is included in the
 #' suggested list if any of its dummies has a non-zero coefficient. When an
 #' exposure is assigned its columns get \code{penalty.factor = 0}, so it is
-#' never shrunk out and never offered for selection.
+#' never shrunk out and never offered for selection. The cross-validation
+#' folds are random; they are drawn with \code{\link{lasso_seed}(spec)} and the
+#' session's random stream is left as it was.
 #'
 #' @param data A \code{data.frame}.
 #' @param spec A named list conforming to the \code{analysis_spec} structure.
 #'
 #' @return A named list: \code{selected_variables}, \code{held_variables}
 #'   (the exposure, or empty), \code{lambda_type},
-#'   \code{lambda_selected}, \code{coef_data}, \code{cv_fit}, plus
+#'   \code{lambda_selected}, \code{seed}, \code{coef_data}, \code{cv_fit}, plus
 #'   \code{excluded_variables}, \code{n_used} and \code{n_total} (as for
 #'   \code{\link{run_stepwise}}). On a fit error, \code{error} holds the
 #'   message. Returns \code{NULL} when no outcome or candidates are assigned.
@@ -448,6 +464,7 @@ run_lasso <- function(data, spec) {
   candidates <- roles$univariable_test_pool
   vsel       <- spec$variable_selection_specification
   lambda_sel <- if (!is.null(vsel$lasso_lambda)) vsel$lasso_lambda else "lambda.1se"
+  seed       <- lasso_seed(spec)
 
   if (is.null(outcome) || is.null(candidates) || length(candidates) == 0L) return(NULL)
 
@@ -461,8 +478,8 @@ run_lasso <- function(data, spec) {
   prep <- .prepare_selection_data(data, data_cc, cands_present)
   .fail <- function(msg) {
     c(list(selected_variables = character(0), held_variables = exposure,
-           lambda_type = lambda_sel, lambda_selected = NULL, coef_data = NULL,
-           cv_fit = NULL, error = msg),
+           lambda_type = lambda_sel, lambda_selected = NULL, seed = seed,
+           coef_data = NULL, cv_fit = NULL, error = msg),
       prep$run_info)
   }
   if (!is.null(prep$error)) return(.fail(prep$error))
@@ -487,8 +504,9 @@ run_lasso <- function(data, spec) {
     # Exposure columns are unpenalised: always in the model, never selected
     pf <- ifelse(col_var %in% exposure, 0, 1)
 
-    cv_fit <- glmnet::cv.glmnet(x, y, family = family, alpha = 1, nfolds = 10,
-                                penalty.factor = pf)
+    # Folds are random: fix them with the seed so a run can be reproduced
+    cv_fit <- .with_seed(seed, glmnet::cv.glmnet(x, y, family = family, alpha = 1,
+                                                 nfolds = 10, penalty.factor = pf))
 
     chosen_lambda <- if (lambda_sel == "lambda.min") cv_fit$lambda.min else cv_fit$lambda.1se
 
@@ -510,6 +528,7 @@ run_lasso <- function(data, spec) {
       held_variables     = exposure,
       lambda_type        = lambda_sel,
       lambda_selected    = chosen_lambda,
+      seed               = seed,
       coef_data          = coef_df,
       cv_fit             = cv_fit
     ), prep$run_info)

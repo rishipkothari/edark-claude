@@ -35,14 +35,8 @@ reset_analysis_pipeline <- function(shared_state, from_step) {
     shared_state$analysis_result <- NULL
 
     if (!is.null(shared_state$analysis_spec)) {
-      shared_state$analysis_spec$variable_selection_specification <- list(
-        method                  = "univariable",
-        univariable_p_threshold = 0.2,
-        stepwise_direction      = "backward",
-        stepwise_criterion      = "BIC",
-        lasso_lambda            = "lambda.1se",
-        selected_variables      = NULL
-      )
+      shared_state$analysis_spec$variable_selection_specification <-
+        .default_variable_selection_specification()
       shared_state$analysis_spec$model_design <- .default_model_design()
       # Covariates start unselected; Step 4 starts over
       shared_state$analysis_spec$variable_roles$final_model_covariates <- NULL
@@ -113,6 +107,22 @@ reset_analysis_pipeline <- function(shared_state, from_step) {
     validation_method = "bootstrap",
     split_variable    = NULL,
     training_level    = NULL
+  )
+}
+
+
+# Fresh variable_selection_specification block for analysis_spec (Step 3).
+# lasso_seed fixes cv.glmnet's random fold assignment so a LASSO run can be
+# reproduced (and restored with the spec).
+.default_variable_selection_specification <- function() {
+  list(
+    method                  = "univariable",
+    univariable_p_threshold = 0.2,
+    stepwise_direction      = "backward",
+    stepwise_criterion      = "BIC",
+    lasso_lambda            = "lambda.1se",
+    lasso_seed              = 20260919L,
+    selected_variables      = NULL
   )
 }
 

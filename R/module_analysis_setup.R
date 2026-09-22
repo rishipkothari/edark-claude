@@ -245,14 +245,7 @@ analysis_setup_server <- function(id, shared_state) {
           include_smd_exposure                 = TRUE,
           include_smd_outcome                  = FALSE
         ),
-        variable_selection_specification = list(
-          method                  = "univariable",
-          univariable_p_threshold = 0.2,
-          stepwise_direction      = "backward",
-          stepwise_criterion      = "BIC",
-          lasso_lambda            = "lambda.1se",
-          selected_variables      = NULL
-        ),
+        variable_selection_specification = .default_variable_selection_specification(),
         purpose_specification = .default_purpose_specification(),
         validation_settings   = .default_validation_settings(),
         model_design = .default_model_design(),

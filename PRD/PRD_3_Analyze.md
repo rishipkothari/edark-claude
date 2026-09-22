@@ -251,6 +251,7 @@ analysis_spec <- list(
     stepwise_direction      = "backward",
     stepwise_criterion      = "BIC",
     lasso_lambda            = "lambda.1se",
+    lasso_seed              = 20260919L,   # fixes cv.glmnet's random folds
     selected_variables      = NULL
   ),
 
@@ -627,7 +628,7 @@ Variables: exposure + outcome + all candidates, fixed order. Placeholders for un
 
 **Training rows:** with a train/test split (Step 1), every tool here runs on the training rows only (`analysis_model_data()`), so variable selection never sees the test set.
 
-**Stepwise / LASSO:** `radioGroupButtons` toggle. Stepwise: direction + criterion + run. LASSO: lambda + run. State preserved on toggle. Advisory banner. When an exposure is assigned it is held in every model and never offered for selection (see §A7.7–A7.8), and the results say so.
+**Stepwise / LASSO:** `radioGroupButtons` toggle. Stepwise: direction + criterion + run. LASSO: lambda + random seed + run. State preserved on toggle. Advisory banner. When an exposure is assigned it is held in every model and never offered for selection (see §A7.7–A7.8), and the results say so.
 
 **Step complete when:** at least one tool run.
 
@@ -1047,6 +1048,8 @@ Output: selected formula, selection path tibble, suggested variable list (never 
 
 **Exposure held:** when an exposure is assigned, its columns get `penalty.factor = 0` — never shrunk out, never reported as selected.
 
+**Seed:** the 10 cross-validation folds are random. They are drawn with `lasso_seed(spec)` (`variable_selection_specification$lasso_seed`, default 20260919) inside `.with_seed()`, which restores the session's random stream, so the same seed and data give the same lambda and selection. The seed is set in the LASSO sidebar (Random Seed, filled with the stored value), written to the spec on Run, returned as `seed` in the result, and shown in the Step 5 Summary and the Step 4 LASSO column tooltip. The Phase 5b script reproduces the run with `set.seed(<lasso_seed>)` immediately before `cv.glmnet()`.
+
 Output: coefficient path plot data, cross-validation plot data, suggested variable list.
 
 ### A7.9 R Code Generation
@@ -1199,7 +1202,7 @@ The subsystem is advisory. Three methods operate on the candidate pool from Step
 
 ### A9.5 Spec Storage
 
-`analysis_spec$variable_selection_specification` stores all parameters: `univariable_p_threshold`, `stepwise_direction`, `stepwise_criterion`, `lasso_lambda`, `selected_variables`.
+`analysis_spec$variable_selection_specification` stores all parameters: `univariable_p_threshold`, `stepwise_direction`, `stepwise_criterion`, `lasso_lambda`, `lasso_seed`, `selected_variables`. Defaults: `.default_variable_selection_specification()` (used by Setup and by a role reset).
 
 ### A9.6 Method Independence
 

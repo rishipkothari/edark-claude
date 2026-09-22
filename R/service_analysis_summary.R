@@ -258,7 +258,9 @@ build_analysis_summary <- function(spec, result, data, validation = NULL) {
     univ_row,
     col_row,
     .sl_row(sw, "Stepwise", if (!is.null(sw)) sprintf("%s, %s", sw$direction, sw$criterion) else ""),
-    .sl_row(la, "LASSO", if (!is.null(la)) la$lambda_type else "")
+    .sl_row(la, "LASSO", if (!is.null(la)) {
+      if (is.null(la$seed)) la$lambda_type else sprintf("%s, seed %d", la$lambda_type, la$seed)
+    } else "")
   ))
 }
 
