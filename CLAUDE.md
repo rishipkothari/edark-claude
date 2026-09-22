@@ -132,7 +132,6 @@ inst/
 ### Analyze debugging
 - Univariable screen flags a multi-level factor as suggested if *any* level term clears the threshold; an overall per-variable likelihood-ratio p would be more correct (`service_analysis_variable_selection.R`).
 - Collinearity plot base size should scale with the number of variables; still too small with few.
-- **EPV computed two ways:** Step 4 / Summary (`compute_covariate_sample`) divides events by *parameters* (a 3-level factor = 2); the validator's `PF_LOW_EPV_*` divides by *predictors* (a factor = 1), so the validator is more lenient. Pick one — parameters is the usual convention.
 - **`PF_LOOKS_CATEGORICAL` may be noisy** on genuine small counts (e.g. transfusion units 0–8). Threshold `.PF_CATEGORICAL_MAX_VALUES` (10) in `service_analysis_validation.R`.
 - **`postop_aki_stage` conflates "no AKI" with "missing"** — `NA` means the patient had no AKI, but every complete-case path reads it as missing. Including it as a covariate silently drops ~62% of rows and trips `PF_MISSING_GT50`. Consider a `has_aki` logical plus stage-among-those-with-AKI.
 - LASSO has no seed (`cv.glmnet` folds are random) — needed for the Phase 5b script to reproduce the app.

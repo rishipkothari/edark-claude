@@ -29,7 +29,7 @@ NULL
   PF_UNBALANCED_CLUSTERS            = "Cluster sizes reasonably balanced",
   PF_CLUSTER_IDS_SHARED             = "Cluster IDs are not shared across groupings",
   PF_MISSING_ANY                    = "No rows excluded for missing data",
-  PF_LOW_EPV_10                     = "At least 10 events per predictor",
+  PF_LOW_EPV_10                     = "At least 10 events per parameter",
   PF_RARE_OUTCOME                   = "Outcome prevalence between 5% and 95%",
   PF_RARE_FACTOR_LEVEL              = "Every factor level has at least 5 observations",
   PF_EXPOSURE_NOT_IN_MODEL          = "Exposure is in the model",
@@ -358,17 +358,26 @@ validate_analysis <- function(spec, data, tier = "full", verbose = FALSE) {
     ev_counts  <- table(droplevels(out_t2))
     n_events   <- min(ev_counts)
     event_rate <- n_events / n_t2
-    n_preds    <- length(predictors)
-    epv        <- n_events / n_preds
+    # Parameters, not variables: 1 per numeric/logical term, (levels - 1) per
+    # factor term on the complete-case rows — matches compute_covariate_sample()
+    # so Step 4/Summary and this preflight check report the same EPV.
+    n_params   <- sum(vapply(predictors, function(v) {
+      col <- data_t2[[v]]
+      if (is.factor(col)) max(length(levels(droplevels(col))) - 1L, 0L) else 1L
+    }, integer(1)))
 
-    if (epv < 5) {
-      .add("PF_LOW_EPV_5", "warning",
-           paste0("Fewer than 5 events per variable (EPV = ", round(epv, 1L),
-                  "). High risk of overfitting. Reduce covariates."))
-    } else if (epv < 10) {
-      .add("PF_LOW_EPV_10", "warning",
-           paste0("Fewer than 10 outcome events per candidate variable (EPV = ",
-                  round(epv, 1L), "). Consider reducing covariates."))
+    if (n_params > 0L) {
+      epv <- n_events / n_params
+
+      if (epv < 5) {
+        .add("PF_LOW_EPV_5", "warning",
+             paste0("Fewer than 5 events per parameter (EPV = ", round(epv, 1L),
+                    "). High risk of overfitting. Reduce covariates."))
+      } else if (epv < 10) {
+        .add("PF_LOW_EPV_10", "warning",
+             paste0("Fewer than 10 outcome events per parameter (EPV = ",
+                    round(epv, 1L), "). Consider reducing covariates."))
+      }
     }
 
     if (event_rate < 0.05 || event_rate > 0.95) {
