@@ -164,6 +164,7 @@ Phases 0–7 and 6b complete; Step 6 (Export, Phase 8) is a placeholder stub. Ph
 
 #### Mid magnitude
 - Univariable screen flags a multi-level factor as suggested if *any* level term clears the threshold; an overall per-variable likelihood-ratio p would be more correct (`service_analysis_variable_selection.R`).
+- **Covariates and Model › Summary have config panes with nothing to configure.** Both pages keep their configuration in the table (Covariates) or have none at all (Summary), so after the Stage 4 page contract their left panes carry orientation text rather than controls. Honest but thin. Either give them real global controls - Covariates has an obvious candidate in table-level Select all / Clear, and a search - or decide those two pages are a deliberate exception to D6 and say so in the plan.
 
 #### Low magnitude
 - **`PF_LOOKS_CATEGORICAL` may be noisy** on genuine small counts (e.g. transfusion units 0–8). Threshold `.PF_CATEGORICAL_MAX_VALUES` (10) in `service_analysis_validation.R`.
@@ -171,6 +172,7 @@ Phases 0–7 and 6b complete; Step 6 (Export, Phase 8) is a placeholder stub. Ph
 - **Mixed models have no influence check** — Model › Diagnostics offers Cook's distance / leverage for lm / glm only. A cluster-level (leave-one-cluster-out) influence check would close the gap (§A11.2).
 - generate table 1 spinner - specify which table its working on, e.g. if it has 3 to generate (overall, by exposure, by outcome) have 3 stops on the bar and change text to say which is being created
 - need to think about what we want table 1 RHS to show; for now, it doesn't accurately reflect what it's stratifying by, it just picks one of the vars i think maybe exposure by defualt?
+- **Setup and Covariates open with the info pane folded** (`info_open = "closed"` in their `edark_page()` calls). Both centres are wide one-row-per-variable tables and at 1280 px they were too tight with both panes open, so this was the Stage 4 viewport fallback. Worth re-checking at your usual window size: if there is room, drop the argument so they match every other page.
 
 ### Other
 
@@ -180,10 +182,10 @@ Phases 0–7 and 6b complete; Step 6 (Export, Phase 8) is a placeholder stub. Ph
   (`R/ui_helpers.R`), one plain-CSS theme file (`inst/www/edark.css`), a config (left) /
   result / info (right) page contract with a dedicated messages area, and flatter
   navigation. Report stays inside Explore. `bslib` + R + CSS only - no SCSS, no new JS.
-  **Needs your ruling:** Explore › Report's Full / Custom ended up as underline tabs across
-  the page (level 3b), not the config-pane pills D8 names, because D11 leaves Custom with no
-  result surface, so the two modes do not share one. Putting the pills in the pane means
-  giving Custom its centre back. See Stage 5's build note in `PRD/BUILD_UI-redesign.md`.
+  Explore › Report's Full / Custom are underline tabs (level 3b), not the config-pane pills
+  D8 originally named - **ruled 2026-09-23: they stay underlines**, because that is the third
+  nested level and consistency at a level beats the D8 wording. See Stage 5's build note in
+  `PRD/BUILD_UI-redesign.md`.
 - investigate reset pipeline and what it looks like
     - also with UI refresh, might be able to eliminate some of the click to lock in steps, should evaluate
     - ~~Nine step pills wrap to two rows~~ - closed 2026-09-23: there are six steps, and with

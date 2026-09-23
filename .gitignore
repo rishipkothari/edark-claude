@@ -1,0 +1,48 @@
+# Posit Connect deployment state. Machine-specific: it records deployment
+# GUIDs for whoever last pushed, so it conflicts rather than merges.
+# The things Connect actually needs to build - app.R, manifest.json,
+# .rscignore - are tracked and stay at the repo root.
+.posit/
+
+# Local scratch. Dev launchers, throwaway experiments, screenshots, anything
+# that helps while working but is not part of the package.
+.misc/
+misc/
+
+# R session and build artefacts
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+*.tar.gz
+*.Rcheck/
+
+# ggplot2::ggplotGrob() and friends drop this in the working directory when a
+# script renders a plot outside a device (see the headless-run notes).
+Rplots.pdf
+
+# Compiled code. The package has none today; here so a stray build cannot
+# slip in unnoticed.
+src/*.o
+src/*.so
+src/*.dll
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code. This repo is developed from more than one machine, so be
+# precise about what travels.
+#
+# settings.local.json never does. Permission grants here are written as quoted
+# absolute paths (Rscript is not on PATH, so every R command has to be), which
+# means a grant made on one machine can never match on the other - the tracked
+# copies referenced R 4.3.3 and 4.4.2, neither of them installed anywhere, plus
+# home and work user directories. Two machines appending to one JSON array also
+# conflicts for no gain.
+.claude/settings.local.json
+
+# Everything else under .claude/ is deliberately NOT ignored: project skills,
+# slash commands and subagents (.claude/skills, commands, agents) are portable
+# and worth sharing across machines. settings.json becomes worth tracking once
+# Rscript is on PATH on both machines and its grants stop encoding one laptop.
