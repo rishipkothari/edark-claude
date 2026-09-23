@@ -3,10 +3,16 @@
 \name{module_prepare_confirm}
 \alias{module_prepare_confirm}
 \alias{prepare_confirm_ui}
+\alias{prepare_confirm_info_ui}
+\alias{prepare_confirm_messages_ui}
 \alias{prepare_confirm_server}
 \title{Prepare Confirm Module}
 \usage{
 prepare_confirm_ui(id)
+
+prepare_confirm_info_ui(id)
+
+prepare_confirm_messages_ui(id)
 
 prepare_confirm_server(id, shared_state)
 }

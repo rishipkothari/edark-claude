@@ -48,11 +48,9 @@ analysis_results_ui <- function(id) {
                           shiny::span(class = "small text-muted", o$description)))
   }
 
-  bslib::layout_sidebar(
-    sidebar = bslib::sidebar(
-      position = "left",
-      width    = 340,
-      edark_section_label("Outputs"),
+  edark_page(
+    config = shiny::tagList(
+      edark_section_label("Outputs", first = TRUE),
       .choice(.RESULTS_OUTPUTS[[1]]),
       shiny::conditionalPanel(
         condition = "input.out_results_table", ns = ns,
@@ -67,17 +65,19 @@ analysis_results_ui <- function(id) {
                     "Only the ticked outputs are created, and only created outputs can be",
                     "exported in Step 6. The Summary tab is always shown.")
     ),
-    shiny::tags$script(shiny::HTML("
-      function edarkCopyText(id, btn) {
-        var el = document.getElementById(id);
-        if (!el || !navigator.clipboard) return;
-        navigator.clipboard.writeText(el.innerText).then(function() {
-          var old = btn.innerHTML; btn.innerHTML = 'Copied';
-          setTimeout(function() { btn.innerHTML = old; }, 1500);
-        });
-      }")),
-    shiny::uiOutput(ns("header_ui")),
-    shiny::uiOutput(ns("tabs_ui"))
+    result = shiny::tagList(
+      shiny::tags$script(shiny::HTML("
+        function edarkCopyText(id, btn) {
+          var el = document.getElementById(id);
+          if (!el || !navigator.clipboard) return;
+          navigator.clipboard.writeText(el.innerText).then(function() {
+            var old = btn.innerHTML; btn.innerHTML = 'Copied';
+            setTimeout(function() { btn.innerHTML = old; }, 1500);
+          });
+        }")),
+      shiny::uiOutput(ns("tabs_ui"))
+    ),
+    info = shiny::uiOutput(ns("header_ui"))
   )
 }
 

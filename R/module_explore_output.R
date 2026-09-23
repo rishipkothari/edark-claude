@@ -1,9 +1,9 @@
 #' Explore Output Module
 #'
 #' Main panel for the Explore stage. Observes `shared_state$plot_specification`
-#' and renders the plot and the variable summary table (via `reactable`). Also
-#' shows a "dataset has changed — re-run" notice when
-#' `shared_state$explore_needs_refresh` is TRUE.
+#' and renders the plot. The variable summary and the custom-report state go to
+#' the page's info pane, and the "dataset has changed" notice to its messages
+#' slot (D2, D3 - the page contract, BUILD_UI-redesign Stage 4).
 #'
 #' Aesthetic changes (palette, labels, legend) re-render the plot without
 #' rebuilding the spec — the spec is already stored in shared_state.
@@ -21,9 +21,6 @@ explore_output_ui <- function(id) {
   ns <- shiny::NS(id)
 
   shiny::tagList(
-    # Stale-data notice (hidden until needed)
-    shiny::uiOutput(ns("refresh_notice")),
-
     # Actions on the produced plot live with the plot, not in a pane (F2 / D10)
     edark_action_toolbar(
       edark_button(ns, "save_plot_btn", "Save Plot", icon = "download",
@@ -55,21 +52,11 @@ explore_output_ui <- function(id) {
       "});"
     ))),
 
-    # Plot area
+    # Plot area - the one artefact this page produces
     bslib::card(
       bslib::card_body(
-        waiter::spin_flower() |> waiter::waiter_on_busy(),
+        waiter::waiter_on_busy(waiter::spin_flower()),
         shiny::plotOutput(ns("main_plot"), height = "500px", width = "100%")
-      )
-    ),
-
-    shiny::br(),
-
-    # Summary statistics table
-    bslib::card(
-      bslib::card_header(shiny::icon("table"), " Variable Summary"),
-      bslib::card_body(
-        reactable::reactableOutput(ns("summary_table"))
       )
     )
   )
@@ -78,24 +65,24 @@ explore_output_ui <- function(id) {
 
 #' @rdname module_explore_output
 #' @export
+explore_output_info_ui <- function(id) {
+  ns <- shiny::NS(id)
+  shiny::uiOutput(ns("info_panel"))
+}
+
+
+#' @rdname module_explore_output
+#' @export
+explore_output_messages_ui <- function(id) {
+  edark_messages_ui(shiny::NS(id))
+}
+
+
+#' @rdname module_explore_output
+#' @export
 explore_output_server <- function(id, shared_state) {
   shiny::moduleServer(id, function(input, output, session) {
     ns <- session$ns
-
-    # ── Stale-data notice ─────────────────────────────────────────────────────
-    output$refresh_notice <- shiny::renderUI({
-      if (isTRUE(shared_state$explore_needs_refresh)) {
-        bslib::card(
-          class = "border-warning mb-3",
-          bslib::card_body(
-            shiny::icon("triangle-exclamation", class = "text-warning"),
-            shiny::tags$strong(" Dataset has changed."),
-            " Re-run your analysis to update the plots."
-          )
-        )
-      }
-    })
-
 
     # ── Render the plot ───────────────────────────────────────────────────────
     # Rerenders whenever the spec OR any aesthetic setting changes.
@@ -156,32 +143,73 @@ explore_output_server <- function(id, shared_state) {
     }, res = 96)
 
 
-    # ── Render the summary table ──────────────────────────────────────────────
-    output$summary_table <- reactable::renderReactable({
+    # -- Info pane: what the plot on screen is made of ------------------------
+    # The variable summary, transposed to label/value rows. It used to be a
+    # reactable in a card below the plot; the page contract puts facts about
+    # the result in the info pane (D2), and a wide stats table does not fit
+    # 300 px, so the same numbers are shown one per line instead.
+    output$info_panel <- shiny::renderUI({
       spec    <- shared_state$plot_specification
       dataset <- shared_state$dataset_working
       types   <- shared_state$column_types
+      items   <- shared_state$custom_report_items
 
-      shiny::req(!is.null(spec), !is.null(dataset))
+      custom_block <- shiny::tagList(
+        edark_section_label("Custom report"),
+        edark_info_row("Items so far", length(items)),
+        edark_info_row(
+          "This plot",
+          if (is.null(spec)) shiny::tags$em(class = "text-muted", "-")
+          else if (.plot_already_added(spec, items))
+            shiny::tags$span(class = "text-success", "already added")
+          else shiny::tags$span(class = "text-muted", "not added")
+        )
+      )
 
-      # For trend plots the meaningful variable is column_b (the trend variable).
-      # Fall back to column_a (the datetime timestamp) for trend_count (no column_b).
-      trend_types <- c("trend_count", "trend_numeric", "trend_proportion")
-      is_trend    <- !is.null(spec$plot_type) && spec$plot_type %in% trend_types
-      primary     <- if (is_trend && !is.null(spec$column_b)) spec$column_b else spec$column_a
-      col_type    <- if (primary %in% names(types)) types[[primary]] else "datetime"
+      if (is.null(spec) || is.null(dataset)) {
+        return(shiny::tagList(
+          edark_section_label("Variable summary", first = TRUE),
+          shiny::tags$p(class = "small text-muted",
+                        "Run a plot to see its summary here."),
+          custom_block
+        ))
+      }
 
-      summary_df <- build_variable_summary(dataset, primary, col_type)
+      # For trend plots the meaningful variable is column_b (the trend
+      # variable), not column_a (the datetime timestamp).
+      is_trend <- !is.null(spec$plot_type) &&
+                  spec$plot_type %in% c("trend_numeric", "trend_factor")
+      primary  <- if (is_trend && !is.null(spec$column_b)) spec$column_b else spec$column_a
+      col_type <- if (primary %in% names(types)) types[[primary]] else "datetime"
 
-      reactable::reactable(
-        summary_df,
-        compact    = TRUE,
-        bordered   = TRUE,
-        striped    = TRUE,
-        highlight  = TRUE,
-        pagination = FALSE
+      summary_df <- tryCatch(build_variable_summary(dataset, primary, col_type),
+                             error = function(e) NULL)
+
+      shiny::tagList(
+        edark_section_label("Variable summary", first = TRUE),
+        if (is.null(summary_df) || nrow(summary_df) == 0) {
+          shiny::tags$p(class = "small text-muted", "No summary for this plot.")
+        } else {
+          # One row per statistic, so it reads at 300 px.
+          lapply(names(summary_df), function(nm) {
+            val <- summary_df[[nm]][1]
+            edark_info_row(gsub("_", " ", nm),
+                           if (is.na(val)) "-" else as.character(val))
+          })
+        },
+        custom_block
       )
     })
+
+
+    # -- Messages: stale data, and anything else this page must say -----------
+    edark_messages_server(output, shiny::reactive({
+      if (!isTRUE(shared_state$explore_needs_refresh)) return(NULL)
+      list(edark_message(
+        "stale", "The dataset has changed since this plot was drawn.",
+        detail = "Re-run the plot to update it."
+      ))
+    }))
 
 
     # ── Save Plot download ────────────────────────────────────────────────────
@@ -267,4 +295,18 @@ explore_output_server <- function(id, shared_state) {
         shared_state$requested_tab <- "report"
     })
   })
+}
+
+
+# Is the plot currently on screen already in the custom report?
+#
+# Compares what identifies a plot to the reader - the variables, the plot type
+# and the stratification - and deliberately ignores appearance, so restyling a
+# plot does not make it look like a different one (§BUILD_UI-redesign 1.3g).
+.plot_already_added <- function(spec, items) {
+  if (is.null(spec) || length(items) == 0) return(FALSE)
+  key <- function(s) paste(s$plot_type %||% "", s$column_a %||% "",
+                           s$column_b %||% "", s$stratify_by %||% "", sep = "\r")
+  this <- key(spec)
+  any(vapply(items, function(it) identical(key(it$plot_spec), this), logical(1)))
 }

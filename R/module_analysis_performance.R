@@ -54,11 +54,9 @@ NULL
 analysis_performance_ui <- function(id) {
   ns <- shiny::NS(id)
 
-  bslib::layout_sidebar(
-    sidebar = bslib::sidebar(
-      position = "left",
-      width    = 340,
-      edark_section_label("Measures"),
+  edark_page(
+    config = shiny::tagList(
+      edark_section_label("Measures", first = TRUE),
       shiny::uiOutput(ns("checks_ui")),
       edark_section_label("Validation"),
       shiny::uiOutput(ns("validation_ui")),
@@ -67,8 +65,8 @@ analysis_performance_ui <- function(id) {
       shiny::tags$p(class = "small text-muted mt-2 mb-0",
                     "Performance is advisory - it never blocks the next steps.")
     ),
-    shiny::uiOutput(ns("header_ui")),
-    shiny::uiOutput(ns("results_ui"))
+    result = shiny::uiOutput(ns("results_ui")),
+    info   = shiny::uiOutput(ns("header_ui"))
   )
 }
 

@@ -15,14 +15,28 @@ NULL
 #' @rdname module_analysis_export
 #' @export
 analysis_export_ui <- function(id) {
-  bslib::card(
-    full_screen = FALSE,
-    bslib::card_body(
+  # Still the Phase 8 stub, but in the page shape every other page uses (D6),
+  # so the walk from Step 1 to Step 6 does not change layout at the last step.
+  # Phase 8 fills the config pane with the preset selector and item checklists,
+  # the centre with the file list, and the info pane with the zip's contents.
+  edark_page(
+    config = shiny::tagList(
+      edark_section_label("Export", first = TRUE),
       shiny::tags$p(
-        class = "text-muted fst-italic text-center mt-4",
-        shiny::icon("clock"),
-        " Step 6 - Export: available in Phase 8."
+        class = "small text-muted mb-0",
+        "The preset selector and the list of items to include will live here."
       )
+    ),
+    result = edark_empty_state(
+      "Export is not built yet",
+      "Step 6 assembles the working dataset, the analysis spec, and the tables,
+       figures and diagnostics you generated into one zip. It arrives in Phase 8.",
+      icon = "box-archive"
+    ),
+    info = shiny::tagList(
+      edark_section_label("Will contain", first = TRUE),
+      shiny::tags$p(class = "small text-muted mb-0",
+                    "Once built, this pane lists what the zip will hold.")
     )
   )
 }

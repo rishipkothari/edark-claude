@@ -133,20 +133,26 @@ analysis_setup_ui <- function(id) {
 
   shiny::tagList(
     .setup_role_js(ns),
-    bslib::layout_sidebar(
-      sidebar = bslib::sidebar(
-        position = "right",
-        width    = 405,
-        shiny::uiOutput(ns("action_buttons_ui")),
-        shiny::tags$hr(class = "my-2"),
-        shiny::uiOutput(ns("incoming_snapshot_ui")),
-        shiny::tags$hr(class = "my-2"),
+    # The sidebar used to be on the right and to mix config (actions, study
+    # type, purpose) with info (incoming snapshot, role summary, selected
+    # snapshot) in one stack (§BUILD_UI-redesign 2.2). Split per the page
+    # contract, with the primary action last in the config pane (F3).
+    edark_page(
+      config = shiny::tagList(
         shiny::uiOutput(ns("study_type_ui")),
         shiny::uiOutput(ns("purpose_ui")),
+        shiny::div(class = "mt-3", shiny::uiOutput(ns("action_buttons_ui")))
+      ),
+      result   = shiny::uiOutput(ns("main_content")),
+      messages = edark_messages_ui(ns),
+      info     = shiny::tagList(
+        shiny::uiOutput(ns("incoming_snapshot_ui")),
         shiny::uiOutput(ns("role_summary_ui")),
         shiny::uiOutput(ns("selected_snapshot_ui"))
       ),
-      shiny::uiOutput(ns("main_content"))
+      # The role table is one row per variable with four role columns, so at
+      # 1280 px it needs the width back (§M9.4 NF-05).
+      info_open = "closed"
     )
   )
 }
@@ -523,25 +529,19 @@ analysis_setup_server <- function(id, shared_state) {
           )
         )
       } else {
-        shiny::tagList(
-          shiny::uiOutput(ns("mismatch_banner")),
-          reactable::reactableOutput(ns("role_table"))
-        )
+        reactable::reactableOutput(ns("role_table"))
       }
     })
 
-    # ── Mismatch banner ──────────────────────────────────────────────────────
-    output$mismatch_banner <- shiny::renderUI({
+    # -- Messages: every notice on this page, in one place (D3) ---------------
+    edark_messages_server(output, shiny::reactive({
       if (!sig_mismatch()) return(NULL)
-      shiny::div(
-        class = "alert alert-warning d-flex align-items-center gap-2 mb-3",
-        shiny::icon("triangle-exclamation"),
-        shiny::span(
-          "Your working dataset has changed since this analysis was started.",
-          "Use \u201cRestart Analysis\u201d in the sidebar to use the updated data."
-        )
-      )
-    })
+      list(edark_message(
+        "stale",
+        "Your working dataset has changed since this analysis was started.",
+        detail = "Use \u201cRestart Analysis\u201d in the pane on the left to use the updated data."
+      ))
+    }))
 
     # ── Role assignment table ────────────────────────────────────────────────
     output$role_table <- reactable::renderReactable({

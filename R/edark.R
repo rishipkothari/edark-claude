@@ -67,14 +67,11 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
     bslib::nav_panel(
       value = "prepare",
       title = shiny::tagList(shiny::icon("sliders"), " 1 \u00b7 Prepare"),
-      bslib::layout_sidebar(
-        sidebar = bslib::sidebar(
-          # title    = "Apply",
-          position = "left",
-          width    = 400,
-          prepare_confirm_ui("prepare_confirm")
-        ),
-        bslib::navset_card_tab(
+      edark_page(
+        config   = prepare_confirm_ui("prepare_confirm"),
+        messages = prepare_confirm_messages_ui("prepare_confirm"),
+        info     = prepare_confirm_info_ui("prepare_confirm"),
+        result   = bslib::navset_card_tab(
           id = "prepare_tabs",
           bslib::nav_panel(
             value = "columns",
@@ -109,9 +106,8 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
         bslib::nav_panel(
           value = "plot",
           title = shiny::tagList(shiny::icon("chart-area"), " Plot"),
-          bslib::layout_sidebar(
-            sidebar = bslib::sidebar(
-              width = 400,
+          edark_page(
+            config = shiny::tagList(
               # Describe / Correlate / Trend are modes: each stages its own
               # pickers and they all feed the one plot panel (level 3a, D8).
               # Appearance is not a mode - it is the app's single set of live
@@ -128,7 +124,9 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
                 )
               )
             ),
-            explore_output_ui("explore_output")
+            result   = explore_output_ui("explore_output"),
+            messages = explore_output_messages_ui("explore_output"),
+            info     = explore_output_info_ui("explore_output")
           )
         ),
         bslib::nav_panel(

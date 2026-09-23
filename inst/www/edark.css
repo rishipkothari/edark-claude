@@ -15,6 +15,7 @@
      5  Components          section labels, empty states, messages, info rows
      6  Containment         scrollable tables with sticky headers
      7  Absorbed inline CSS blocks that used to live in R
+     8  Page contract       config pane, info pane, messages slot
    ========================================================================== */
 
 
@@ -415,4 +416,36 @@
 @media (max-width: 576px) {
   .edark-summary-row { flex-direction: column; gap: 0; }
   .edark-summary-label { flex-basis: auto; }
+}
+
+
+/* ==========================================================================
+   8  The page contract (Stage 4)
+
+   Every page is config (left, 340) / messages + result (centre) / info
+   (right, 300). The widths and the structure come from edark_page() in
+   R/ui_helpers.R; these rules only give the two panes their character.
+   ========================================================================== */
+
+/* The info pane is neutral and factual, so it recedes: a tint, no border of
+   its own beyond the one bslib draws. */
+.edark-info-pane {
+  background-color: var(--edark-info-pane-bg);
+}
+
+/* The config pane is where the work happens, so it stays on the body colour
+   and reads as the active surface. */
+.edark-config-pane {
+  background-color: var(--bs-body-bg);
+}
+
+/* The messages slot takes no space at all when the page has nothing to say -
+   an empty uiOutput still emits a div, which would otherwise leave a gap
+   above every result. */
+.edark-messages:empty {
+  display: none;
+}
+
+.edark-messages {
+  margin-bottom: 0.5rem;
 }

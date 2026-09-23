@@ -18,18 +18,14 @@ NULL
 analysis_table1_ui <- function(id) {
   ns <- shiny::NS(id)
 
-  bslib::layout_sidebar(
-    sidebar = bslib::sidebar(
-      position = "left",
-      width    = 390,
-
+  edark_page(
+    config = shiny::tagList(
       shiny::uiOutput(ns("strat_ui")),
-
       shiny::tags$hr(class = "my-2"),
       edark_run_button(ns, "btn_generate", "Generate Table 1", icon = "table")
     ),
-
-    shiny::uiOutput(ns("table_area"))
+    result = shiny::uiOutput(ns("table_area")),
+    info   = shiny::uiOutput(ns("t1_info_ui"))
   )
 }
 
@@ -83,6 +79,38 @@ analysis_table1_ui <- function(id) {
 analysis_table1_server <- function(id, shared_state) {
   shiny::moduleServer(id, function(input, output, session) {
 
+
+    # -- Info pane: the sample the table will describe -------------------------
+    output$t1_info_ui <- shiny::renderUI({
+      spec  <- shared_state$analysis_spec
+      adata <- shared_state$analysis_data
+      if (is.null(spec) || is.null(adata)) {
+        return(shiny::tags$p(class = "small text-muted",
+                             edark_lock_reason("analysis_start")))
+      }
+
+      roles <- spec$variable_roles
+      strat <- if (isTRUE(input$strat_by_exposure)) roles$exposure_variable
+               else if (isTRUE(input$strat_by_outcome)) roles$outcome_variable
+               else NULL
+
+      counts <- if (!is.null(strat) && strat %in% names(adata)) {
+        tb <- table(adata[[strat]], useNA = "no")
+        lapply(names(tb), function(l) edark_info_row(l, as.integer(tb[[l]])))
+      }
+
+      shiny::tagList(
+        edark_section_label("Sample", first = TRUE),
+        edark_info_row("Rows",      format(nrow(adata), big.mark = ",")),
+        edark_info_row("Variables", ncol(adata)),
+
+        edark_section_label("Stratified by"),
+        edark_info_row("Column",
+                       if (is.null(strat)) shiny::tags$em(class = "text-muted", "none")
+                       else strat),
+        counts
+      )
+    })
     ns <- session$ns
 
     # ── Which roles are eligible to stratify on ──────────────────────────────

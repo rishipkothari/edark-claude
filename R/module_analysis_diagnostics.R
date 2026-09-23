@@ -52,11 +52,9 @@ analysis_diagnostics_ui <- function(id) {
                shiny::actionLink(ns(none_id), "Deselect all"))
   }
 
-  bslib::layout_sidebar(
-    sidebar = bslib::sidebar(
-      position = "left",
-      width    = 340,
-      edark_section_label("Model assumptions"),
+  edark_page(
+    config = shiny::tagList(
+      edark_section_label("Model assumptions", first = TRUE),
       .links("assump_all", "assump_none"),
       shiny::uiOutput(ns("assump_ui")),
       shiny::tags$hr(class = "my-2"),
@@ -65,8 +63,10 @@ analysis_diagnostics_ui <- function(id) {
                     "Sample accounting and fitting warnings are always included.",
                     "Diagnostics are advisory - they never block the next steps.")
     ),
-    shiny::uiOutput(ns("header_ui")),
-    shiny::uiOutput(ns("results_ui"))
+    result = shiny::uiOutput(ns("results_ui")),
+    # The model header is a fact about the result, so it belongs in the info
+    # pane rather than above the output (D2).
+    info   = shiny::uiOutput(ns("header_ui"))
   )
 }
 

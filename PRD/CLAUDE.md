@@ -127,7 +127,8 @@ What each file does is in the root `CLAUDE.md`. This is the § lookup.
   ([BUILD_UI-redesign.md](BUILD_UI-redesign.md) Stage 1).
 - **Built 2026-09-23:** UI consistency Stage 2 - component library + one home for aesthetics. `R/ui_helpers.R` gained `edark_section_label()`, `edark_button()`, `edark_action_toolbar()`, `edark_empty_state()`, `edark_message()`, `edark_info_row()`, `edark_model_header()` and `edark_aesthetics_controls()`; the four aesthetics accordions became one `R/module_appearance.R` panel (D9 as amended); Full and Custom reports now generate with the aesthetics on screen (D7)
 - **Built 2026-09-23:** UI consistency Stage 3 - the theme file. `inst/www/edark.css` now carries named tokens (status scale, four column-type colours), a calm navbar, one pill treatment per nav level with Analyze stepper states, focus rings, scroll containment and the three absorbed inline `tags$style()` blocks. Dark mode is `bslib::input_dark_mode()` flipping `data-bs-theme` instead of a `flatly <-> darkly` preset swap, so it needs no server code
-- **Not started:** Phase S session save / load / autosave (§M8); UI consistency Stages 4–6 ([BUILD_UI-redesign.md](BUILD_UI-redesign.md)).
+- **Built 2026-09-23:** UI consistency Stage 4 - the page contract. Every page is now `edark_page()`: config left at 340 px, messages + result in the centre, info right at 300 px (Report › Custom has no centre, D11). Prepare's dimensions and an itemised pending list moved to its info pane and its warnings to the messages slot; Setup and Covariates flipped from a right-hand mixed sidebar to config left / info right; Model › Summary and Step 6 gained both panes; the six sidebar widths collapsed to `EDARK_CONFIG_WIDTH` / `EDARK_INFO_WIDTH`
+- **Not started:** Phase S session save / load / autosave (§M8); UI consistency Stages 5–6 ([BUILD_UI-redesign.md](BUILD_UI-redesign.md)).
 
 ---
 
@@ -137,7 +138,6 @@ Each needs a decision: change the code or change the doc.
 
 - **Analyze step count — §A and the build plan still say nine, code has six.** `module_analysis_main.R` has six top-level `nav_panel`s, with Diagnostics / Performance / Results nested as sub-tabs under **Step 5 Model** and Export as **Step 6**. §N was renumbered to match the code (2026-09-21); `PRD_3_Analyze.md` and `BUILD_Analysis.md` were **not** — doing so touches §A references throughout. Until they are, read §A's "Step 6/7/8" as the Model › Diagnostics / Performance / Results sub-tabs and "Step 9" as Step 6 Export.
 - **Trend "count" mode.** Old docs described a "None" trend variable giving `trend_count`, and a `trend_proportion` type. Code: the trend variable is required, and types are `trend_numeric` / `trend_factor`. §E5 documents the code. Decide whether an event-count mode is wanted.
-- **Bug — factor trend summary table.** `module_explore_output.R` (~line 179) lists trend types as `trend_count` / `trend_numeric` / `trend_proportion`, so a `trend_factor` plot summarises the timestamp column instead of the trend variable. Fix: use the real type names.
 - **Dead renderer.** `render_plot()` dispatches `trend_mean`, which no spec builder produces.
 - **Dataset signature.** §A3.2 specifies a structural signature; Step 1 stores a sha256 hash of the data (see the note in §A3.2).
 - **Type overrides without UI.** `column_type_overrides` exists in state and pipeline, but no UI sets it (§P4). Keep as a hook or remove.

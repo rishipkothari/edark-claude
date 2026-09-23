@@ -122,11 +122,9 @@ analysis_varinvestigation_ui <- function(id) {
       value = "univariable",
       title = "Univariable Screen",
 
-      bslib::layout_sidebar(
-        sidebar = bslib::sidebar(
-          position = "left",
-          width    = 360,
-          edark_section_label("P-value Threshold"),
+      edark_page(
+        config = shiny::tagList(
+          edark_section_label("P-value Threshold", first = TRUE),
           shiny::numericInput(
             ns("univ_threshold"), label = NULL,
             value = 0.2, min = 0.01, max = 1, step = 0.05, width = "120px"
@@ -136,14 +134,11 @@ analysis_varinvestigation_ui <- function(id) {
             "Variables below this threshold are flagged as candidates."
           ),
           shiny::tags$hr(class = "my-2"),
-          edark_run_button(ns, "btn_run_univariable", "Run Screen"),
-          shiny::uiOutput(ns("univ_summary"))
+          edark_run_button(ns, "btn_run_univariable", "Run Screen")
         ),
-
-        shiny::tagList(
-          shiny::uiOutput(ns("univ_banner")),
-          shiny::uiOutput(ns("univ_results_ui"))
-        )
+        result   = shiny::uiOutput(ns("univ_results_ui")),
+        messages = shiny::uiOutput(ns("univ_banner")),
+        info     = shiny::uiOutput(ns("univ_summary"))
       )
     ),
 
@@ -152,18 +147,15 @@ analysis_varinvestigation_ui <- function(id) {
       value = "collinearity",
       title = "Collinearity",
 
-      bslib::layout_sidebar(
-        sidebar = bslib::sidebar(
-          position = "left",
-          width    = 360,
-          shiny::tags$p(class = "small mt-2", "Pairs above 0.7 are flagged."),
-          shiny::uiOutput(ns("collin_summary"))
+      edark_page(
+        config = shiny::tagList(
+          edark_section_label("Threshold", first = TRUE),
+          shiny::tags$p(class = "small text-muted mb-0",
+                        "Pairs correlated above 0.7 are flagged. The cut-off is fixed.")
         ),
-
-        shiny::tagList(
-          shiny::uiOutput(ns("collin_banner")),
-          shiny::uiOutput(ns("collin_results_ui"))
-        )
+        result   = shiny::uiOutput(ns("collin_results_ui")),
+        messages = shiny::uiOutput(ns("collin_banner")),
+        info     = shiny::uiOutput(ns("collin_summary"))
       )
     ),
 
@@ -172,11 +164,9 @@ analysis_varinvestigation_ui <- function(id) {
       value = "stepwise_lasso",
       title = "Stepwise / LASSO",
 
-      bslib::layout_sidebar(
-        sidebar = bslib::sidebar(
-          position = "left",
-          width    = 390,
-          edark_section_label("Method"),
+      edark_page(
+        config = shiny::tagList(
+          edark_section_label("Method", first = TRUE),
           shinyWidgets::radioGroupButtons(
             ns("sl_method"),
             label    = NULL,
@@ -189,14 +179,11 @@ analysis_varinvestigation_ui <- function(id) {
           shiny::uiOutput(ns("sl_config_ui")),
 
           shiny::tags$hr(class = "my-2"),
-          edark_run_button(ns, "btn_run_sl", "Run"),
-          shiny::uiOutput(ns("sl_summary"))
+          edark_run_button(ns, "btn_run_sl", "Run Selection")
         ),
-
-        shiny::tagList(
-          shiny::uiOutput(ns("sl_banner")),
-          shiny::uiOutput(ns("sl_results_ui"))
-        )
+        result   = shiny::uiOutput(ns("sl_results_ui")),
+        messages = shiny::uiOutput(ns("sl_banner")),
+        info     = shiny::uiOutput(ns("sl_summary"))
       )
     )
   )

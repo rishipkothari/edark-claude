@@ -3,10 +3,16 @@
 \name{module_explore_output}
 \alias{module_explore_output}
 \alias{explore_output_ui}
+\alias{explore_output_info_ui}
+\alias{explore_output_messages_ui}
 \alias{explore_output_server}
 \title{Explore Output Module}
 \usage{
 explore_output_ui(id)
+
+explore_output_info_ui(id)
+
+explore_output_messages_ui(id)
 
 explore_output_server(id, shared_state)
 }
@@ -17,9 +23,9 @@ explore_output_server(id, shared_state)
 }
 \description{
 Main panel for the Explore stage. Observes \code{shared_state$plot_specification}
-and renders the plot and the variable summary table (via \code{reactable}). Also
-shows a "dataset has changed — re-run" notice when
-\code{shared_state$explore_needs_refresh} is TRUE.
+and renders the plot. The variable summary and the custom-report state go to
+the page's info pane, and the "dataset has changed" notice to its messages
+slot (D2, D3 - the page contract, BUILD_UI-redesign Stage 4).
 }
 \details{
 Aesthetic changes (palette, labels, legend) re-render the plot without

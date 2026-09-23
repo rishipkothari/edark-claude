@@ -23,28 +23,31 @@ NULL
 prepare_confirm_ui <- function(id) {
   ns <- shiny::NS(id)
 
+  # Config pane: the two actions and nothing else. Dimensions and the pending
+  # list are facts, so they moved to the info pane (§1.3d), and the warnings
+  # moved to the messages slot. That is also what stops a long warning list
+  # pushing Apply below the fold (§BUILD_UI-redesign 2.6) - without moving
+  # Apply anywhere.
   shiny::tagList(
-    # 1. Dimensions
-    shiny::tags$p(
-      class = "mt-2 mb-1 fw-semibold",
-      shiny::icon("table"), " Dimensions"
-    ),
-    shiny::uiOutput(ns("dimension_cards")),
-    shiny::hr(class = "my-2"),
-
-    # 1.5. Warnings
-    shiny::uiOutput(ns("prepare_warnings")),
-
-    # 2. Status badge (full-width, alert-style, same size as button)
-    shiny::uiOutput(ns("pending_badge")),
-
-    # 3. Apply button
     edark_button(ns, "apply_btn", "Apply Changes", icon = "circle-check"),
-
-    # 4. Reset button
     edark_button(ns, "reset_btn", "Reset to Original", icon = "rotate-left",
-                 variant = "secondary", outline = TRUE)
+                 variant = "secondary", outline = TRUE, class = "mt-2")
   )
+}
+
+
+#' @rdname module_prepare_confirm
+#' @export
+prepare_confirm_info_ui <- function(id) {
+  ns <- shiny::NS(id)
+  shiny::uiOutput(ns("info_panel"))
+}
+
+
+#' @rdname module_prepare_confirm
+#' @export
+prepare_confirm_messages_ui <- function(id) {
+  edark_messages_ui(shiny::NS(id))
 }
 
 
@@ -65,80 +68,59 @@ prepare_confirm_server <- function(id, shared_state) {
     })
 
 
-    # ── Dimension cards ───────────────────────────────────────────────────────
-    output$dimension_cards <- shiny::renderUI({
+    # -- Info pane: what the staged settings produce --------------------------
+    # Dimensions now -> after apply, then what is actually staged, itemised
+    # rather than counted: a bare "3 pending change(s)" never said *which*
+    # three (§BUILD_UI-redesign 1.3d, D2).
+    output$info_panel <- shiny::renderUI({
       orig       <- shared_state$dataset_original
       curr       <- shared_state$dataset_working
       pending    <- preview_dataset()
       is_pending <- isTRUE(shared_state$has_pending_changes)
 
-      pend_r <- if (!is.null(pending)) nrow(pending) else NA
-      pend_c <- if (!is.null(pending)) ncol(pending) else NA
-
-      .dim_row <- function(label, r, c, highlight = FALSE) {
-        badge_class <- if (highlight) "bg-primary" else "bg-secondary"
-        shiny::tags$tr(
-          shiny::tags$td(
-            class = "pe-2 text-muted small align-middle",
-            style = "width:62px;",
-            label
-          ),
-          shiny::tags$td(
-            class = "small align-middle",
-            if (is.null(r) || is.na(r)) {
-              shiny::tags$em(class = "text-muted", "-")
-            } else {
-              shiny::tags$span(
-                class = paste0("badge ", badge_class),
-                paste0(format(r, big.mark = ","), " rows \u00d7 ", c, " columns")
-              )
-            }
-          )
-        )
+      dims <- function(d) {
+        if (is.null(d)) return(shiny::tags$em(class = "text-muted", "-"))
+        paste0(format(nrow(d), big.mark = ","), " \u00d7 ", ncol(d))
       }
 
-      shiny::tags$table(
-        class = "w-100 mb-1",
-        shiny::tags$tbody(
-          .dim_row("Original", nrow(orig), ncol(orig)),
-          .dim_row("Current",  nrow(curr), ncol(curr)),
-          .dim_row("Pending",  pend_r, pend_c, highlight = is_pending)
-        )
+      groups <- .describe_pending_changes(shared_state)
+
+      shiny::tagList(
+        edark_section_label("Dimensions", first = TRUE),
+        edark_info_row("Original", dims(orig)),
+        edark_info_row("Current",  dims(curr)),
+        edark_info_row(
+          if (is_pending) "After apply" else "Pending",
+          if (is_pending) shiny::tags$span(class = "text-primary", dims(pending))
+          else shiny::tags$em(class = "text-muted", "no changes")
+        ),
+
+        if (length(groups) > 0) {
+          shiny::tagList(lapply(names(groups), function(kind) {
+            shiny::tagList(
+              edark_section_label(kind),
+              shiny::tags$ul(
+                class = "small ps-3 mb-0",
+                lapply(groups[[kind]], shiny::tags$li)
+              )
+            )
+          }))
+        }
       )
     })
 
 
-    # ── Pending changes badge ─────────────────────────────────────────────────
-    output$pending_badge <- shiny::renderUI({
-      if (isTRUE(shared_state$has_pending_changes)) {
-        n <- .count_pending_changes(shared_state)
-        shiny::div(
-          class = "alert alert-warning mb-0 py-2 text-center w-100",
-          style = "font-size: 0.95rem; font-weight: 600;",
-          shiny::icon("clock"), " ", n, " pending change(s)"
-        )
-      } else {
-        shiny::div(
-          class = "alert alert-success mb-0 py-2 text-center w-100",
-          style = "font-size: 0.95rem; font-weight: 600;",
-          shiny::icon("check"), " Up to date"
-        )
-      }
-    })
-
-
-    # ── Warnings panel ────────────────────────────────────────────────────────
-    output$prepare_warnings <- shiny::renderUI({
-      # Read all relevant fields at this level so Shiny registers them as
-      # reactive dependencies of this output — do not rely solely on reads
-      # buried inside helper-function calls.
+    # -- Messages: every warning on this page, in one place --------------------
+    # Read each field at this level so Shiny registers them as dependencies -
+    # do not rely on reads buried inside the helper call.
+    edark_messages_server(output, shiny::reactive({
       specs        <- shared_state$column_transform_specs
       filters      <- shared_state$row_filter_specs
       included     <- shared_state$included_columns
       last_applied <- shared_state$last_applied_specs
       has_pending  <- shared_state$has_pending_changes
 
-      # No pending changes → nothing can be in conflict
+      # No pending changes -> nothing can be in conflict
       if (!isTRUE(has_pending)) return(NULL)
 
       warn_groups <- .build_prepare_warnings(specs, filters, included,
@@ -146,20 +128,14 @@ prepare_confirm_server <- function(id, shared_state) {
                                              shared_state$dataset_original)
       if (length(warn_groups) == 0) return(NULL)
 
-      shiny::div(
-        class = "alert alert-danger py-2 px-2 mb-2 small",
-        shiny::tags$strong(shiny::icon("triangle-exclamation"), " Warning(s):"),
-        lapply(warn_groups, function(grp) {
-          shiny::tagList(
-            shiny::tags$div(class = "mt-1 fw-semibold small", grp$title),
-            shiny::tags$ul(
-              class = "mb-0 ps-3",
-              lapply(grp$items, shiny::tags$li)
-            )
-          )
-        })
-      )
-    })
+      lapply(warn_groups, function(grp) {
+        edark_message(
+          "warn", grp$title,
+          detail = shiny::tags$ul(class = "mb-0 ps-3",
+                                  lapply(grp$items, shiny::tags$li))
+        )
+      })
+    }))
 
 
     # ── Shared apply helper ───────────────────────────────────────────────────
@@ -346,16 +322,6 @@ apply_prepare_pipeline <- function(shared_state) {
     dataset <- dataset[keep, , drop = FALSE]
   }
   dataset
-}
-
-
-# Count total pending staged items across all three prepare sub-modules.
-.count_pending_changes <- function(shared_state) {
-  n_transforms <- length(shared_state$column_transform_specs)
-  n_filters    <- length(shared_state$row_filter_specs)
-  all_cols     <- names(shared_state$dataset_original)
-  n_excluded   <- length(setdiff(all_cols, shared_state$included_columns))
-  n_transforms + n_filters + n_excluded
 }
 
 
@@ -547,4 +513,84 @@ apply_prepare_pipeline <- function(shared_state) {
     ),
     easyClose = FALSE
   ))
+}
+
+
+# Describe what is staged, one line per change, grouped by kind.
+#
+# The info pane says what the current settings produce (D2), so a count is not
+# enough: "3 pending change(s)" never said which three
+# (§BUILD_UI-redesign 1.3d). Returns a named list, one element per non-empty
+# kind, each a character vector. Names are the headings shown in the pane.
+.describe_pending_changes <- function(shared_state) {
+  all_cols  <- names(shared_state$dataset_original)
+  included  <- shared_state$included_columns
+  transf    <- shared_state$column_transform_specs
+  filters   <- shared_state$row_filter_specs
+
+  groups <- list()
+
+  excluded <- setdiff(all_cols, included)
+  if (length(excluded) > 0) {
+    groups[["Columns"]] <- sprintf(
+      "%d excluded: %s", length(excluded), paste(excluded, collapse = ", ")
+    )
+  }
+
+  if (length(transf) > 0) {
+    groups[["Transforms"]] <- vapply(
+      names(transf),
+      function(col) .describe_one_transform(col, transf[[col]]),
+      character(1), USE.NAMES = FALSE
+    )
+  }
+
+  if (length(filters) > 0) {
+    groups[["Row Filters"]] <- vapply(
+      names(filters),
+      function(col) .describe_one_filter(col, filters[[col]]),
+      character(1), USE.NAMES = FALSE
+    )
+  }
+
+  groups
+}
+
+
+# One transform, in the words the Transforms tab uses.
+.describe_one_transform <- function(col, spec) {
+  method <- spec$method %||% "none"
+  switch(
+    method,
+    cutpoints = {
+      n_bins <- length(spec$breaks %||% numeric(0)) + 1L
+      sprintf("%s -> %d bands", col, n_bins)
+    },
+    log       = sprintf("%s(%s)", spec$log_base %||% "ln", col),
+    winsorize = sprintf("%s winsorized", col),
+    round     = sprintf("%s rounded", col),
+    sprintf("%s: %s", col, method)
+  )
+}
+
+
+# One row filter, with the range or the levels it keeps.
+.describe_one_filter <- function(col, spec) {
+  if (identical(spec$type, "numeric")) {
+    at_min <- isTRUE(all.equal(spec$min, spec$data_min))
+    at_max <- isTRUE(all.equal(spec$max, spec$data_max))
+    fmt <- function(x) format(x, big.mark = ",", trim = TRUE)
+    if (at_min && at_max)  sprintf("%s: full range", col)
+    else if (at_min)       sprintf("%s <= %s", col, fmt(spec$max))
+    else if (at_max)       sprintf("%s >= %s", col, fmt(spec$min))
+    else                   sprintf("%s %s to %s", col, fmt(spec$min), fmt(spec$max))
+  } else {
+    kept <- spec$levels_selected %||% character(0)
+    all_lv <- spec$levels_all %||% character(0)
+    if (length(kept) == length(all_lv)) {
+      sprintf("%s: all levels", col)
+    } else {
+      sprintf("%s in {%s}", col, paste(kept, collapse = ", "))
+    }
+  }
 }

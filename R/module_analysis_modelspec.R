@@ -63,8 +63,33 @@ analysis_modelspec_summary_ui <- function(id) {
   ns <- shiny::NS(id)
   shiny::tagList(
     .ms_js(ns),
-    shiny::div(class = "pt-3", style = "max-width: 1000px;",
-               shiny::uiOutput(ns("summary_ui")))
+    # Summary is an audit view: it has no settings of its own, which is why it
+    # had no sidebar at all before Stage 4. D6 keeps the page shape anyway, so
+    # the config pane says where each part of what is shown is actually set -
+    # useful on a page whose whole job is "is this the model I meant?".
+    edark_page(
+      config = shiny::tagList(
+        edark_section_label("Nothing to set here", first = TRUE),
+        shiny::tags$p(
+          class = "small text-muted",
+          "This page reports the model that Steps 1 to 4 have specified. To
+           change any of it, go back to the step that owns it:"
+        ),
+        shiny::tags$ul(
+          class = "small text-muted ps-3 mb-0",
+          shiny::tags$li(shiny::tags$strong("Step 1 \u00b7 Setup"),
+                         " - outcome, exposure, clusters, study type, purpose, split"),
+          shiny::tags$li(shiny::tags$strong("Step 3 \u00b7 Variable Investigation"),
+                         " - which covariates are suggested"),
+          shiny::tags$li(shiny::tags$strong("Step 4 \u00b7 Covariate Confirmation"),
+                         " - the final covariates and their reference levels"),
+          shiny::tags$li(shiny::tags$strong("Model \u203a Create"),
+                         " - model type, optimizer, and fitting")
+        )
+      ),
+      result = shiny::uiOutput(ns("summary_ui")),
+      info   = shiny::uiOutput(ns("summary_info_ui"))
+    )
   )
 }
 
@@ -74,11 +99,9 @@ analysis_modelspec_summary_ui <- function(id) {
 analysis_modelspec_create_ui <- function(id) {
   ns <- shiny::NS(id)
 
-  bslib::layout_sidebar(
-    sidebar = bslib::sidebar(
-      position = "left",
-      width    = 340,
-      edark_section_label("Model"),
+  edark_page(
+    config = shiny::tagList(
+      edark_section_label("Model", first = TRUE),
       shiny::uiOutput(ns("model_select_ui")),
       shiny::uiOutput(ns("advanced_ui")),
       edark_section_label("Preflight"),
@@ -89,16 +112,18 @@ analysis_modelspec_create_ui <- function(id) {
         edark_run_button(ns, "btn_run", "Run Model")
       )
     ),
-    shiny::uiOutput(ns("model_header_ui")),
-    shiny::uiOutput(ns("results_ui")),
-    bslib::accordion(
-      open = FALSE, class = "mt-3",
-      bslib::accordion_panel(
-        "R Code Preview", icon = shiny::icon("code"),
-        shiny::tags$p(class = "text-muted fst-italic mb-0",
-                      "The reproducible R script for this analysis will appear here in a later phase.")
+    result = shiny::tagList(
+      shiny::uiOutput(ns("results_ui")),
+      bslib::accordion(
+        open = FALSE, class = "mt-3",
+        bslib::accordion_panel(
+          "R Code Preview", icon = shiny::icon("code"),
+          shiny::tags$p(class = "text-muted fst-italic mb-0",
+                        "The reproducible R script for this analysis will appear here in a later phase.")
+        )
       )
-    )
+    ),
+    info = shiny::uiOutput(ns("model_header_ui"))
   )
 }
 
@@ -405,6 +430,43 @@ analysis_modelspec_server <- function(id, shared_state) {
       }
       sections <- build_analysis_summary(spec, res, adata, validation())
       shiny::tagList(lapply(sections, .ms_section_card))
+    })
+
+    # Info pane: the scalar facts about what Steps 1-4 have specified, so the
+    # audit view in the centre does not have to restate them (D2).
+    output$summary_info_ui <- shiny::renderUI({
+      spec  <- shared_state$analysis_spec
+      adata <- shared_state$analysis_data
+      res   <- shared_state$analysis_result
+      if (is.null(spec) || is.null(adata)) {
+        return(shiny::tags$p(class = "small text-muted",
+                             edark_lock_reason("analysis_start")))
+      }
+
+      roles <- spec$variable_roles
+      mt    <- spec$model_design$model_type
+      fitted <- !is.null(res$fitted_models$primary_model)
+
+      shiny::tagList(
+        edark_section_label("This model", first = TRUE),
+        edark_info_row("Model type",
+                       if (is.null(mt)) "-" else .ANALYSIS_MODEL_LABELS[[mt]]),
+        edark_info_row("Outcome",  roles$outcome_variable  %||% "-"),
+        edark_info_row("Exposure", roles$exposure_variable %||% "-"),
+        edark_info_row("Covariates", length(spec$final_covariates %||% character(0))),
+        edark_info_row("Clusters", length(roles$cluster_variables %||% character(0))),
+
+        edark_section_label("Sample"),
+        edark_info_row("Rows in analysis set", format(nrow(adata), big.mark = ",")),
+        edark_info_row("Complete cases",
+                       tryCatch(format(compute_complete_cases(spec, adata), big.mark = ","),
+                                error = function(e) "-")),
+
+        edark_section_label("Status"),
+        edark_info_row("Fitted",
+                       if (fitted) shiny::tags$span(class = "text-success", "yes")
+                       else shiny::tags$span(class = "text-muted", "not yet"))
+      )
     })
   })
 }

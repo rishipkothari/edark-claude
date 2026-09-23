@@ -19,7 +19,7 @@
 | 1 | Honest locking and one precondition affordance | S-M | done 2026-09-23 |
 | 2 | Component library (`R/ui_helpers.R`) + Explore report aesthetics | M | done 2026-09-23 |
 | 3 | Theme file, dark mode, nav polish (navbar, pills, stepper, font) | S-M | done 2026-09-23 |
-| 4 | Page contract: config / result / info panes + messages area | M-L | not started |
+| 4 | Page contract: config / result / info panes + messages area | M-L | done 2026-09-23 |
 | 5 | Flatten navigation + one nav vocabulary (§1.2) | M | not started |
 | 6 | Small fixes: empty states, density, copy, dialog actions, button sweep | S | not started |
 
@@ -620,6 +620,39 @@ the "long warnings list pushes Apply below the fold" problem (§2.6) without mov
 always left at 340 px, info always right at 300 px (except Report › Custom, which has no
 centre by D11), the primary action is at the bottom of the config pane in every mode, and
 every warning appears in the messages slot.
+
+**Built 2026-09-23.** `edark_page()` and `edark_messages_ui()` /
+`edark_messages_server()` in `R/ui_helpers.R` are the whole contract; every page now calls
+`edark_page()` and `grep` finds `bslib::layout_sidebar` only inside it. Verified by walking
+the app at 1280 x 800 with `chromote`: the config pane measures 340 px on every page and no
+page raised a JS exception.
+
+- **Two pages have a config pane with no controls to hold**, because their configuration
+  *is* their table: Covariates (row per candidate, with its own checkbox and reference
+  select) and Model › Summary (read-only audit). Rather than invent controls or leave the
+  pane blank, both carry orientation - how to read the table, and which step owns each part
+  of the spec. Covariates' is the thinnest pane in the app and is the first place real
+  table-level actions should go.
+- **Setup and Covariates start with the info pane collapsed** (`info_open = "closed"`).
+  Both centres are wide one-row-per-variable tables and the viewport check (§M9.4 NF-05)
+  left them too tight at 1280 px with both panes open. Same width, same place, just folded -
+  exactly the fallback this stage allowed for.
+- **`main_message` had to stay outside `cc_table_wrap`.** `.cc_js()` hangs a
+  `MutationObserver` on that div to re-patch the embedded inputs, so anything else
+  re-rendering inside it wakes the observer for nothing (§N1.4).
+- **The pending-changes badge is gone rather than moved.** It said "3 pending change(s)" and
+  never which three; the info pane now itemises them per kind, with the dimensions the
+  pipeline would produce. `.count_pending_changes()` was the badge's only caller, so it went
+  with it; `.describe_pending_changes()` (plus `.describe_one_transform()` /
+  `.describe_one_filter()`) is what replaced it.
+- **Full Report keeps a centre, Custom does not.** Full's centre is the *resolved* section
+  list - which variables survive eligibility, the primary variable and the stratify variable
+  - which the controls do not state, so it is not the restatement F5 forbids. Custom's
+  "Preview" card was exactly that restatement and is deleted (D11).
+- Two smaller things fixed in passing: `module_explore_output.R` used the native pipe `|>`,
+  against non-negotiable #8, and its trend-summary branch still tested the dead type names
+  `trend_count` / `trend_proportion` (a known discrepancy in `PRD/CLAUDE.md`), so a
+  `trend_factor` plot summarised the timestamp column instead of the trend variable.
 
 ### Stage 5 - Flatten navigation
 

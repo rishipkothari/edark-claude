@@ -480,3 +480,144 @@ edark_aesthetics_controls <- function(ns) {
     shiny::checkboxInput(ns("show_data_labels"), "Show data labels", value = FALSE)
   )
 }
+
+
+# ── The page contract ─────────────────────────────────────────────────────────
+
+#' The two pane widths, written once
+#'
+#' Before Stage 4 the app used six sidebar widths - 400, 380, 405, 390, 360 and
+#' 340, three of them inside Step 3 alone - and two pages flipped the sidebar to
+#' the right mid-workflow (§BUILD_UI-redesign 2.2). D6 settles it: config is
+#' always left at 340 px, info always right at 300 px.
+#'
+#' @keywords internal
+#' @noRd
+EDARK_CONFIG_WIDTH <- 340
+
+#' @rdname EDARK_CONFIG_WIDTH
+#' @keywords internal
+#' @noRd
+EDARK_INFO_WIDTH <- 300
+
+
+#' Lay a page out as config / messages / result / info
+#'
+#' Every page has the same four places (D2 + D3 + D6):
+#'
+#' \preformatted{
+#' +--------------+-------------------------------------+-------------+
+#' | CONFIG       | MESSAGES (only when there are any)  | INFO        |
+#' | left, 340 px +-------------------------------------+ right,      |
+#' |              | RESULT                              | 300 px      |
+#' | [Primary]    |  the one artefact this page makes   |             |
+#' +--------------+-------------------------------------+-------------+
+#' }
+#'
+#' The rules each pane follows:
+#' \itemize{
+#'   \item \strong{Config} holds inputs and exactly one primary action, at the
+#'     bottom, in every mode of the page (F3). No read-only facts.
+#'   \item \strong{Result} holds the one artefact, with actions *on* it in an
+#'     [edark_action_toolbar()] directly above (F2).
+#'   \item \strong{Info} is neutral, factual and live: what the current
+#'     settings produce. Never an input, never an action, never a warning.
+#'   \item \strong{Messages} is the only place a warning, error, blocker or
+#'     stale notice appears. Empty means it takes no space.
+#' }
+#'
+#' @param config Tag list for the left sidebar.
+#' @param result Tag list for the centre. `NULL` drops the centre column
+#'   entirely - the D11 exception, for a page whose only deliverable is a file
+#'   and whose "result" would merely restate its own controls. The info content
+#'   then becomes the main area. Nothing but Report › Custom may use this.
+#' @param info Tag list for the right pane. Every page owes it real content
+#'   (F7); a page with nothing factual to say is missing information the user
+#'   wants, not a candidate for dropping the pane.
+#' @param messages Tag or `shiny::uiOutput()` for the messages slot.
+#' @param info_open Passed to `bslib::sidebar(open=)`. Set `"closed"` on a page
+#'   whose centre is a wide table, so 1280 px still works (§M9.4 NF-05).
+#' @param info_title Optional heading for the info pane.
+#'
+#' @return A `bslib::layout_sidebar`.
+#' @keywords internal
+#' @noRd
+edark_page <- function(config, result = NULL, info = NULL, messages = NULL,
+                       info_open = TRUE, info_title = NULL) {
+
+  info_body <- if (is.null(info)) NULL else shiny::tagList(
+    if (!is.null(info_title)) edark_section_label(info_title, first = TRUE),
+    info
+  )
+
+  centre <- if (is.null(result)) {
+    # D11: no centre. Messages sit at the top of the info column, which is now
+    # the main area.
+    shiny::tagList(messages, info_body)
+  } else if (is.null(info)) {
+    shiny::tagList(messages, result)
+  } else {
+    bslib::layout_sidebar(
+      sidebar = bslib::sidebar(
+        position = "right",
+        width    = EDARK_INFO_WIDTH,
+        open     = info_open,
+        class    = "edark-info-pane",
+        info_body
+      ),
+      fillable = FALSE,
+      shiny::tagList(messages, result)
+    )
+  }
+
+  bslib::layout_sidebar(
+    sidebar = bslib::sidebar(
+      position = "left",
+      width    = EDARK_CONFIG_WIDTH,
+      class    = "edark-config-pane",
+      config
+    ),
+    fillable = FALSE,
+    centre
+  )
+}
+
+
+#' The messages slot for a page
+#'
+#' One per page. Renders whatever [edark_message()] items the module's server
+#' writes into it, and takes no space when there are none. Every warning,
+#' error, blocker and stale notice on the page goes here and nowhere else
+#' (D3) - not into the info pane, and not into a toast.
+#'
+#' @param ns The module's namespace function.
+#' @param id Character. Defaults to `"messages"`, so a module normally has one
+#'   and does not have to name it.
+#'
+#' @return A `shiny::uiOutput`.
+#' @keywords internal
+#' @noRd
+edark_messages_ui <- function(ns, id = "messages") {
+  shiny::uiOutput(ns(id), class = "edark-messages")
+}
+
+
+#' Fill a page's messages slot
+#'
+#' @param output The module's `output` object.
+#' @param items A reactive returning a list of [edark_message()] tags, or
+#'   `NULL` / an empty list when the page has nothing to say.
+#' @param id Character. Matches [edark_messages_ui()].
+#'
+#' @return Invisible NULL, called for its side effect.
+#' @keywords internal
+#' @noRd
+edark_messages_server <- function(output, items, id = "messages") {
+  output[[id]] <- shiny::renderUI({
+    msgs <- if (is.function(items)) items() else items
+    msgs <- Filter(Negate(is.null), as.list(msgs))
+    if (length(msgs) == 0) return(NULL)
+    shiny::tagList(msgs)
+  })
+  invisible(NULL)
+}
