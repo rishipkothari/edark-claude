@@ -45,7 +45,13 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
     theme = bslib::bs_theme(
       version    = 5,
       bootswatch = "flatly",
-      primary    = "#2c7be5"
+      primary    = "#2c7be5",
+      # The native OS font stack, not font_google(): a Google font needs
+      # internet on first launch, which locked-down hospital machines do not
+      # have (§BUILD_UI-redesign Stage 3).
+      base_font  = bslib::font_collection(
+        "system-ui", "-apple-system", "Segoe UI", "Roboto", "sans-serif"
+      )
     ),
     header = shiny::tagList(
       # Required for shinyjs::disabled() / toggleState() to take effect
@@ -54,59 +60,8 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       shiny::tags$head(
         shiny::tags$link(rel = "stylesheet", type = "text/css",
                          href = "edark/edark.css")
-      ),
-      shiny::tags$head(shiny::tags$style(shiny::HTML("
-      /* ── EDARK custom properties ── change values here, nowhere else ────── */
-
-      /* sidebar nav-pill tabs */
-      .sidebar .nav-pills .nav-link {
-        padding-left: 0.6rem;
-        padding-right: 0.6rem;
-        border-radius: 20px;
-        font-size: 0.95rem;
-        font-weight: 500;
-      }
-      .sidebar .nav-pills .nav-link:not(.active) {
-        background-color: var(--bs-tertiary-bg);
-        color: var(--bs-secondary-color);
-        border: 1px solid var(--bs-border-color);
-      }
-      .sidebar .nav-pills .nav-link:not(.active):hover {
-        background-color: var(--bs-secondary-bg);
-        color: var(--bs-body-color);
-      }
-
-      /* gap below tab bar, then leading whitespace inside each tab content */
-      .sidebar .nav-pills {
-        margin-bottom: 0.75rem;
-      }
-      .sidebar .tab-content > .tab-pane {
-        padding-top: 0.75rem;
-      }
-
-      /* pickerInput button background */
-      .bootstrap-select > .btn {
-        background-color: var(--bs-body-bg) !important;
-        border-color: var(--bs-border-color) !important;
-      }
-      .bootstrap-select > .btn:hover,
-      .bootstrap-select > .btn:focus,
-      .bootstrap-select.show > .btn {
-        background-color: var(--bs-body-bg) !important;
-        border-color: #86b7fe !important;
-      }
-
-      /* theme + debug navbar buttons */
-      #theme_toggle, #debug_btn {
-        background: none;
-        border: none;
-        color: rgba(255,255,255,0.75);
-        font-size: 1.1rem;
-        padding: 0.25rem 0.5rem;
-        line-height: 1;
-      }
-      #theme_toggle:hover, #debug_btn:hover { color: #ffffff; }
-    ")))),
+      )
+    ),
 
     # ── Tab 1: Prepare ───────────────────────────────────────────────────────
     bslib::nav_panel(
@@ -195,8 +150,12 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
     bslib::nav_item(
       shiny::actionButton("debug_btn", label = shiny::icon("bug"))
     ),
+    # Bootstrap 5.3 colour modes, not a preset swap. The old toggle rebuilt the
+    # whole theme (flatly <-> darkly) on every click, which re-sends the
+    # stylesheet and re-lays out the page; this flips one attribute and the
+    # variables in edark.css follow (§BUILD_UI-redesign Stage 3).
     bslib::nav_item(
-      shiny::actionButton("theme_toggle", label = shiny::tagList(shiny::tags$span("Theme", class = "me-2"), shiny::icon("moon")))
+      bslib::input_dark_mode(id = "dark_mode")
     )
   )
 
@@ -342,23 +301,9 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       bslib::nav_select("prepare_tabs", last_prepare_tab())
     }, ignoreInit = TRUE)
 
-    # ── Light / dark theme toggle ─────────────────────────────────────────────
-    is_dark_theme <- shiny::reactiveVal(FALSE)
-
-    shiny::observeEvent(input$theme_toggle, {
-      dark <- !is_dark_theme()
-      is_dark_theme(dark)
-      session$setCurrentTheme(
-        bslib::bs_theme(
-          version    = 5,
-          bootswatch = if (dark) "darkly" else "flatly",
-          primary    = "#2c7be5"
-        )
-      )
-      shiny::updateActionButton(session, "theme_toggle",
-        label = shiny::tagList(span("Theme", class = "me-2"), icon(if (dark) "sun" else "moon"))
-      )
-    }, ignoreInit = TRUE)
+    # Light / dark mode needs no server code: bslib::input_dark_mode() sets
+    # data-bs-theme on <html> in the browser, and every colour in edark.css is
+    # a Bootstrap variable, so both modes follow from one stylesheet.
 
     # ── Debug button ──────────────────────────────────────────────────────────
      shiny::observeEvent(input$debug_btn, {

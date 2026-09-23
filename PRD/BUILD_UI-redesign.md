@@ -18,7 +18,7 @@
 | 0 | Quick fixes that do not wait for the redesign | S | done 2026-09-22 (2 of 3, see §4) |
 | 1 | Honest locking and one precondition affordance | S-M | done 2026-09-23 |
 | 2 | Component library (`R/ui_helpers.R`) + Explore report aesthetics | M | done 2026-09-23 |
-| 3 | Theme file, dark mode, nav polish (navbar, pills, stepper, font) | S-M | not started |
+| 3 | Theme file, dark mode, nav polish (navbar, pills, stepper, font) | S-M | done 2026-09-23 |
 | 4 | Page contract: config / result / info panes + messages area | M-L | not started |
 | 5 | Flatten navigation + one nav vocabulary (§1.2) | M | not started |
 | 6 | Small fixes: empty states, density, copy, dialog actions, button sweep | S | not started |
@@ -515,6 +515,33 @@ Also:
 
 **Done when:** dark mode toggles on every page with no layout shift or change of identity;
 no `tags$style` remains inside a render function.
+
+**Built 2026-09-23.** `inst/www/edark.css` grew from 33 to ~380 lines, in seven named
+sections. Notes from building it:
+
+- **`bootswatch = "flatly"` and `input_dark_mode()` do co-exist**, which the plan left open.
+  Every colour in the stylesheet is a Bootstrap variable, so flipping `data-bs-theme` on
+  `<html>` carries the whole app across: navbar and body both go to `rgb(33,37,41)`, with no
+  layout shift and no change of identity. The preset swap (`flatly <-> darkly`) and its server
+  observer are gone, along with `is_dark_theme()` - dark mode now needs no server code at all.
+- **The navbar had to be overridden with `!important`.** Flatly sets `.navbar` colours at a
+  specificity bslib's `navbar_options()` does not beat from R, and `navbar_options(bg = ...)`
+  takes a literal colour, which would hardcode one mode. CSS with `var(--bs-body-bg)` is the
+  only form that follows the theme.
+- **All three inline `tags$style()` blocks are gone**, including the one inside
+  `module_column_manager.R`'s render function, which re-emitted a *global* `.form-check`
+  override on every re-render. It is now scoped to `.edark-checkbox-cell`, a class the
+  checkbox cell carries, so it no longer reaches every checkbox in the app.
+- **Two rules came from looking at screenshots rather than from the plan.**
+  `.edark-action-toolbar .btn { white-space: nowrap }` - the four plot actions wrapped to two
+  lines in a narrow centre column, doubling the row height. And a `min-height` on
+  `input_task_button`, so its busy state does not change the button's height mid-run.
+- **Six step pills fit one row at 1280 px**, so the wrap noted in §2.3 is not yet a problem at
+  six. Shorter labels are still worth doing in Stage 5 for narrower windows.
+- Deferred to their own stages, though visible in the screenshots: Prepare's "Up to date"
+  status badge is still a full-width element that reads as a button (F2 - it is a fact, so it
+  belongs in the info pane, Stage 4), and Explore still has no empty state before the first
+  plot (Stage 6).
 
 ### Stage 4 - Page contract
 

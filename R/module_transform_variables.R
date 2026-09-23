@@ -129,7 +129,9 @@ transform_variables_server <- function(id, shared_state) {
 
       bslib::card(
         bslib::card_body(
-          class = "p-0",
+          # One row per numeric column, so the header scrolls away without
+          # containment (§BUILD_UI-redesign 2.6).
+          class = "p-0 edark-scroll-table",
           shiny::tags$table(
             class = "table table-sm table-hover align-middle mb-0",
             header,

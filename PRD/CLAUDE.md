@@ -126,7 +126,8 @@ What each file does is in the root `CLAUDE.md`. This is the § lookup.
   popover and every Run button is disabled with its reason visible
   ([BUILD_UI-redesign.md](BUILD_UI-redesign.md) Stage 1).
 - **Built 2026-09-23:** UI consistency Stage 2 - component library + one home for aesthetics. `R/ui_helpers.R` gained `edark_section_label()`, `edark_button()`, `edark_action_toolbar()`, `edark_empty_state()`, `edark_message()`, `edark_info_row()`, `edark_model_header()` and `edark_aesthetics_controls()`; the four aesthetics accordions became one `R/module_appearance.R` panel (D9 as amended); Full and Custom reports now generate with the aesthetics on screen (D7)
-- **Not started:** Phase S session save / load / autosave (§M8); UI consistency Stages 3–6 ([BUILD_UI-redesign.md](BUILD_UI-redesign.md)).
+- **Built 2026-09-23:** UI consistency Stage 3 - the theme file. `inst/www/edark.css` now carries named tokens (status scale, four column-type colours), a calm navbar, one pill treatment per nav level with Analyze stepper states, focus rings, scroll containment and the three absorbed inline `tags$style()` blocks. Dark mode is `bslib::input_dark_mode()` flipping `data-bs-theme` instead of a `flatly <-> darkly` preset swap, so it needs no server code
+- **Not started:** Phase S session save / load / autosave (§M8); UI consistency Stages 4–6 ([BUILD_UI-redesign.md](BUILD_UI-redesign.md)).
 
 ---
 

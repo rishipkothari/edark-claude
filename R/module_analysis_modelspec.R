@@ -38,22 +38,6 @@ NULL
 
 .ms_js <- function(ns) {
   shiny::tagList(
-    shiny::tags$style(shiny::HTML("
-      .edark-pulse { animation: edark-pulse 1s ease-out; border-radius: .375rem; }
-      @keyframes edark-pulse {
-        0%   { box-shadow: 0 0 0 0 rgba(220, 53, 69, .6); }
-        100% { box-shadow: 0 0 0 14px rgba(220, 53, 69, 0); }
-      }
-      .edark-summary-row { display: flex; gap: 1rem; padding: .3rem 0;
-                           border-bottom: 1px solid var(--bs-border-color-translucent); }
-      .edark-summary-row:last-child { border-bottom: 0; }
-      .edark-summary-label { flex: 0 0 210px; color: var(--bs-secondary-color); }
-      .edark-summary-value { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
-      @media (max-width: 576px) {
-        .edark-summary-row { flex-direction: column; gap: 0; }
-        .edark-summary-label { flex-basis: auto; }
-      }
-    ")),
     # Bootstrap gives disabled buttons pointer-events: none, so a click on the
     # disabled Run Model lands on its wrapper — pulse the preflight box then.
     shiny::tags$script(shiny::HTML(paste0("
