@@ -114,7 +114,7 @@ NULL
 analysis_varinvestigation_ui <- function(id) {
   ns <- shiny::NS(id)
 
-  bslib::navset_pill(
+  bslib::navset_underline(
     id = ns("vi_pills"),
 
     # ── Pill 1: Univariable Screen ──────────────────────────────────────────

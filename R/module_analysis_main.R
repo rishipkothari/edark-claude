@@ -58,12 +58,12 @@ analysis_main_ui <- function(id) {
       ),
       bslib::nav_panel(
         value = "step3",
-        title = "3 \u00b7 Variable Investigation",
+        title = "3 \u00b7 Variables",
         analysis_varinvestigation_ui(ns("varinvestigation"))
       ),
       bslib::nav_panel(
         value = "step4",
-        title = "4 \u00b7 Covariate Confirmation",
+        title = "4 \u00b7 Covariates",
         analysis_covariate_confirm_ui(ns("covariate_confirm"))
       ),
       bslib::nav_panel(

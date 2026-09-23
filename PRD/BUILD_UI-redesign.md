@@ -20,7 +20,7 @@
 | 2 | Component library (`R/ui_helpers.R`) + Explore report aesthetics | M | done 2026-09-23 |
 | 3 | Theme file, dark mode, nav polish (navbar, pills, stepper, font) | S-M | done 2026-09-23 |
 | 4 | Page contract: config / result / info panes + messages area | M-L | done 2026-09-23 |
-| 5 | Flatten navigation + one nav vocabulary (§1.2) | M | not started |
+| 5 | Flatten navigation + one nav vocabulary (§1.2) | M | done 2026-09-23 |
 | 6 | Small fixes: empty states, density, copy, dialog actions, button sweep | S | not started |
 
 Order: 1 first (the highest-value fix, and the user's priority). 2 and 3 are independent of
@@ -87,7 +87,7 @@ its own output (D8 as amended).**
 |---|---|---|
 | 1 Stage | navbar | Restyled in Stage 3 (light bar, active underline). |
 | 2 Page | **pills**, in all three stages | Analyze's pills also get stepper states (number, done, current, locked - Stage 1 sets the state, Stage 3 styles it). Prepare and Explore pills are unnumbered: their pages are not a gated sequence. |
-| 3a Mode of a page | **pills at the top of the left config pane** | The sub-steps share one result surface and one config pane, and only the settings change. Applies to Explore (Describe / Correlate / Trend) and Explore › Report (Full / Custom). |
+| 3a Mode of a page | **pills at the top of the left config pane** | The sub-steps share one result surface and one config pane, and only the settings change. Applies to Explore (Describe / Correlate / Trend). **Explore › Report (Full / Custom) moved to 3b when built - see Stage 5; D11 leaves Custom with no result surface, so the two modes do not share one.** |
 | 3b Sub-step with its own result | **underline tabs across the top of the page** | Each sub-step owns both its settings and its own output. Applies to Analyze Step 3 (Univariable / Collinearity / Stepwise-LASSO) and Step 5 (Summary / Create / Diagnostics / Performance / Results). |
 | 4 Result view | card tabs, only here | Data Preview's inner tabs are removed (Stage 5). |
 
@@ -682,6 +682,32 @@ page raised a JS exception.
 **Done when:** each nav level has one look everywhere (§1.2 table) - no pills inside pills,
 level-3a pills only at the top of a config pane, and card tabs only for result views; gating
 and the Explore -> Report hop (`requested_tab`, `edark.R:432-442`) still work.
+
+**Built 2026-09-23.** All twelve checks pass under `chromote` at 1280 x 800, with no JS
+exceptions, including the Explore -> View Report hop landing on Custom Report.
+
+- **Report's Full / Custom became level 3b (underline tabs), not 3a pills in the config
+  pane. This departs from D8 as amended and needs the user's ruling.** D8 puts them in the
+  config pane because they are "modes that share one result surface". D11, decided the same
+  day, gives Custom *no* result surface at all. The two decisions cannot both hold: Full has
+  a centre and Custom does not, so they do not share one, and D8's own stated test - does
+  the sub-step own its own output? - puts them in 3b with Analyze's sub-steps. The
+  alternative the plan offered (each mode keeps its own `layout_sidebar`, pills duplicated
+  "via one helper") does not survive contact with Shiny: two copies of one `navset_pill` id
+  is a duplicate input id, so `nav_select("report_mode_tabs", ...)` would break, and that is
+  what the Explore -> Report hop rides on. Underline tabs keep one navset, one id, one
+  working hop. **If the user wants the pills in the pane, D11 has to give and Custom needs a
+  centre back.**
+- **Data Preview went from three tab levels to one**, as planned, but its two toggles sit
+  above the table rather than in the left sidebar. Prepare's config pane is shared by all
+  four Prepare pages and holds only Apply / Reset; putting one page's view switches there
+  would mean rendering them conditionally on the active page, which is more machinery than
+  the flattening is worth. The four reactables are wrapped in `conditionalPanel`, so a
+  toggle shows and hides - it never re-renders a table.
+- **Six step pills fit one row at 1280 px** with "3 · Variables" and "4 · Covariates", so
+  the wrap in §2.3 is closed.
+- Card tabs now appear only at level 4 - diagnostic checks, performance sets, result
+  outputs, Table 1 views, Step 3 results - which is the rule this stage set.
 
 ### Stage 6 - Small fixes
 

@@ -16,7 +16,12 @@ data_preview_server(id, shared_state)
 \item{shared_state}{A Shiny \code{reactiveValues} object.}
 }
 \description{
-Two nav panels: Original dataset and Working dataset. Each panel has two
-sub-tabs: Data (interactive reactable) and Summary (EDA summary table).
-Transformed columns are tinted amber in the Working data view.
+One table at a time, chosen by two toggles: which dataset (Original or
+Working) and which view (Data or Summary). Transformed columns are tinted
+amber in the Working data view.
+}
+\details{
+Before UI Stage 5 these four tables were three levels of tabs deep - the
+navbar, Prepare's card tabs, a \code{navset_card_tab} and a \code{navset_tab} inside
+it (§BUILD_UI-redesign 2.3). Two toggles say the same thing in one level.
 }

@@ -71,7 +71,7 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
         config   = prepare_confirm_ui("prepare_confirm"),
         messages = prepare_confirm_messages_ui("prepare_confirm"),
         info     = prepare_confirm_info_ui("prepare_confirm"),
-        result   = bslib::navset_card_tab(
+        result   = bslib::navset_pill(
           id = "prepare_tabs",
           bslib::nav_panel(
             value = "columns",
@@ -101,7 +101,7 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
     bslib::nav_panel(
       value = "explore",
       title = shiny::tagList(shiny::icon("magnifying-glass-chart"), " 2 \u00b7 Explore"),
-      bslib::navset_tab(
+      bslib::navset_pill(
         id = "explore_tabs",
         bslib::nav_panel(
           value = "plot",

@@ -1,8 +1,12 @@
 #' Data Preview Module
 #'
-#' Two nav panels: Original dataset and Working dataset. Each panel has two
-#' sub-tabs: Data (interactive reactable) and Summary (EDA summary table).
-#' Transformed columns are tinted amber in the Working data view.
+#' One table at a time, chosen by two toggles: which dataset (Original or
+#' Working) and which view (Data or Summary). Transformed columns are tinted
+#' amber in the Working data view.
+#'
+#' Before UI Stage 5 these four tables were three levels of tabs deep - the
+#' navbar, Prepare's card tabs, a `navset_card_tab` and a `navset_tab` inside
+#' it (§BUILD_UI-redesign 2.3). Two toggles say the same thing in one level.
 #'
 #' @param id Character. The module namespace ID.
 #' @param shared_state A Shiny `reactiveValues` object.
@@ -16,57 +20,65 @@ NULL
 data_preview_ui <- function(id) {
   ns <- shiny::NS(id)
 
-  bslib::navset_card_tab(
-    bslib::nav_panel(
-      title = shiny::tagList(shiny::icon("database"), " Original"),
-      bslib::navset_tab(
-        bslib::nav_panel(
-          title = "Data",
-          shiny::tags$p(
-            class = "text-muted small mb-2 mt-2",
-            "Dataset as passed to edark(), after auto-casting only. No filters or transforms applied."
-          ),
-          reactable::reactableOutput(ns("original_table"))
-        ),
-        bslib::nav_panel(
-          title = "Summary",
-          shiny::tags$p(
-            class = "text-muted small mb-2 mt-2",
-            "EDA summary for numeric and factor columns (original dataset)."
-          ),
-          reactable::reactableOutput(ns("original_summary"))
-        )
-      )
+  # Both toggles pick what the one table below shows; neither is staged, so
+  # they sit with the table rather than in Prepare's config pane, which is
+  # shared by all four Prepare pages and holds only Apply / Reset.
+  shiny::tagList(
+    shiny::div(
+      class = "d-flex flex-wrap align-items-center gap-3 mb-3",
+      shinyWidgets::radioGroupButtons(
+        ns("which_dataset"),
+        label    = NULL,
+        choices  = c("Original" = "original", "Working" = "working"),
+        selected = "original",
+        size     = "sm"
+      ),
+      shinyWidgets::radioGroupButtons(
+        ns("which_view"),
+        label    = NULL,
+        choices  = c("Data" = "data", "Summary" = "summary"),
+        selected = "data",
+        size     = "sm"
+      ),
+      shiny::uiOutput(ns("preview_caption"), inline = TRUE)
     ),
-    bslib::nav_panel(
-      title = shiny::tagList(shiny::icon("circle-check"), " Working"),
-      bslib::navset_tab(
-        bslib::nav_panel(
-          title = "Data",
-          shiny::tags$p(
-            class = "text-muted small mb-2 mt-2",
-            "Dataset after the last Apply. Amber columns have a transform applied."
-          ),
-          reactable::reactableOutput(ns("working_table"))
-        ),
-        bslib::nav_panel(
-          title = "Summary",
-          shiny::tags$p(
-            class = "text-muted small mb-2 mt-2",
-            "EDA summary for numeric and factor columns (working dataset after Apply)."
-          ),
-          reactable::reactableOutput(ns("working_summary"))
-        )
-      )
+
+    # One panel per combination. conditionalPanel only shows or hides, so the
+    # reactables are never re-rendered by a toggle.
+    shiny::conditionalPanel(
+      condition = "input.which_dataset == 'original' && input.which_view == 'data'",
+      ns = ns,
+      reactable::reactableOutput(ns("original_table"))
+    ),
+    shiny::conditionalPanel(
+      condition = "input.which_dataset == 'original' && input.which_view == 'summary'",
+      ns = ns,
+      reactable::reactableOutput(ns("original_summary"))
+    ),
+    shiny::conditionalPanel(
+      condition = "input.which_dataset == 'working' && input.which_view == 'data'",
+      ns = ns,
+      reactable::reactableOutput(ns("working_table"))
+    ),
+    shiny::conditionalPanel(
+      condition = "input.which_dataset == 'working' && input.which_view == 'summary'",
+      ns = ns,
+      reactable::reactableOutput(ns("working_summary"))
     )
   )
 }
+
 
 
 #' @rdname module_data_preview
 #' @export
 data_preview_server <- function(id, shared_state) {
   shiny::moduleServer(id, function(input, output, session) {
+
+    output$preview_caption <- shiny::renderUI({
+      shiny::tags$span(class = "small text-muted",
+                       .dp_caption(input$which_dataset, input$which_view))
+    })
 
     # ── Original: data table ──────────────────────────────────────────────────
     output$original_table <- reactable::renderReactable({
@@ -233,4 +245,23 @@ data_preview_server <- function(id, shared_state) {
       Top_values = reactable::colDef(name = "Top values", minWidth = 160)
     )
   )
+}
+
+
+# The caption that used to sit above each of the four tables as its own
+# paragraph. One line, driven by the two toggles.
+.dp_caption <- function(which_dataset, which_view) {
+  if (identical(which_dataset, "original")) {
+    if (identical(which_view, "data")) {
+      "Dataset as passed to edark(), after auto-casting only. No filters or transforms applied."
+    } else {
+      "EDA summary for numeric and factor columns (original dataset)."
+    }
+  } else {
+    if (identical(which_view, "data")) {
+      "Dataset after the last Apply. Amber columns have a transform applied."
+    } else {
+      "EDA summary for numeric and factor columns (working dataset after Apply)."
+    }
+  }
 }

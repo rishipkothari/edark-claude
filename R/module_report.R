@@ -44,7 +44,7 @@ report_ui <- function(id) {
       "});"
     )),
 
-  bslib::navset_pill(
+  bslib::navset_underline(
     id = ns("report_mode_tabs"),
 
     # ── Full Report pill ──────────────────────────────────────────────────────
@@ -167,7 +167,7 @@ report_ui <- function(id) {
         info     = shiny::uiOutput(ns("custom_info"))
       )
     )
-  )   # closes navset_pill
+  )   # closes navset_underline
   )   # closes tagList
 }
 
