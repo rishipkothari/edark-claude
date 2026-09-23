@@ -21,7 +21,7 @@
 | 3 | Theme file, dark mode, nav polish (navbar, pills, stepper, font) | S-M | done 2026-09-23 |
 | 4 | Page contract: config / result / info panes + messages area | M-L | done 2026-09-23 |
 | 5 | Flatten navigation + one nav vocabulary (§1.2) | M | done 2026-09-23 |
-| 6 | Small fixes: empty states, density, copy, dialog actions, button sweep | S | not started |
+| 6 | Small fixes: empty states, density, copy, dialog actions, button sweep | S | done 2026-09-23 |
 
 Order: 1 first (the highest-value fix, and the user's priority). 2 and 3 are independent of
 each other. 4 depends on 2. 5 is independent but touches `edark.R` and
@@ -731,6 +731,33 @@ exceptions, including the Explore -> View Report hop landing on Custom Report.
 - **Button sweep (F1 / D10).** Last pass over every call site that Stage 2's helper did not
   reach: `grep -n '"btn-\|w-75\|w-50' R/` returns hits only in `R/ui_helpers.R`, and every
   `input_task_button` goes through the helper.
+
+**Built 2026-09-23.** Thirteen checks pass under `chromote` at 1280 x 800, no JS exceptions.
+
+- **Hiding the empty plot card deadlocked the page, and the fix is worth knowing.** The
+  first version gated the card on `shared_state$active_plot`. But `active_plot` is written
+  *by* the plot's render, and Shiny suspends an output inside a hidden element - so no card
+  meant no render, no render meant no `active_plot`, and no `active_plot` meant no card. The
+  plot never appeared. `has_plot()` is now keyed on `plot_specification`, which the mode
+  buttons write directly, and `main_plot` is additionally marked
+  `suspendWhenHidden = FALSE`. Caught by driving the app; nothing in `check()` or a
+  `testServer` run would have shown it.
+- **Two native `title=` attributes survive deliberately**
+  (`module_analysis_covariate_confirm.R:529,597`). Both sit inside reactable cells, where
+  the patch-don't-re-render contract applies (§N1.4): `bslib::tooltip()` needs JS
+  initialisation and adds a wrapper React did not create, so converting them risks the
+  embedded-input patching for a cosmetic gain. The nav popovers and every tooltip outside a
+  reactable already use `bslib`.
+- **The row-count badge moved rather than being repositioned.** The plan offered "below the
+  filter list, or into the Prepare info pane if Stage 4 has landed". Stage 4 had, so it is
+  now a "Rows retained: N of M" line under the info pane's Row Filters heading, which also
+  ends the scrolls-away problem outright.
+- Copy pass done: Explore's level-2 pill reads **Explore Data**; "Deselect all" is **Clear**
+  in all three places it appeared (the variable modal, the column manager, Diagnostics);
+  Step 3's bare **Run** is **Run Selection**. "Describe Variables" was left plural, as
+  §1.3i instructs.
+- Button sweep clean: `grep -n '"btn-\|w-75\|w-50' R/` returns hits only in
+  `R/ui_helpers.R`, and every `input_task_button` goes through `edark_button(type = "task")`.
 
 ---
 

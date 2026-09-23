@@ -49,7 +49,7 @@ analysis_diagnostics_ui <- function(id) {
   .links <- function(all_id, none_id) {
     shiny::div(class = "small mb-1",
                shiny::actionLink(ns(all_id), "Select all"), " \u00b7 ",
-               shiny::actionLink(ns(none_id), "Deselect all"))
+               shiny::actionLink(ns(none_id), "Clear"))
   }
 
   edark_page(

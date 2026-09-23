@@ -277,24 +277,31 @@ report_server <- function(id, shared_state) {
         }
       }
 
+      # Actions at the *top*, above a list of unknown length, so they stay
+      # reachable without scrolling however many variables the dataset has
+      # (F6 / §1.3j). The list scrolls under them; the footer is empty.
       shiny::showModal(shiny::modalDialog(
         title = "Select Variables for Report",
-        shiny::checkboxGroupInput(
-          ns("modal_vars"),
-          label    = NULL,
-          choices  = elig,
-          selected = currently
-        ),
-        footer = shiny::tagList(
+        shiny::div(
+          class = "d-flex align-items-center gap-2 mb-3 pb-2 border-bottom",
           edark_button(ns, "modal_select_all", "Select All",
                        variant = "secondary", size = "dialog", outline = TRUE),
-          edark_button(ns, "modal_deselect_all", "Deselect All",
-                       variant = "secondary", size = "dialog", outline = TRUE,
-                       class = "ms-2"),
+          edark_button(ns, "modal_deselect_all", "Clear",
+                       variant = "secondary", size = "dialog", outline = TRUE),
           shiny::tags$span(class = "flex-grow-1"),
-          edark_button(ns, "modal_done", "Done", size = "dialog"),
-          shiny::modalButton("Cancel")
+          shiny::modalButton("Cancel"),
+          edark_button(ns, "modal_done", "Done", size = "dialog")
         ),
+        shiny::div(
+          style = "max-height: 45vh; overflow-y: auto;",
+          shiny::checkboxGroupInput(
+            ns("modal_vars"),
+            label    = NULL,
+            choices  = elig,
+            selected = currently
+          )
+        ),
+        footer    = NULL,
         easyClose = FALSE,
         size      = "m"
       ))

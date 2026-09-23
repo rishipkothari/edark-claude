@@ -105,7 +105,7 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
         id = "explore_tabs",
         bslib::nav_panel(
           value = "plot",
-          title = shiny::tagList(shiny::icon("chart-area"), " Plot"),
+          title = shiny::tagList(shiny::icon("chart-area"), " Explore Data"),
           edark_page(
             config = shiny::tagList(
               # Describe / Correlate / Trend are modes: each stages its own

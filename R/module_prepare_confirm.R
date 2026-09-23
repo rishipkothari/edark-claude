@@ -102,7 +102,17 @@ prepare_confirm_server <- function(id, shared_state) {
               shiny::tags$ul(
                 class = "small ps-3 mb-0",
                 lapply(groups[[kind]], shiny::tags$li)
-              )
+              ),
+              # The row count the filters leave. This was a badge in the Row
+              # Filters panel, where it scrolled away as filters accumulated
+              # (§BUILD_UI-redesign 2.6); it is a fact, so it belongs here (F2).
+              if (identical(kind, "Row Filters") && !is.null(pending)) {
+                edark_info_row(
+                  "Rows retained",
+                  sprintf("%s of %s", format(nrow(pending), big.mark = ","),
+                          format(nrow(curr), big.mark = ","))
+                )
+              }
             )
           }))
         }

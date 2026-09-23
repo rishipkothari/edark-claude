@@ -19,7 +19,7 @@ column_manager_ui <- function(id) {
     bslib::card_header(
       shiny::icon("table-columns"), " Columns",
       shiny::actionLink(ns("select_all"),   "Select all",   class = "ms-3 small"),
-      shiny::actionLink(ns("deselect_all"), "Deselect all", class = "ms-2 small")
+      shiny::actionLink(ns("deselect_all"), "Clear", class = "ms-2 small")
     ),
     bslib::card_body(
       # Scroll the rows, not the page, so "Select all" and the header stay put

@@ -51,7 +51,10 @@ EDARK_LOCK_REASON <- c(
 
   # Nothing selected to act on
   pick_measure        = "Tick at least one measure.",
-  pick_output         = "Tick at least one output."
+  pick_output         = "Tick at least one output.",
+
+  # Explore
+  plot_first          = "Run a plot first."
 )
 
 

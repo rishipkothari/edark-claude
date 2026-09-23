@@ -29,8 +29,9 @@ row_filter_ui <- function(id) {
       )
     ),
 
-    # Live row-count badge
-    shiny::uiOutput(ns("row_count_badge")),
+    # The live row count is a fact about the result, so it lives in Prepare's
+    # info pane (F2). It used to be a badge here, which scrolled away as
+    # filters accumulated (§BUILD_UI-redesign 2.6).
     shiny::hr(),
 
     # Active filter cards
@@ -60,32 +61,6 @@ row_filter_server <- function(id, shared_state) {
       )
     })
 
-
-    # ── Row count badge ───────────────────────────────────────────────────────
-    output$row_count_badge <- shiny::renderUI({
-      specs   <- shared_state$row_filter_specs
-      # Use dataset_working as the base: it already reflects all previously
-      # applied pipeline steps (type overrides, column selection, transforms).
-      dataset <- shared_state$dataset_working
-      n_orig  <- nrow(dataset)
-
-      n_filt <- if (length(specs) == 0) {
-        n_orig
-      } else {
-        tryCatch(
-          nrow(.apply_row_filters_preview(dataset, specs)),
-          error = function(e) NA_integer_
-        )
-      }
-
-      colour <- if (!is.na(n_filt) && n_filt < n_orig) "warning" else "success"
-      shiny::tags$span(
-        class = paste0("badge bg-", colour),
-        if (is.na(n_filt)) "Error in filters" else
-          paste0(format(n_filt, big.mark = ","), " / ",
-                 format(n_orig, big.mark = ","), " rows retained")
-      )
-    })
 
 
     # ── Add filter ────────────────────────────────────────────────────────────

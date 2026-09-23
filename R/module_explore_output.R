@@ -52,11 +52,19 @@ explore_output_ui <- function(id) {
       "});"
     ))),
 
-    # Plot area - the one artefact this page produces
-    bslib::card(
-      bslib::card_body(
-        waiter::waiter_on_busy(waiter::spin_flower()),
-        shiny::plotOutput(ns("main_plot"), height = "500px", width = "100%")
+    # Plot area - the one artefact this page produces. Before any plot exists
+    # this was an empty 500 px card beside four enabled buttons that answered a
+    # click with a JS alert, a thrown download error or a toast
+    # (§BUILD_UI-redesign 2.6). Now the card is hidden and the page says what
+    # to do instead.
+    shiny::uiOutput(ns("plot_empty")),
+    shiny::div(
+      id = ns("plot_card_wrap"),
+      bslib::card(
+        bslib::card_body(
+          waiter::waiter_on_busy(waiter::spin_flower()),
+          shiny::plotOutput(ns("main_plot"), height = "500px", width = "100%")
+        )
       )
     )
   )
@@ -142,6 +150,40 @@ explore_output_server <- function(id, shared_state) {
       gg
     }, res = 96)
 
+    # The card is hidden until a plot exists, and Shiny suspends outputs inside
+    # a hidden element. Keep this one live so the first plot renders the moment
+    # the card is revealed rather than one flush later.
+    shiny::outputOptions(output, "main_plot", suspendWhenHidden = FALSE)
+
+
+    # -- Empty state, and the toolbar gated on a plot existing ----------------
+    # Disabled-with-a-reason is the app's only precondition affordance
+    # (Stage 1): a button must not sit enabled and answer a click with an
+    # alert or a toast.
+    # Keyed on the spec, not on active_plot. active_plot is written *by* the
+    # render, and a hidden plotOutput is suspended, so gating the card on
+    # active_plot deadlocks: no card -> no render -> no active_plot -> no card.
+    has_plot <- shiny::reactive(!is.null(shared_state$plot_specification))
+
+    shiny::observe({
+      shinyjs::toggle(id = "plot_card_wrap", condition = has_plot())
+      for (b in c("save_plot_btn", "copy_plot_btn", "add_to_custom_btn")) {
+        shinyjs::toggleState(b, condition = has_plot())
+      }
+    })
+
+    output$plot_empty <- shiny::renderUI({
+      if (has_plot()) return(NULL)
+      edark_empty_state(
+        "No plot yet",
+        shiny::tagList(
+          "Choose a mode on the left - ", shiny::tags$strong("Describe"), ", ",
+          shiny::tags$strong("Correlate"), " or ", shiny::tags$strong("Trend"),
+          " - pick your variables, then click that mode's button."
+        ),
+        icon = "chart-area"
+      )
+    })
 
     # -- Info pane: what the plot on screen is made of ------------------------
     # The variable summary, transposed to label/value rows. It used to be a

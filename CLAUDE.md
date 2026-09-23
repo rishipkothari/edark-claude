@@ -160,10 +160,19 @@ Phases 0–7 and 6b complete; Step 6 (Export, Phase 8) is a placeholder stub. Ph
 ### Other
 
 #### High magnitude
-- **UI consistency** (Stages 0-5 done; Stage 6 not started): honest step-locking first, then a shared component library (`R/ui_helpers.R`), one plain-CSS theme file, a config (left) / result / info (right) page contract with a dedicated messages area, and flatter navigation. Report stays inside Explore. Scoped to `bslib` + R + CSS - no SCSS, no new JS, no shell rewrite. Decisions, assessment and stage status table: `PRD/BUILD_UI-redesign.md`. Revised 2026-09-23 from user feedback (§1.3 - principles plus per-page details): Explore's mode pills stay in the left pane and Report's Full / Custom pills join them, while Analyze's sub-steps keep underline tabs across the page (D8 amended); one aesthetics control set, in its own Appearance panel (D9, amended 2026-09-23 from dialog to panel); one button scale, placement by scope (D10); Report › Custom loses its preview pane (D11). Work one stage per session and tick off its status table.
+- **UI consistency - built 2026-09-23, one decision open for you.** All six stages of
+  `PRD/BUILD_UI-redesign.md` are done: honest step-locking, a shared component library
+  (`R/ui_helpers.R`), one plain-CSS theme file (`inst/www/edark.css`), a config (left) /
+  result / info (right) page contract with a dedicated messages area, and flatter
+  navigation. Report stays inside Explore. `bslib` + R + CSS only - no SCSS, no new JS.
+  **Needs your ruling:** Explore › Report's Full / Custom ended up as underline tabs across
+  the page (level 3b), not the config-pane pills D8 names, because D11 leaves Custom with no
+  result surface, so the two modes do not share one. Putting the pills in the pane means
+  giving Custom its centre back. See Stage 5's build note in `PRD/BUILD_UI-redesign.md`.
 - investigate reset pipeline and what it looks like
     - also with UI refresh, might be able to eliminate some of the click to lock in steps, should evaluate
-    - **Nine step pills wrap to two rows** at ~1500 px. Consider shorter labels (e.g. "Variables", "Covariates") or a vertical rail.
+    - ~~Nine step pills wrap to two rows~~ - closed 2026-09-23: there are six steps, and with
+      "3 · Variables" / "4 · Covariates" they fit one row at 1280 px (Stage 5).
 
 #### Mid magnitude
 - Export (§P9): working dataset, prepare/analyze spec, model ouptuts/results (including diagnostics). Formats for results would be individual files vs single document/report (select output type word, pdf, HTML). Zip all files. Share a writer with Step 9 and sessions (§M7).
