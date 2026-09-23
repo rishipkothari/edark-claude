@@ -44,14 +44,14 @@ R/
 ├── module_column_transform.R   Pipeline helpers: .apply_column_transforms, .make_range_labels, .transform_spec_is_valid
 ├── module_transform_variables.R Prepare › Transforms tab — flat table, one row per numeric col
 ├── module_row_filter.R         Prepare › Row Filters tab
-├── module_prepare_confirm.R    Apply Changes sidebar — pipeline, validation, navigation
-├── module_data_preview.R       Prepare › Data Preview tab — original + working reactables + summary sub-tabs
+├── module_prepare_confirm.R    Prepare config pane (Apply/Reset) + info pane (dimensions, itemised pending list) + messages; pipeline, validation, navigation
+├── module_data_preview.R       Prepare › Data Preview tab — two toggles (Original/Working, Data/Summary) over one of four reactables
 │
 ├── module_explore_controls.R   Explore › Describe + Relationship tab sidebars — describe_controls_ui/server + relationship_controls_ui/server
 ├── module_trend_controls.R     Explore › Trend tab sidebar — timestamp/resolution/variable/stat pickers
-├── module_explore_output.R     Explore main panel — plot output + summary reactable + "Add to Custom Report" / "View Report" buttons
-├── module_appearance.R        Explore › Appearance panel — the app's only plot-aesthetics controls; sole writer of the five aesthetic shared_state fields
-├── module_report.R             Report tab — Full Report pill (type selector, variable modal, download) + Custom Report pill (gallery, reorder, download)
+├── module_explore_output.R     Explore result pane — plot + action toolbar; variable summary and custom-report state go to the info pane
+├── module_appearance.R         Explore › Appearance panel — the app's only plot-aesthetics controls; sole writer of the five aesthetic shared_state fields
+├── module_report.R             Report tab — Full / Custom underline tabs; Full has a config pane + resolved section list, Custom has no centre (D11)
 │
 ├── ui_helpers.R                Shared UI component library — lock reasons, buttons, section labels, empty states, messages, info rows, model header, aesthetics controls
 │
@@ -121,24 +121,37 @@ inst/
 #### Mid magnitude
 - transform → row filter → transform does not show a warning on stage.
 - Warnings section in the Apply pane — mimic the "Stratify by" section header in Report › Full Report.
-- varaible labels - in Prepare phase, column in master table that has a textbox for custom column labels. Buttons to apply some function (str to title, capitalize first only, variable name) to change all labels quickly for basic presentation purposes. 
+- varaible labels - in Prepare phase, column in master table that has a textbox for custom column labels. Buttons to apply some function (str to title, capitalize first only, variable name) to change all labels quickly for basic presentation purposes.
+- transform cutpoint presents; median, median+IQR 
 
 #### Low magnitude
+- data preview conatiner sizing - horizontal scroll bar is at bottom of page which requires scrolling down; maybe some way to containerize the table to end at the bottom of screen so no scrolling?
+- transforms - multiple cutpoints, info panel says 1 band
+- gray out apply changes before an additional chagne is made, then, make it available again
+- add complete case count to RHS pane
 
 
 ### Explore
 
 #### High magnitude
 - Alternative plot types per variable combination (heat map, balloon plot, etc.)
+- report -> full report main panel - should this contain a viewer for the file that is generated? and then a save button to export the report to a desired location? solves the "main panel sucks" issue
+- report -> custom report; LHS panel contains the previews of the custom report items; i just want to move this into the main panel, thats what the main panel should house - currently added custom report items. ideally this might become a drag and drop situation. we could even take the item previews and display them in the RHS pane on select. the entries in the table or however we present it in the main pane could be selectable, and would be descriptions (essentially plot titles Var A vs Var b stratified by Var c), fit more on the screen for drag and drop functionality, have other options in line like delete, etc.
 
 #### Mid magnitude
 - Word report: reference `.docx` template with defined heading styles
 - Statistical tests in the Explore › Relationship summary panel (num × fac → Kruskal-Wallis; fac × fac → chi-square / Fisher's). Reports already have these via the table helpers; the Explore summary does not.
 - Async report generation (synchronous now; cancel needs `future` / `promises`).
+- when changing LHS pills in explore data from describe to corelate and then clicking plot relationship button, secondary variable chosen for plot is the secondary variable in the correlate LHS pane; primary and stratify by are still left over from the last selection in the describe pill.
+- when going from correlate back to describe, it uses the primary and stratify by variables in correlate; i think we need to reassign the state variables on pill change/click
+- custom report LHS pane when the thumbnails box is moved to main pane can contain "report contents" like the full report has dataset summary and table 1. i guess this could be a common component between the two so that if we add more report items we can share the same box? or add it in two places? 
+- generate custom report modal/spinner does not increment with the custom report items like it does for the full report items
+- generate full report spinner counts to 7 twice for word and powerpoint report format but not HTML: once with "variable #" then with "section #"
 
 #### Low magnitude
 - Report contents option: collinearity investigation.
 - **Bug — centre tables in PPT + HTML reports:** `flextable::set_table_properties(align = "center")` is set in both `.style_dataset_summary_ft()` and `.style_section_ft()` in `generate_report.R`, but tables still render left-aligned in PPT and HTML (DOCX may work). Investigate `officer` slide content alignment for PPT and the Rmd template's table rendering for HTML.
+- appearance should be a pill next to explore data and report; full screen for config; this may change to "settings" later but we can leave it as appearance for now. main panel will house container for settings.
 
 ### Analyze
 
@@ -156,6 +169,8 @@ Phases 0–7 and 6b complete; Step 6 (Export, Phase 8) is a placeholder stub. Ph
 - **`PF_LOOKS_CATEGORICAL` may be noisy** on genuine small counts (e.g. transfusion units 0–8). Threshold `.PF_CATEGORICAL_MAX_VALUES` (10) in `service_analysis_validation.R`.
 - Collinearity plot base size should scale with the number of variables; still too small with few.
 - **Mixed models have no influence check** — Model › Diagnostics offers Cook's distance / leverage for lm / glm only. A cluster-level (leave-one-cluster-out) influence check would close the gap (§A11.2).
+- generate table 1 spinner - specify which table its working on, e.g. if it has 3 to generate (overall, by exposure, by outcome) have 3 stops on the bar and change text to say which is being created
+- need to think about what we want table 1 RHS to show; for now, it doesn't accurately reflect what it's stratifying by, it just picks one of the vars i think maybe exposure by defualt?
 
 ### Other
 
@@ -173,6 +188,7 @@ Phases 0–7 and 6b complete; Step 6 (Export, Phase 8) is a placeholder stub. Ph
     - also with UI refresh, might be able to eliminate some of the click to lock in steps, should evaluate
     - ~~Nine step pills wrap to two rows~~ - closed 2026-09-23: there are six steps, and with
       "3 · Variables" / "4 · Covariates" they fit one row at 1280 px (Stage 5).
+- noticing that the RHS pane is kind of tied to the main pane, where the LHS pane is independent (e.g. doesn't scroll). I was imaginging three independent panes
 
 #### Mid magnitude
 - Export (§P9): working dataset, prepare/analyze spec, model ouptuts/results (including diagnostics). Formats for results would be individual files vs single document/report (select output type word, pdf, HTML). Zip all files. Share a writer with Step 9 and sessions (§M7).
