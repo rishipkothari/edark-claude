@@ -44,7 +44,7 @@ Settled 2026-09-22. Do not reopen without the user.
 | D5 | **CSS only.** No SCSS. More CSS is acceptable if needed. |
 | D6 | **Sidebars on every page, same default width.** Including Model › Summary and Step 6 Export. Left config sidebar: 340 px. Right info pane: 300 px. Both are constants in `R/ui_helpers.R`. |
 | D7 | **Explore's report uses the aesthetics on screen.** Report must not have its own aesthetics controls. See Stage 2. |
-| D8 | **One navigation vocabulary for the whole app** (decided 2026-09-23): each nav level has one look everywhere - including Explore's Describe / Correlate / Trend, which stop being pills inside a sidebar and become sub-steps like Analyze Step 5's. *Still open:* which look sub-steps get (A: underline strip, or D: sidebar sections). See §1.2. |
+| D8 | **One navigation vocabulary for the whole app** (decided 2026-09-23): each nav level has one look everywhere - including Explore's Describe / Correlate / Trend, which stop being pills inside a sidebar and become sub-steps like Analyze Step 5's. Sub-steps use **underline tabs across the top of the page** (option A, decided 2026-09-23). See §1.2. |
 
 ### 1.1 Explore report vs Analyze export (D1)
 
@@ -79,16 +79,16 @@ and are drawn three ways.
 |---|---|---|
 | 1 Stage | navbar | Restyled in Stage 3 (light bar, active underline). |
 | 2 Page | **pills**, in all three stages | Analyze's pills also get stepper states (number, done, current, locked - Stage 1 sets the state, Stage 3 styles it). Prepare and Explore pills are unnumbered: their pages are not a gated sequence. |
-| 3 Sub-step | **the sub-step idiom (open: A or D below)** | Applies to Explore (Describe / Correlate / Trend), Explore › Report (Full / Custom), Analyze Step 3 (Univariable / Collinearity / Stepwise-LASSO) and Step 5 (Summary / Create / Diagnostics / Performance / Results). No pills at this level, and no nav inside a sidebar unless D is chosen. |
+| 3 Sub-step | **underline tabs across the top of the page** (A) | Applies to Explore (Describe / Correlate / Trend), Explore › Report (Full / Custom), Analyze Step 3 (Univariable / Collinearity / Stepwise-LASSO) and Step 5 (Summary / Create / Diagnostics / Performance / Results). No pills at this level and no nav inside a sidebar. |
 | 4 Result view | card tabs, only here | Data Preview's inner tabs are removed (Stage 5). |
 
-**Still open - which look for level 3:**
+**Level 3 look - decided 2026-09-23: A.** Options considered:
 
-- **A. Underline strip across the top of the page.** Matches Step 5 today. For Explore, the
+- **A. Underline strip across the top of the page (chosen).** Matches Step 5 today. For Explore, the
   strip sits above the page layout; because Explore has one shared output panel, the strip
   drives a `navset_hidden()` in the sidebar via `nav_select()` (pure R) rather than each
   sub-step owning a whole page. Smallest change for Analyze.
-- **D. Sections in the left sidebar** (the user's idea, 2026-09-22, under consideration).
+- **D. Sections in the left sidebar** (the user's idea, 2026-09-22; not chosen, kept for reference).
   Each sub-step is a collapsible section (`bslib::accordion(multiple = FALSE)`) holding that
   sub-step's settings and its own primary button; the open section decides what the centre
   shows; the right info pane stays fixed for the whole page ("what this step hands on").
@@ -99,7 +99,7 @@ and are drawn three ways.
   settings; check long sections (Performance, LASSO) at 1280 x 800.
 
 (Earlier options B - a radio mode selector for Step 3 only - and C - promoting sub-steps to
-steps, bringing back nine pills - are dropped.) Until the user picks, Stage 5 assumes A.
+steps, bringing back nine pills - were dropped.)
 
 ---
 
@@ -412,7 +412,7 @@ slot at the top of the centre column.
 ### Stage 5 - Flatten navigation
 
 - **Apply the §1.2 vocabulary.** Level 2: Prepare's `navset_card_tab` (`edark.R:112`) and
-  Explore's `navset_tab` (`edark.R:142`) become pills. Level 3, per D8 (assumed A):
+  Explore's `navset_tab` (`edark.R:142`) become pills. Level 3 (D8, underline tabs):
   Step 3's `navset_pill` (`module_analysis_varinvestigation.R:116`), Report's Full / Custom
   `navset_pill` (`module_report.R:47`) and Explore's sidebar `navset_pill` (`edark.R:150`)
   become the sub-step idiom, matching Step 5. Keep the Explore -> Report hop and
