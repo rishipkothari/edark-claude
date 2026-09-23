@@ -16,7 +16,7 @@
 | Stage | Scope | Effort | Status |
 |---|---|---|---|
 | 0 | Quick fixes that do not wait for the redesign | S | done 2026-09-22 (2 of 3, see §4) |
-| 1 | Honest locking and one precondition affordance | S-M | not started |
+| 1 | Honest locking and one precondition affordance | S-M | done 2026-09-23 |
 | 2 | Component library (`R/ui_helpers.R`) + Explore report aesthetics | M | not started |
 | 3 | Theme file, dark mode, nav polish (navbar, pills, stepper, font) | S-M | not started |
 | 4 | Page contract: config / result / info panes + messages area | M-L | not started |
@@ -215,7 +215,12 @@ only after ~1 s hover.
   "Model › Create" (`module_analysis_main.R:135`), placeholders say "the Create tab"
   (`module_analysis_diagnostics.R:179`, `module_analysis_performance.R:364`,
   `module_analysis_results.R:163`).
-- **Two affordances for one kind of precondition.** Run is disabled via `shinyjs::disabled()`
+- **Two affordances for one kind of precondition.** *(Corrected while building Stage 1:
+  Diagnostics, Performance and Results were in fact already disabled through
+  `shinyjs::toggleState()` - but silently, with no reason anywhere on the page, and they
+  still toasted for their "nothing ticked" case. Table 1 was the only button that sat
+  enabled and answered a click with a toast. The fix is the same either way.)*
+  Run is disabled via `shinyjs::disabled()`
   in Step 3 (`:139`, `:201`) and Create (`module_analysis_modelspec.R:106`), but Table 1
   (`:29`), Diagnostics (`:64`), Performance (`:67`) and Results (`:66`) stay enabled and fail
   with a toast.
@@ -310,7 +315,8 @@ Each stage is independently runnable and leaves the app working.
 - [x] **Collinearity "Threshold" label** removed - it headed static text with no input. The
   0.7 cut-off is fixed in `service_analysis_variable_selection.R`; if it should become
   configurable, that is an Analyze feature, not a UI fix.
-- [ ] **One "fit a model first" wording** - folded into Stage 1's lock-reason table.
+- [x] **One "fit a model first" wording** - done in Stage 1: the five placeholders and
+  the nav popover all read `EDARK_LOCK_REASON["fit_model"]`.
 
 ### Stage 1 - Honest locking
 
@@ -343,6 +349,38 @@ Pure R plus the first few lines of `inst/www/edark.css`.
 **Done when:** clicking every locked step shows a reason; every Run button with an unmet
 precondition is disabled with visible reason text; `grep` finds each "do X first" string
 once, in `R/ui_helpers.R`.
+
+**Built 2026-09-23.** Four things came out differently from the plan above, all verified by
+driving the app with `chromote` (a full run: freeze `liver_tx`, outcome `ead`, three
+covariates, fit, then each Model sub-tab):
+
+- **The popover is attached by the server, not statically.** A popover wrapped around a
+  static nav title would also open on an *unlocked* step and fight with navigation. So each
+  gated nav title is a `shiny::uiOutput(..., inline = TRUE)` that renders either the plain
+  label or the label with a lock glyph wrapped in `bslib::popover()`. Dynamic, whole-label
+  click target, still zero new JS. Only the five gated items need it (`step5`, `step6`,
+  `diagnostics`, `performance`, `results`); steps 1-4 and Model › Summary / Create are never
+  locked, so their titles stay static. Labels live in `.ANALYSIS_NAV_STEPS` /
+  `.ANALYSIS_NAV_MODEL` so they cannot drift from the reasons that name them.
+- **The CSS has to out-specify Bootstrap.** `.nav-link.disabled` alone loses: Bootstrap's own
+  rule is equally specific and loads *after* `inst/www/edark.css`, so `pointer-events: none`
+  survived and the click never reached the popover. `.nav .nav-link.disabled` wins.
+- **Bootstrap does *not* refuse to switch to a `.disabled` tab** once pointer events are
+  restored, contrary to the assumption above. `.apply_gate()` now reads `input[[navset_id]]`
+  *without* `isolate()` and puts the selection back to `last_ok[[navset_id]]`, a
+  `reactiveValues` holding the last allowed selection per navset - in R, no new JS. This
+  replaced the older "furthest open tab before it" fallback, which would have dropped a user
+  who clicked locked Step 5 onto Step 4 rather than leaving them where they were.
+- **Diagnostics has no "tick at least one check" precondition** - sample accounting and
+  fitting warnings are always included, so an empty tick list is legitimate. Its only gate is
+  the fitted model, so there is no `pick_check` reason. Performance (`pick_measure`) and
+  Results (`pick_output`) do have one, and both replaced a toast.
+
+Left alone deliberately: `module_analysis_covariate_confirm.R:892` still says "Resolve the
+errors above before running the model" in its own words. It is Step 4's own checks panel, not
+a button precondition, and the Step 5 `model_preflight` wording would misname them.
+`.ms_js()`'s pulse-the-preflight-box click handler (`module_analysis_modelspec.R:60-71`) also
+stays: it still works, and the visible reason under the button complements it.
 
 ### Stage 2 - Component library + Explore report aesthetics
 

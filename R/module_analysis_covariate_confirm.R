@@ -377,7 +377,7 @@ analysis_covariate_confirm_server <- function(id, shared_state) {
       spec  <- shared_state$analysis_spec
       adata <- shared_state$analysis_data
       msg <- if (is.null(spec) || is.null(adata)) {
-        "Start the analysis in Step 1 to select covariates."
+        edark_lock_reason("analysis_start")
       } else if (is.null(spec$variable_roles$outcome_variable)) {
         "Assign an outcome in Step 1 to select covariates."
       }

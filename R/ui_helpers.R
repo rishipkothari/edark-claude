@@ -12,6 +12,7 @@
 #'
 #' @name ui_helpers
 #' @keywords internal
+#' @noRd
 NULL
 
 
@@ -44,11 +45,11 @@ EDARK_LOCK_REASON <- c(
   analysis_tier1      = "Resolve the Step 1 \u00b7 Setup errors shown above first.",
 
   # Model preconditions
+  model_type_none     = "No model type fits this outcome. Change the outcome in Step 1 \u00b7 Setup.",
   model_preflight     = "Resolve the preflight errors before fitting the model.",
   fit_model           = "Fit a model in Model \u203a Create first.",
 
   # Nothing selected to act on
-  pick_check          = "Tick at least one assumption check.",
   pick_measure        = "Tick at least one measure.",
   pick_output         = "Tick at least one output."
 )
@@ -93,15 +94,21 @@ edark_lock_reason <- function(key) {
 #'   ("Fit Model", never "Run").
 #' @param icon Character or NULL. Font Awesome name shown before the label.
 #' @param variant Character. Bootstrap variant, without the `btn-` prefix.
+#' @param enabled Logical. The state the button is *first rendered* in.
+#'   Defaults to FALSE because a gated button's precondition is unmet at
+#'   launch; [edark_run_gate()] takes over on the first flush. Rendering it
+#'   enabled first would flash a clickable button.
 #'
 #' @return A `shiny::tagList`.
 #' @keywords internal
 #' @noRd
-edark_run_button <- function(ns, id, label, icon = "play", variant = "primary") {
+edark_run_button <- function(ns, id, label, icon = "play", variant = "primary",
+                             enabled = FALSE) {
   body <- if (is.null(icon)) label else shiny::tagList(shiny::icon(icon), " ", label)
+  btn  <- shiny::actionButton(ns(id), label = body,
+                              class = sprintf("btn-%s w-100", variant))
   shiny::tagList(
-    shiny::actionButton(ns(id), label = body,
-                        class = sprintf("btn-%s w-100", variant)),
+    if (enabled) btn else shinyjs::disabled(btn),
     shiny::uiOutput(ns(paste0(id, "_reason")))
   )
 }

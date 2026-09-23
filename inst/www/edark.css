@@ -14,14 +14,19 @@
 
 /* --- Locked navigation (Stage 1) ------------------------------------------
    A locked step is muted and refuses the cursor, but still receives the
-   click. Bootstrap's own .nav-link.disabled sets pointer-events: none, which
-   swallows the click and makes a locked step do literally nothing; with
-   pointer-events restored the click reaches the popover that says why the
-   step is locked, while Bootstrap's tab handler still ignores it (it checks
-   for .disabled before switching tabs), so nothing navigates.
-   The lock glyph itself comes from R, with the reason, in .apply_gate(). */
-.nav-link.disabled,
-.nav-item.disabled > .nav-link {
+   click, so the popover naming the missing precondition can open. Bootstrap's
+   own .nav-link.disabled sets pointer-events: none, which swallows the click
+   and makes a locked step do literally nothing.
+
+   Restoring the click means Bootstrap does switch the tab underneath, so
+   .apply_gate() in module_analysis_main.R puts the selection straight back -
+   in R, not in new JS. The lock glyph and the reason also come from R, in the
+   nav title itself.
+
+   Held one step above Bootstrap's rule, which is equally specific and loads
+   after this file. */
+.nav .nav-link.disabled,
+.nav .nav-item.disabled > .nav-link {
   pointer-events: auto;
   cursor: not-allowed;
   opacity: 0.65;

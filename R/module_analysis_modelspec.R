@@ -103,15 +103,8 @@ analysis_modelspec_create_ui <- function(id) {
                  shiny::uiOutput(ns("preflight_ui"))),
       shiny::div(
         id = ns("run_wrap"), class = "mt-3",
-        shinyjs::disabled(
-          shiny::actionButton(
-            ns("btn_run"),
-            label = shiny::tagList(shiny::icon("play"), " Run Model"),
-            class = "btn-primary w-100"
-          )
-        )
-      ),
-      shiny::uiOutput(ns("run_hint_ui"))
+        edark_run_button(ns, "btn_run", "Run Model")
+      )
     ),
     shiny::uiOutput(ns("model_header_ui")),
     shiny::uiOutput(ns("results_ui")),
@@ -172,19 +165,25 @@ analysis_modelspec_server <- function(id, shared_state) {
       validate_analysis(spec, adata, tier = "full", verbose = TRUE)
     })
 
-    can_run <- shiny::reactive({
+    # NULL when the model may be fitted; otherwise the lock-reason key.
+    run_block <- shiny::reactive({
       v    <- validation()
       spec <- shared_state$analysis_spec
-      !is.null(v) && !is.null(spec$model_design$model_type) && v$validity_flag != "invalid"
+      if (is.null(v)) return("analysis_start")
+      if (is.null(spec$model_design$model_type)) return("model_type_none")
+      if (v$validity_flag == "invalid") return("model_preflight")
+      NULL
     })
+    can_run <- shiny::reactive(is.null(run_block()))
 
-    shiny::observe(shinyjs::toggleState("btn_run", condition = can_run()))
+    edark_run_gate(output, "btn_run", can_run,
+                   shiny::reactive(edark_lock_reason(run_block())))
 
     # ── Sidebar: model select ────────────────────────────────────────────────
     output$model_select_ui <- shiny::renderUI({
       o <- opts_view()
       if (is.null(o)) {
-        return(shiny::tags$p(class = "small text-muted", "Start the analysis in Step 1."))
+        return(shiny::tags$p(class = "small text-muted", edark_lock_reason("analysis_start")))
       }
       rec <- attr(o, "recommended")
       labels <- ifelse(o$available, o$label, paste0(o$label, " - ", o$reason))
@@ -292,29 +291,14 @@ analysis_modelspec_server <- function(id, shared_state) {
       )
     })
 
-    output$run_hint_ui <- shiny::renderUI({
-      v    <- validation()
-      spec <- shared_state$analysis_spec
-      if (is.null(v)) return(NULL)
-      msg <- if (is.null(spec$model_design$model_type)) {
-        "No model is available for this outcome."
-      } else if (v$validity_flag == "invalid") {
-        "Resolve the errors above to run the model."
-      }
-      if (is.null(msg)) return(NULL)
-      shiny::tags$p(class = "small text-danger mt-2 mb-0", msg)
-    })
 
     # ── Run ──────────────────────────────────────────────────────────────────
     shiny::observeEvent(input$btn_run, {
       spec  <- shiny::isolate(shared_state$analysis_spec)
       adata <- shiny::isolate(shared_state$analysis_data)
       v     <- validate_analysis(spec, adata, tier = "full")
-      if (is.null(spec$model_design$model_type) || v$validity_flag == "invalid") {
-        shiny::showNotification("Resolve the preflight errors before running the model.",
-                                type = "error", duration = 8)
-        return()
-      }
+      if (is.null(spec$model_design$model_type) ||
+          v$validity_flag == "invalid") return()   # the button is disabled
 
       label <- .ANALYSIS_MODEL_LABELS[[spec$model_design$model_type]]
       shiny::showModal(.analysis_progress_modal(paste0("Fitting ", label, "\u2026")))
@@ -367,7 +351,7 @@ analysis_modelspec_server <- function(id, shared_state) {
       spec  <- shared_state$analysis_spec
       adata <- shared_state$analysis_data
       if (is.null(spec) || is.null(adata) || is.null(spec$variable_roles$outcome_variable)) {
-        return(.ms_placeholder("Start the analysis and assign an outcome in Step 1."))
+        return(.ms_placeholder(edark_lock_reason("analysis_outcome")))
       }
       mt <- spec$model_design$model_type
       ev <- analysis_outcome_event(spec, adata)
@@ -445,7 +429,7 @@ analysis_modelspec_server <- function(id, shared_state) {
       adata <- shared_state$analysis_data
       res   <- shared_state$analysis_result
       if (is.null(spec) || is.null(adata)) {
-        return(.ms_placeholder("Start the analysis in Step 1."))
+        return(.ms_placeholder(edark_lock_reason("analysis_start")))
       }
       sections <- build_analysis_summary(spec, res, adata, validation())
       shiny::tagList(lapply(sections, .ms_section_card))

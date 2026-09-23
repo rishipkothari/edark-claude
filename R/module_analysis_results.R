@@ -63,9 +63,7 @@ analysis_results_ui <- function(id) {
       ),
       lapply(.RESULTS_OUTPUTS[-1], .choice),
       shiny::tags$hr(class = "my-2"),
-      shiny::actionButton(ns("btn_generate"),
-                          label = shiny::tagList(shiny::icon("play"), " Generate Outputs"),
-                          class = "btn-primary w-100"),
+      edark_run_button(ns, "btn_generate", "Generate Outputs"),
       shiny::tags$p(class = "small text-muted mt-2 mb-0",
                     "Only the ticked outputs are created, and only created outputs can be",
                     "exported in Step 6. The Summary tab is always shown.")
@@ -95,19 +93,26 @@ analysis_results_server <- function(id, shared_state) {
     has_model <- shiny::reactive({
       !is.null(shared_state$analysis_result$fitted_models$primary_model)
     })
-    shiny::observe(shinyjs::toggleState("btn_generate", condition = has_model()))
+    .selected_outputs <- function() {
+      ids <- vapply(.RESULTS_OUTPUTS, `[[`, character(1), "id")
+      ids[vapply(ids, function(i) isTRUE(input[[paste0("out_", i)]]), logical(1))]
+    }
+
+    # A fitted model, and at least one output ticked.
+    res_block <- shiny::reactive({
+      if (!has_model()) return("fit_model")
+      if (length(.selected_outputs()) == 0L) return("pick_output")
+      NULL
+    })
+    edark_run_gate(output, "btn_generate",
+                   enabled = shiny::reactive(is.null(res_block())),
+                   reason  = shiny::reactive(edark_lock_reason(res_block())))
 
     # ── Generate ─────────────────────────────────────────────────────────────
     shiny::observeEvent(input$btn_generate, {
       res <- shiny::isolate(shared_state$analysis_result)
-      if (is.null(res$fitted_models$primary_model)) return()
-
-      ids <- vapply(.RESULTS_OUTPUTS, `[[`, character(1), "id")
-      selected <- ids[vapply(ids, function(i) isTRUE(input[[paste0("out_", i)]]), logical(1))]
-      if (length(selected) == 0L) {
-        shiny::showNotification("Tick at least one output to generate.", type = "warning", duration = 4)
-        return()
-      }
+      if (!is.null(shiny::isolate(res_block()))) return()   # the button is disabled
+      selected <- .selected_outputs()
       want_unadj <- "results_table" %in% selected && isTRUE(input$include_unadjusted)
 
       shiny::showModal(.analysis_progress_modal("Generating Outputs\u2026"))
@@ -160,7 +165,7 @@ analysis_results_server <- function(id, shared_state) {
     # ── Main: header ─────────────────────────────────────────────────────────
     output$header_ui <- shiny::renderUI({
       res <- shared_state$analysis_result
-      if (!has_model()) return(.ms_placeholder("Fit a model in the Create tab to see results."))
+      if (!has_model()) return(.ms_placeholder(edark_lock_reason("fit_model")))
       snap <- res$specification_snapshot
       mt   <- snap$model_design$model_type
       gen  <- res$results_generation

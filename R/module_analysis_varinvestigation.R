@@ -136,13 +136,7 @@ analysis_varinvestigation_ui <- function(id) {
             "Variables below this threshold are flagged as candidates."
           ),
           shiny::tags$hr(class = "my-2"),
-          shinyjs::disabled(
-            shiny::actionButton(
-              ns("btn_run_univariable"),
-              label = shiny::tagList(shiny::icon("play"), " Run Screen"),
-              class = "btn-primary w-100"
-            )
-          ),
+          edark_run_button(ns, "btn_run_univariable", "Run Screen"),
           shiny::uiOutput(ns("univ_summary"))
         ),
 
@@ -196,13 +190,7 @@ analysis_varinvestigation_ui <- function(id) {
           shiny::uiOutput(ns("sl_config_ui")),
 
           shiny::tags$hr(class = "my-2"),
-          shinyjs::disabled(
-            shiny::actionButton(
-              ns("btn_run_sl"),
-              label = shiny::tagList(shiny::icon("play"), " Run"),
-              class = "btn-primary w-100"
-            )
-          ),
+          edark_run_button(ns, "btn_run_sl", "Run"),
           shiny::uiOutput(ns("sl_summary"))
         ),
 
@@ -224,20 +212,22 @@ analysis_varinvestigation_server <- function(id, shared_state) {
     ns <- session$ns
 
     # ── Tier 1 validity (reactive, shared across pills) ───────────────────────
-    tier1_valid <- shiny::reactive({
+    # NULL when the step may run; otherwise the lock-reason key saying why not.
+    tier1_block <- shiny::reactive({
       spec  <- shared_state$analysis_spec
       adata <- shared_state$analysis_data
-      if (is.null(spec) || is.null(adata)) return(FALSE)
+      if (is.null(spec) || is.null(adata)) return("analysis_start")
+      if (!.has_candidates(spec)) return("analysis_candidates")
       val <- validate_analysis(spec, adata, tier = "tier1")
-      val$validity_flag != "invalid" && .has_candidates(spec)
+      if (val$validity_flag == "invalid") return("analysis_tier1")
+      NULL
     })
+    tier1_valid <- shiny::reactive(is.null(tier1_block()))
 
-    # Enable / disable run buttons based on Tier 1
-    shiny::observe({
-      ok <- tier1_valid()
-      shinyjs::toggleState("btn_run_univariable", condition = ok)
-      shinyjs::toggleState("btn_run_sl",          condition = ok)
-    })
+    # Both run buttons share the one precondition, so they share its reason.
+    tier1_reason <- shiny::reactive(edark_lock_reason(tier1_block()))
+    edark_run_gate(output, "btn_run_univariable", tier1_valid, tier1_reason)
+    edark_run_gate(output, "btn_run_sl",          tier1_valid, tier1_reason)
 
     # ── Collinearity: auto-compute on pill entry ──────────────────────────────
     collin_computed <- shiny::reactiveVal(NULL)

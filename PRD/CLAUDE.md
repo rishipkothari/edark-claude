@@ -118,7 +118,12 @@ What each file does is in the root `CLAUDE.md`. This is the § lookup.
 - **Analyze:** Phases 0–7 and 6b complete — Setup (incl. model purpose + train/test split), Table 1, Variable Investigation, Covariate Confirmation, Model Creation, Diagnostics, Performance, Results.
 - **Built 2026-09-19:** Phase 7b performance validation — Step 1 validation method (bootstrap / cross-validation / held-out test set, mutually exclusive), settings and Cancel-able runs in Model › Performance (§A1.4a, §A5.3).
 - **Stubs and deferrals:** Export (`module_analysis_export.R`, `service_analysis_export.R`) is a placeholder; Phase 8 fills it with export materials, items disabled until created (§A10, §A5.3). Phase 5b's R code generator (`service_analysis_codegen.R`) is deferred — the R Code Preview is a placeholder; it should consume `prepare_snapshot` + the spec (incl. `purpose_specification`).
-- **Not started:** Phase S session save / load / autosave (§M8); UI consistency Stages 1–6 ([BUILD_UI-redesign.md](BUILD_UI-redesign.md); Stage 0 quick fixes done 2026-09-22).
+- **Built 2026-09-23:** UI consistency Stage 1 - honest locking. `R/ui_helpers.R`
+  (`EDARK_LOCK_REASON`, `edark_run_button()`, `edark_run_gate()`) and
+  `inst/www/edark.css` now exist; every gated Analyze nav item explains itself in a
+  popover and every Run button is disabled with its reason visible
+  ([BUILD_UI-redesign.md](BUILD_UI-redesign.md) Stage 1).
+- **Not started:** Phase S session save / load / autosave (§M8); UI consistency Stages 2–6 ([BUILD_UI-redesign.md](BUILD_UI-redesign.md)).
 
 ---
 

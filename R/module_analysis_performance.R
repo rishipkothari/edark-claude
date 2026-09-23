@@ -64,9 +64,7 @@ analysis_performance_ui <- function(id) {
       .hdr("Validation"),
       shiny::uiOutput(ns("validation_ui")),
       shiny::tags$hr(class = "my-2"),
-      shiny::actionButton(ns("btn_run"),
-                          label = shiny::tagList(shiny::icon("play"), " Run Performance"),
-                          class = "btn-primary w-100"),
+      edark_run_button(ns, "btn_run", "Run Performance"),
       shiny::tags$p(class = "small text-muted mt-2 mb-0",
                     "Performance is advisory - it never blocks the next steps.")
     ),
@@ -120,7 +118,9 @@ analysis_performance_server <- function(id, shared_state) {
 
     output$checks_ui <- shiny::renderUI({
       o <- analysis_performance_options(model_type())
-      if (is.null(o)) return(shiny::tags$p(class = "small text-muted", "Fit a model in the Create tab first."))
+      if (is.null(o)) {
+        return(shiny::tags$p(class = "small text-muted", edark_lock_reason("fit_model")))
+      }
       shiny::checkboxGroupInput(
         ns("checks"), label = NULL, width = "100%",
         choiceNames = lapply(seq_len(nrow(o)), function(i) {
@@ -220,7 +220,15 @@ analysis_performance_server <- function(id, shared_state) {
       }
     }, ignoreInit = TRUE)
 
-    shiny::observe(shinyjs::toggleState("btn_run", condition = !is.null(model_type())))
+    # A fitted model, and at least one measure ticked.
+    perf_block <- shiny::reactive({
+      if (is.null(model_type())) return("fit_model")
+      if (length(input$checks) == 0L) return("pick_measure")
+      NULL
+    })
+    edark_run_gate(output, "btn_run",
+                   enabled = shiny::reactive(is.null(perf_block())),
+                   reason  = shiny::reactive(edark_lock_reason(perf_block())))
 
     # ── Run ──────────────────────────────────────────────────────────────────
     # The job runs in ticks; `runner` holds it between ticks (not reactive).
@@ -256,12 +264,8 @@ analysis_performance_server <- function(id, shared_state) {
     }
 
     shiny::observeEvent(input$btn_run, {
-      if (is.null(shiny::isolate(shared_state$analysis_result)$fitted_models$primary_model)) return()
+      if (!is.null(shiny::isolate(perf_block()))) return()   # the button is disabled
       checks <- input$checks
-      if (length(checks) == 0L) {
-        shiny::showNotification("Tick at least one measure.", type = "warning", duration = 4)
-        return()
-      }
       vl <- .current_validation()
       n_fits <- switch(vl$method, cv = vl$cv_folds * vl$cv_repeats, bootstrap = vl$bootstrap_reps, 0L)
       if (is_mixed() && n_fits > .PERF_MIXED_FIT_WARN) {
@@ -361,7 +365,7 @@ analysis_performance_server <- function(id, shared_state) {
     # ── Main: header ─────────────────────────────────────────────────────────
     output$header_ui <- shiny::renderUI({
       mt  <- model_type()
-      if (is.null(mt)) return(.ms_placeholder("Fit a model in the Create tab to evaluate its performance."))
+      if (is.null(mt)) return(.ms_placeholder(edark_lock_reason("fit_model")))
       purpose <- shared_state$analysis_spec$purpose_specification$model_purpose %||% "association"
       pf <- perf()
       bslib::card(

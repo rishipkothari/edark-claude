@@ -61,9 +61,7 @@ analysis_diagnostics_ui <- function(id) {
       .links("assump_all", "assump_none"),
       shiny::uiOutput(ns("assump_ui")),
       shiny::tags$hr(class = "my-2"),
-      shiny::actionButton(ns("btn_run"),
-                          label = shiny::tagList(shiny::icon("play"), " Run Diagnostics"),
-                          class = "btn-primary w-100"),
+      edark_run_button(ns, "btn_run", "Run Diagnostics"),
       shiny::tags$p(class = "small text-muted mt-2 mb-0",
                     "Sample accounting and fitting warnings are always included.",
                     "Diagnostics are advisory - they never block the next steps.")
@@ -105,7 +103,9 @@ analysis_diagnostics_server <- function(id, shared_state) {
 
     output$assump_ui <- shiny::renderUI({
       o <- options_tbl()
-      if (is.null(o)) return(shiny::tags$p(class = "small text-muted", "Fit a model in the Create tab first."))
+      if (is.null(o)) {
+        return(shiny::tags$p(class = "small text-muted", edark_lock_reason("fit_model")))
+      }
       ch <- .choices(o)
       shiny::checkboxGroupInput(ns("assump"), label = NULL, choiceNames = ch$names,
                                 choiceValues = ch$values, selected = o$id, width = "100%")
@@ -123,9 +123,9 @@ analysis_diagnostics_server <- function(id, shared_state) {
     shiny::observeEvent(input$assump_all,  .set_all(TRUE))
     shiny::observeEvent(input$assump_none, .set_all(FALSE))
 
-    shiny::observe({
-      shinyjs::toggleState("btn_run", condition = !is.null(model_type()))
-    })
+    edark_run_gate(output, "btn_run",
+                   enabled = shiny::reactive(!is.null(model_type())),
+                   reason  = edark_lock_reason("fit_model"))
 
     # ── Run ──────────────────────────────────────────────────────────────────
     shiny::observeEvent(input$btn_run, {
@@ -176,7 +176,7 @@ analysis_diagnostics_server <- function(id, shared_state) {
     output$header_ui <- shiny::renderUI({
       res <- shared_state$analysis_result
       mt  <- model_type()
-      if (is.null(mt)) return(.ms_placeholder("Fit a model in the Create tab to run diagnostics."))
+      if (is.null(mt)) return(.ms_placeholder(edark_lock_reason("fit_model")))
       rs  <- res$run_status
       dg  <- diag()
       bslib::card(
