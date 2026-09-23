@@ -1,0 +1,28 @@
+/* ==========================================================================
+   EDARK v0.2 - the application stylesheet
+
+   The one CSS file: no SCSS, no build step (PRD/BUILD_UI-redesign.md D5).
+   Loaded by edark() through addResourcePath("edark", system.file("www", ...)).
+   Prefer a Bootstrap utility class or a bslib argument over a rule here; add a
+   rule only when neither can do the job.
+
+   Stage 1 (below) - locked navigation.
+   Stage 3 will add: custom properties on :root and [data-bs-theme="dark"],
+   navbar, pills, stepper states, typography, focus and scroll containment.
+   ========================================================================== */
+
+
+/* --- Locked navigation (Stage 1) ------------------------------------------
+   A locked step is muted and refuses the cursor, but still receives the
+   click. Bootstrap's own .nav-link.disabled sets pointer-events: none, which
+   swallows the click and makes a locked step do literally nothing; with
+   pointer-events restored the click reaches the popover that says why the
+   step is locked, while Bootstrap's tab handler still ignores it (it checks
+   for .disabled before switching tabs), so nothing navigates.
+   The lock glyph itself comes from R, with the reason, in .apply_gate(). */
+.nav-link.disabled,
+.nav-item.disabled > .nav-link {
+  pointer-events: auto;
+  cursor: not-allowed;
+  opacity: 0.65;
+}

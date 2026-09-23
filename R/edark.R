@@ -26,6 +26,11 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
   # ── Validate ───────────────────────────────────────────────────────────────
   validate_input(dataset, max_factor_levels)
 
+  # ── Static assets ──────────────────────────────────────────────────────────
+  # Serve inst/www at /edark so the stylesheet can be linked in the UI header
+  # below. One CSS file, no build step (PRD/BUILD_UI-redesign.md D5).
+  shiny::addResourcePath("edark", system.file("www", package = "edark"))
+
   # ── Pre-process (runs once, before the reactive graph starts) ──────────────
   dataset_cast  <- cast_column_types(dataset, max_factor_levels)
   column_types  <- detect_column_types(dataset_cast)
@@ -45,6 +50,11 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
     header = shiny::tagList(
       # Required for shinyjs::disabled() / toggleState() to take effect
       shinyjs::useShinyjs(),
+      # The one stylesheet (inst/www/edark.css, served at /edark)
+      shiny::tags$head(
+        shiny::tags$link(rel = "stylesheet", type = "text/css",
+                         href = "edark/edark.css")
+      ),
       shiny::tags$head(shiny::tags$style(shiny::HTML("
       /* ── EDARK custom properties ── change values here, nowhere else ────── */
 
