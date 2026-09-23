@@ -28,8 +28,14 @@ prepare_confirm_ui <- function(id) {
   # moved to the messages slot. That is also what stops a long warning list
   # pushing Apply below the fold (§BUILD_UI-redesign 2.6) - without moving
   # Apply anywhere.
+  # Apply starts disabled and is enabled only while something is staged, so
+  # the button answers "is there anything to apply?" before it is clicked
+  # rather than after (Stage 1's disabled-with-a-reason rule). The reason sits
+  # in the info pane, which already says "Pending: no changes".
   shiny::tagList(
-    edark_button(ns, "apply_btn", "Apply Changes", icon = "circle-check"),
+    shinyjs::disabled(
+      edark_button(ns, "apply_btn", "Apply Changes", icon = "circle-check")
+    ),
     edark_button(ns, "reset_btn", "Reset to Original", icon = "rotate-left",
                  variant = "secondary", outline = TRUE, class = "mt-2")
   )
@@ -56,6 +62,16 @@ prepare_confirm_messages_ui <- function(id) {
 prepare_confirm_server <- function(id, shared_state) {
   shiny::moduleServer(id, function(input, output, session) {
     ns <- session$ns
+
+    # ── Apply is live only while something is staged ───────────────────
+    # Every stage of Prepare sets has_pending_changes; Apply, Reset and the
+    # tab-switch auto-apply clear it. Gating the button on that one field is
+    # what greys it out again after an Apply and brings it back on the next
+    # change.
+    shiny::observe({
+      shinyjs::toggleState("apply_btn",
+                           condition = isTRUE(shared_state$has_pending_changes))
+    })
 
     # ── Pending dataset preview ───────────────────────────────────────────────
     # apply_prepare_pipeline() isolates all reads, so we touch the relevant
@@ -92,6 +108,20 @@ prepare_confirm_server <- function(id, shared_state) {
         edark_info_row(
           if (is_pending) "After apply" else "Pending",
           if (is_pending) shiny::tags$span(class = "text-primary", dims(pending))
+          else shiny::tags$em(class = "text-muted", "no changes")
+        ),
+
+        # How many rows survive listwise deletion - the number that decides
+        # how much of the dataset a model actually sees. It moves with column
+        # exclusion and row filters, so it belongs beside the dimensions
+        # rather than only in Analyze.
+        edark_section_label("Complete cases"),
+        edark_info_row("Original", .complete_case_label(orig)),
+        edark_info_row("Current",  .complete_case_label(curr)),
+        edark_info_row(
+          if (is_pending) "After apply" else "Pending",
+          if (is_pending)
+            shiny::tags$span(class = "text-primary", .complete_case_label(pending))
           else shiny::tags$em(class = "text-muted", "no changes")
         ),
 
@@ -523,6 +553,21 @@ apply_prepare_pipeline <- function(shared_state) {
     ),
     easyClose = FALSE
   ))
+}
+
+
+# Rows with no NA in any column, as "n (pct%)".
+#
+# A muted dash for a missing or column-less dataset; a bare count when every
+# row has been filtered out, where a percentage would be 0/0.
+.complete_case_label <- function(d) {
+  if (is.null(d) || ncol(d) == 0) {
+    return(shiny::tags$em(class = "text-muted", "-"))
+  }
+  n <- tryCatch(sum(stats::complete.cases(d)), error = function(e) NA_integer_)
+  if (is.na(n)) return(shiny::tags$em(class = "text-muted", "-"))
+  if (nrow(d) == 0) return(format(n, big.mark = ","))
+  sprintf("%s (%.1f%%)", format(n, big.mark = ","), 100 * n / nrow(d))
 }
 
 

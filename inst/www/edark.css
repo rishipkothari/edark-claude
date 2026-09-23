@@ -439,6 +439,15 @@
   background-color: var(--bs-body-bg);
 }
 
+/* A settings page has no config pane - the controls are the content - so it
+   caps its own measure instead of letting single-value pickers stretch the
+   full window width. */
+.edark-settings-page {
+  max-width: 960px;
+  width: 100%;
+  padding-top: 0.5rem;
+}
+
 /* The messages slot takes no space at all when the page has nothing to say -
    an empty uiOutput still emits a div, which would otherwise leave a gap
    above every result. */

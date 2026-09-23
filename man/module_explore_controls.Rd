@@ -10,16 +10,20 @@
 \usage{
 describe_controls_ui(id)
 
-describe_controls_server(id, shared_state)
+describe_controls_server(id, shared_state, active_mode = NULL)
 
 relationship_controls_ui(id)
 
-relationship_controls_server(id, shared_state)
+relationship_controls_server(id, shared_state, active_mode = NULL)
 }
 \arguments{
 \item{id}{Character. The module namespace ID.}
 
 \item{shared_state}{A Shiny \code{reactiveValues} object.}
+
+\item{active_mode}{A reactive returning the id of the Explore config-pane
+panel currently on screen (\code{"describe"}, \code{"correlate"}, \code{"trend"}), or
+\code{NULL} when the caller does not track it.}
 }
 \description{
 Sidebar panels for the Explore stage.
@@ -27,4 +31,14 @@ Sidebar panels for the Explore stage.
 \details{
 \code{describe_controls_ui/server}: Univariate variable description.
 \code{relationship_controls_ui/server}: Bivariate relationship / correlation.
+
+Both modes write the same \code{shared_state} fields - \code{primary_variable},
+\code{stratify_variable}, \code{bar_display} - so whichever one wrote last used to
+win. Switching from Describe to Correlate and clicking Plot Relationship
+drew Correlate's secondary variable against Describe's leftover primary and
+stratify, and switching back did the mirror image. Each mode now publishes
+\emph{all} the fields it owns from its own inputs, and clears the ones it does
+not own, both when its panel becomes active and again on its button click -
+so the spec is built from what is on screen, never from what the other
+panel left behind.
 }

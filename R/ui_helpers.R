@@ -429,22 +429,26 @@ edark_model_header <- function(title, fields = list(), notes = NULL) {
 #' used `custom_*` ids applied at generation time, so an exported report did
 #' not match the plot the user had been looking at (D7).
 #'
-#' The controls apply live. They are rendered in the Explore config pane's
-#' own Appearance panel rather than stacked under a mode's staged pickers, so
-#' that everything in a mode panel is staged until that mode's button is
-#' clicked and everything live sits in one place (§BUILD_UI-redesign 2.6).
+#' The controls apply live, so they are kept away from the staged mode panels
+#' (§BUILD_UI-redesign 2.6). They now live on their own Appearance page, a
+#' sibling pill of Explore Data and Report.
 #'
 #' Ids are bare; the owning module writes them into `shared_state`.
 #'
+#' Returned as named groups so one definition of the inputs serves both
+#' layouts: stacked under section labels for a 340 px pane
+#' ([edark_aesthetics_controls()]), or a card each on the full-width
+#' Appearance page. The ids must not be written twice - two copies of
+#' `ns("ggplot_theme")` in one document is a duplicate input.
+#'
 #' @param ns The owning module's namespace function.
 #'
-#' @return A `shiny::tagList`.
+#' @return A named list of tag lists. Names are the group headings.
 #' @keywords internal
 #' @noRd
-edark_aesthetics_controls <- function(ns) {
-  shiny::tagList(
-    edark_section_label("Theme", first = TRUE),
-    shinyWidgets::pickerInput(
+edark_aesthetics_groups <- function(ns) {
+  list(
+    "Theme" = shinyWidgets::pickerInput(
       ns("ggplot_theme"),
       label    = NULL,
       choices  = c(
@@ -459,8 +463,7 @@ edark_aesthetics_controls <- function(ns) {
       selected = "minimal"
     ),
 
-    edark_section_label("Colour palette"),
-    shinyWidgets::pickerInput(
+    "Colour palette" = shinyWidgets::pickerInput(
       ns("color_palette"),
       label    = NULL,
       choices  = c("Set2", "Set1", "Dark2", "Paired", "Accent",
@@ -468,19 +471,40 @@ edark_aesthetics_controls <- function(ns) {
       selected = "Set2"
     ),
 
-    edark_section_label("Legend"),
-    shiny::checkboxInput(ns("show_legend"), "Show legend", value = TRUE),
-    shinyWidgets::radioGroupButtons(
-      ns("legend_position"),
-      label    = NULL,
-      choices  = c("right", "left", "top", "bottom"),
-      selected = "top",
-      size     = "sm",
-      width    = "100%"
+    "Legend" = shiny::tagList(
+      shiny::checkboxInput(ns("show_legend"), "Show legend", value = TRUE),
+      shinyWidgets::radioGroupButtons(
+        ns("legend_position"),
+        label    = NULL,
+        choices  = c("right", "left", "top", "bottom"),
+        selected = "top",
+        size     = "sm",
+        width    = "100%"
+      )
     ),
 
-    edark_section_label("Labels"),
-    shiny::checkboxInput(ns("show_data_labels"), "Show data labels", value = FALSE)
+    "Labels" = shiny::checkboxInput(ns("show_data_labels"),
+                                    "Show data labels", value = FALSE)
+  )
+}
+
+
+#' The aesthetics controls stacked for a narrow pane
+#'
+#' @inheritParams edark_aesthetics_groups
+#'
+#' @return A `shiny::tagList`.
+#' @keywords internal
+#' @noRd
+edark_aesthetics_controls <- function(ns) {
+  groups <- edark_aesthetics_groups(ns)
+  shiny::tagList(
+    lapply(seq_along(groups), function(i) {
+      shiny::tagList(
+        edark_section_label(names(groups)[i], first = i == 1L),
+        groups[[i]]
+      )
+    })
   )
 }
 

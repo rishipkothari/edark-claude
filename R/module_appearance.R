@@ -9,12 +9,21 @@
 #' report did not match the plot on screen (D7, D9, F4 in
 #' `PRD/BUILD_UI-redesign.md`).
 #'
-#' It sits as a panel of the Explore config pane alongside the mode panels
-#' (Describe / Correlate / Trend) rather than stacked underneath one of them.
-#' The mode panels are staged - nothing happens until that mode's button is
-#' clicked - while everything here applies live, so keeping the two apart is
-#' what removes the staged-vs-live collision described in
-#' §BUILD_UI-redesign 2.6.
+#' Appearance is not a mode of the Explore plot, it is one app-level setting
+#' that every plot and every report reads, so it is a page of its own - a pill
+#' beside Explore Data and Report - rather than a fourth panel in the Explore
+#' config pane. Sharing that pane with Describe / Correlate / Trend put a live
+#' control row next to three staged ones and spent 340 px on settings that are
+#' changed rarely and then left alone.
+#'
+#' The page has no config pane: its whole content *is* configuration, so the
+#' controls sit in the main area, grouped one card per heading
+#' ([edark_aesthetics_groups()]). It is the D6 exception the page contract
+#' allows for a page that produces nothing.
+#'
+#' `appearance_controls_ui()` is the narrow stacked form, kept for any pane
+#' that needs it. Only one of the two may be in the document at a time - both
+#' emit the same input ids.
 #'
 #' @param id Character. The module namespace ID.
 #' @param shared_state A Shiny `reactiveValues` object.
@@ -34,6 +43,42 @@ appearance_controls_ui <- function(id) {
       "Applies to the plot on screen and to every report generated from it."
     ),
     edark_aesthetics_controls(ns)
+  )
+}
+
+
+#' @rdname module_appearance
+#' @export
+appearance_page_ui <- function(id) {
+  ns     <- shiny::NS(id)
+  groups <- edark_aesthetics_groups(ns)
+
+  # One card per group, two across on a wide window and stacked below 992 px.
+  # Capped at 960 px and centred: a picker stretched to 1900 px is harder to
+  # read than one at a comfortable measure, and these are single-value
+  # settings, not a table.
+  card <- function(heading) {
+    bslib::card(
+      bslib::card_header(heading),
+      bslib::card_body(groups[[heading]])
+    )
+  }
+
+  shiny::div(
+    class = "edark-settings-page mx-auto",
+    shiny::tags$p(
+      class = "text-muted mb-4",
+      "These settings apply live to the plot in Explore Data and to every ",
+      "report generated from it. They are the app's only plot-appearance ",
+      "controls."
+    ),
+    bslib::layout_columns(
+      col_widths = c(6, 6),
+      card("Theme"),
+      card("Colour palette"),
+      card("Legend"),
+      card("Labels")
+    )
   )
 }
 

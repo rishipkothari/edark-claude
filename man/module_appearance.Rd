@@ -3,10 +3,13 @@
 \name{module_appearance}
 \alias{module_appearance}
 \alias{appearance_controls_ui}
+\alias{appearance_page_ui}
 \alias{appearance_controls_server}
 \title{Appearance Module}
 \usage{
 appearance_controls_ui(id)
+
+appearance_page_ui(id)
 
 appearance_controls_server(id, shared_state)
 }
@@ -26,10 +29,19 @@ Report and Custom Report - and the two Report copies used separate
 report did not match the plot on screen (D7, D9, F4 in
 \code{PRD/BUILD_UI-redesign.md}).
 
-It sits as a panel of the Explore config pane alongside the mode panels
-(Describe / Correlate / Trend) rather than stacked underneath one of them.
-The mode panels are staged - nothing happens until that mode's button is
-clicked - while everything here applies live, so keeping the two apart is
-what removes the staged-vs-live collision described in
-§BUILD_UI-redesign 2.6.
+Appearance is not a mode of the Explore plot, it is one app-level setting
+that every plot and every report reads, so it is a page of its own - a pill
+beside Explore Data and Report - rather than a fourth panel in the Explore
+config pane. Sharing that pane with Describe / Correlate / Trend put a live
+control row next to three staged ones and spent 340 px on settings that are
+changed rarely and then left alone.
+
+The page has no config pane: its whole content \emph{is} configuration, so the
+controls sit in the main area, grouped one card per heading
+(\code{\link[=edark_aesthetics_groups]{edark_aesthetics_groups()}}). It is the D6 exception the page contract
+allows for a page that produces nothing.
+
+\code{appearance_controls_ui()} is the narrow stacked form, kept for any pane
+that needs it. Only one of the two may be in the document at a time - both
+emit the same input ids.
 }

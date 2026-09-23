@@ -110,18 +110,22 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
             config = shiny::tagList(
               # Describe / Correlate / Trend are modes: each stages its own
               # pickers and they all feed the one plot panel (level 3a, D8).
-              # Appearance is not a mode - it is the app's single set of live
-              # aesthetics (D9) - but it sits in the same row rather than
-              # under a tab level of its own, which would nest pills inside
-              # pills (§BUILD_UI-redesign 2.3).
+              # Appearance used to sit in this row; it is not a mode but one
+              # app-level live setting, so it is now its own pill beside
+              # Explore Data and Report.
+              #
+              # The panel is identified so each mode server can reclaim the
+              # shared_state fields it owns the moment its panel is shown -
+              # without that, the three panels overwrite each other's
+              # primary / secondary / stratify picks.
               bslib::navset_pill(
-                bslib::nav_panel("Describe",  describe_controls_ui("describe_controls")),
-                bslib::nav_panel("Correlate", relationship_controls_ui("relationship_controls")),
-                bslib::nav_panel("Trend",     trend_controls_ui("trend_controls")),
-                bslib::nav_panel(
-                  title = shiny::tagList(shiny::icon("palette"), " Appearance"),
-                  appearance_controls_ui("appearance_controls")
-                )
+                id = "explore_mode",
+                bslib::nav_panel("Describe",  value = "describe",
+                                 describe_controls_ui("describe_controls")),
+                bslib::nav_panel("Correlate", value = "correlate",
+                                 relationship_controls_ui("relationship_controls")),
+                bslib::nav_panel("Trend",     value = "trend",
+                                 trend_controls_ui("trend_controls"))
               )
             ),
             result   = explore_output_ui("explore_output"),
@@ -133,6 +137,14 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
           value = "report",
           title = shiny::tagList(shiny::icon("file-export"), " Report"),
           report_ui("report")
+        ),
+        # A settings page, not a mode of the plot: no config pane, no result,
+        # the controls themselves fill the main area. Likely to broaden into
+        # "Settings" later, which is why it is a page rather than a panel.
+        bslib::nav_panel(
+          value = "appearance",
+          title = shiny::tagList(shiny::icon("palette"), " Appearance"),
+          appearance_page_ui("appearance_controls")
         )
       )
     ),
@@ -403,8 +415,9 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
     row_filter_server("row_filter",                 shared_state)
     data_preview_server("data_preview",             shared_state)
     prepare_confirm_server("prepare_confirm",       shared_state)
-    describe_controls_server("describe_controls",         shared_state)
-    relationship_controls_server("relationship_controls", shared_state)
+    explore_mode <- shiny::reactive(input$explore_mode)
+    describe_controls_server("describe_controls",         shared_state, explore_mode)
+    relationship_controls_server("relationship_controls", shared_state, explore_mode)
     trend_controls_server("trend_controls",               shared_state)
     appearance_controls_server("appearance_controls",     shared_state)
     explore_output_server("explore_output",   shared_state)

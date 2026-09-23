@@ -5,11 +5,28 @@
 #' `describe_controls_ui/server`: Univariate variable description.
 #' `relationship_controls_ui/server`: Bivariate relationship / correlation.
 #'
+#' Both modes write the same `shared_state` fields - `primary_variable`,
+#' `stratify_variable`, `bar_display` - so whichever one wrote last used to
+#' win. Switching from Describe to Correlate and clicking Plot Relationship
+#' drew Correlate's secondary variable against Describe's leftover primary and
+#' stratify, and switching back did the mirror image. Each mode now publishes
+#' *all* the fields it owns from its own inputs, and clears the ones it does
+#' not own, both when its panel becomes active and again on its button click -
+#' so the spec is built from what is on screen, never from what the other
+#' panel left behind.
+#'
 #' @param id Character. The module namespace ID.
 #' @param shared_state A Shiny `reactiveValues` object.
+#' @param active_mode A reactive returning the id of the Explore config-pane
+#'   panel currently on screen (`"describe"`, `"correlate"`, `"trend"`), or
+#'   `NULL` when the caller does not track it.
 #'
 #' @name module_explore_controls
 NULL
+
+
+# Read a "None"-able picker: "" and NULL both mean no selection.
+.explore_opt <- function(x) if (is.null(x) || !nzchar(x)) NULL else x
 
 
 # ==============================================================================
@@ -39,9 +56,19 @@ describe_controls_ui <- function(id) {
 
 #' @rdname module_explore_controls
 #' @export
-describe_controls_server <- function(id, shared_state) {
+describe_controls_server <- function(id, shared_state, active_mode = NULL) {
   shiny::moduleServer(id, function(input, output, session) {
     ns <- session$ns
+
+    # Everything this mode owns, taken from this mode's own inputs. Describe is
+    # univariate, so it also clears secondary_variable rather than leaving
+    # Correlate's behind.
+    publish_state <- function() {
+      shared_state$primary_variable   <- input$primary_variable
+      shared_state$stratify_variable  <- .explore_opt(input$stratify_variable)
+      shared_state$secondary_variable <- NULL
+      shared_state$bar_display        <- input$bar_display %||% "count"
+    }
 
     eligible_cols <- shiny::reactive({
       types <- shared_state$column_types
@@ -89,13 +116,24 @@ describe_controls_server <- function(id, shared_state) {
     }, ignoreNULL = TRUE)
 
     shiny::observeEvent(input$stratify_variable, {
-      val <- input$stratify_variable
-      shared_state$stratify_variable <- if (is.null(val) || val == "") NULL else val
+      shared_state$stratify_variable <- .explore_opt(input$stratify_variable)
     })
+
+    # Reclaim the shared fields the moment this panel is shown, so the info
+    # pane and any later read reflect Describe rather than the mode the user
+    # just left. Skipped until the pickers exist: a panel that has never been
+    # opened has suspended outputs and therefore no inputs to publish.
+    if (!is.null(active_mode)) {
+      shiny::observeEvent(active_mode(), {
+        if (!identical(active_mode(), "describe")) return()
+        if (is.null(input$primary_variable)) return()
+        publish_state()
+      }, ignoreInit = TRUE)
+    }
 
     shiny::observeEvent(input$describe_btn, {
       shiny::req(input$primary_variable)
-      shared_state$bar_display        <- input$bar_display
+      publish_state()
       shared_state$plot_specification <- build_univariate_plot_spec(shared_state)
     })
 
@@ -142,9 +180,18 @@ relationship_controls_ui <- function(id) {
 
 #' @rdname module_explore_controls
 #' @export
-relationship_controls_server <- function(id, shared_state) {
+relationship_controls_server <- function(id, shared_state, active_mode = NULL) {
   shiny::moduleServer(id, function(input, output, session) {
     ns <- session$ns
+
+    # Everything this mode owns, taken from this mode's own inputs.
+    publish_state <- function() {
+      shared_state$primary_variable      <- input$primary_variable
+      shared_state$secondary_variable    <- input$secondary_variable
+      shared_state$primary_variable_role <- input$primary_role %||% "exposure"
+      shared_state$stratify_variable     <- .explore_opt(input$stratify_variable)
+      shared_state$bar_display           <- input$bar_display %||% "count"
+    }
 
     eligible_cols <- shiny::reactive({
       types <- shared_state$column_types
@@ -204,17 +251,25 @@ relationship_controls_server <- function(id, shared_state) {
     })
 
     shiny::observeEvent(input$stratify_variable, {
-      val <- input$stratify_variable
-      shared_state$stratify_variable <- if (is.null(val) || val == "") NULL else val
+      shared_state$stratify_variable <- .explore_opt(input$stratify_variable)
     })
 
     shiny::observeEvent(input$secondary_variable, {
       shared_state$secondary_variable <- input$secondary_variable
     }, ignoreNULL = TRUE)
 
+    # See the matching block in describe_controls_server().
+    if (!is.null(active_mode)) {
+      shiny::observeEvent(active_mode(), {
+        if (!identical(active_mode(), "correlate")) return()
+        if (is.null(input$primary_variable) || is.null(input$secondary_variable)) return()
+        publish_state()
+      }, ignoreInit = TRUE)
+    }
+
     shiny::observeEvent(input$plot_btn, {
       shiny::req(input$primary_variable, input$secondary_variable)
-      shared_state$bar_display        <- input$bar_display
+      publish_state()
       shared_state$plot_specification <- build_bivariate_plot_spec(shared_state)
     })
 
