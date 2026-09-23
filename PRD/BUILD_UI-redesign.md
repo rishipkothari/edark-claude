@@ -18,9 +18,9 @@
 | 0 | Quick fixes that do not wait for the redesign | S | done 2026-09-22 (2 of 3, see §4) |
 | 1 | Honest locking and one precondition affordance | S-M | not started |
 | 2 | Component library (`R/ui_helpers.R`) + Explore report aesthetics | M | not started |
-| 3 | Theme file + dark mode | S | not started |
+| 3 | Theme file, dark mode, nav polish (navbar, pills, stepper, font) | S-M | not started |
 | 4 | Page contract: config / result / info panes + messages area | M-L | not started |
-| 5 | Flatten navigation | M | not started |
+| 5 | Flatten navigation + one nav vocabulary (§1.2) | M | not started |
 | 6 | Small fixes: empty states, density, copy | S | not started |
 
 Order: 1 first (the highest-value fix, and the user's priority). 2 and 3 are independent of
@@ -44,7 +44,7 @@ Settled 2026-09-22. Do not reopen without the user.
 | D5 | **CSS only.** No SCSS. More CSS is acceptable if needed. |
 | D6 | **Sidebars on every page, same default width.** Including Model › Summary and Step 6 Export. Left config sidebar: 340 px. Right info pane: 300 px. Both are constants in `R/ui_helpers.R`. |
 | D7 | **Explore's report uses the aesthetics on screen.** Report must not have its own aesthetics controls. See Stage 2. |
-| D8 | *Open - needs the user.* Visual idiom for second-level sub-steps. See §1.2. |
+| D8 | **One navigation vocabulary for the whole app** (decided 2026-09-23): each nav level has one look everywhere - including Explore's Describe / Correlate / Trend, which stop being pills inside a sidebar and become sub-steps like Analyze Step 5's. *Still open:* which look sub-steps get (A: underline strip, or D: sidebar sections). See §1.2. |
 
 ### 1.1 Explore report vs Analyze export (D1)
 
@@ -58,33 +58,48 @@ Settled 2026-09-22. Do not reopen without the user.
 Both pages follow the same page contract (Stage 4). Sharing low-level writers (flextable
 styling, file assembly) below the UI layer is fine; sharing screens is not.
 
-### 1.2 Open: sub-step idiom (D8)
+### 1.2 Navigation vocabulary (D8)
 
-Today the Analyze tab has four levels of navigation, drawn three different ways:
+Today the app uses five nav looks, and the same level is drawn differently in each stage:
 
-```
-navbar          1 Prepare | 2 Explore | 3 Analyze
- step pills       1 Setup | 2 Table 1 | 3 Variable Investigation | 4 Covariates | 5 Model | 6 Export
-  sub-steps         Step 3: Univariable | Collinearity | Stepwise/LASSO   <- drawn as PILLS (pills inside pills)
-                    Step 5: Summary | Create | Diagnostics | ...           <- drawn as UNDERLINE tabs
-   result views       Diagnostics: Overview | Residuals | Influence ...    <- drawn as CARD tabs
-```
+| Level | Meaning | Prepare | Explore | Analyze |
+|---|---|---|---|---|
+| 1 | Stage | navbar | navbar | navbar |
+| 2 | Page within a stage | card tabs (Columns / Transforms / Filters / Preview) | plain tabs (Plot / Report) | pills (Steps 1-6) |
+| 3 | Sub-step / mode of a page | - | **pills inside the sidebar** (Describe / Correlate / Trend); pills in the main panel (Report: Full / Custom) | **pills inside pills** (Step 3); **underline tabs** (Step 5) |
+| 4 | Views of one result | tabs inside card tabs (Data Preview) | - | card tabs (Diagnostics, Performance, Results) |
 
-The problem: Step 3 and Step 5 have the same kind of thing (sub-steps within a step) but
-look different, and Step 3's pills-inside-pills make it hard to tell which row is the step.
-The question is only which look sub-steps get. Options:
+Explore's sidebar pills, Report's Full / Custom pills and Analyze Step 3 / Step 5 sub-steps are
+the same kind of thing - a mode of the page that changes both the settings and the output -
+and are drawn three ways.
 
-- **A. Underline tabs for all sub-steps (recommended).** Step 3's inner pills become
-  underline tabs, matching Step 5. Every level then has one look and one meaning: navbar =
-  stage, pills = step, underline = sub-step, card tabs = views of one result. Smallest
-  change (one `navset_pill` becomes `navset_underline`).
-- **B. No second-level tabs.** Step 3's three tools become a mode selector (radio buttons)
-  at the top of the left sidebar; Step 5 keeps its tabs. Fewer tab strips, but Step 3 and
-  Step 5 still differ, and the mode selector is less discoverable.
-- **C. Promote sub-steps to steps.** e.g. Step 5's Diagnostics / Performance / Results
-  become Steps 6-8. Flattest, but brings back the nine-pill row that wrapped at ~1500 px.
+**Decided: one look per level, everywhere.**
 
-Until the user picks, Stage 5 assumes A.
+| Level | One look | Notes |
+|---|---|---|
+| 1 Stage | navbar | Restyled in Stage 3 (light bar, active underline). |
+| 2 Page | **pills**, in all three stages | Analyze's pills also get stepper states (number, done, current, locked - Stage 1 sets the state, Stage 3 styles it). Prepare and Explore pills are unnumbered: their pages are not a gated sequence. |
+| 3 Sub-step | **the sub-step idiom (open: A or D below)** | Applies to Explore (Describe / Correlate / Trend), Explore › Report (Full / Custom), Analyze Step 3 (Univariable / Collinearity / Stepwise-LASSO) and Step 5 (Summary / Create / Diagnostics / Performance / Results). No pills at this level, and no nav inside a sidebar unless D is chosen. |
+| 4 Result view | card tabs, only here | Data Preview's inner tabs are removed (Stage 5). |
+
+**Still open - which look for level 3:**
+
+- **A. Underline strip across the top of the page.** Matches Step 5 today. For Explore, the
+  strip sits above the page layout; because Explore has one shared output panel, the strip
+  drives a `navset_hidden()` in the sidebar via `nav_select()` (pure R) rather than each
+  sub-step owning a whole page. Smallest change for Analyze.
+- **D. Sections in the left sidebar** (the user's idea, 2026-09-22, under consideration).
+  Each sub-step is a collapsible section (`bslib::accordion(multiple = FALSE)`) holding that
+  sub-step's settings and its own primary button; the open section decides what the centre
+  shows; the right info pane stays fixed for the whole page ("what this step hands on").
+  Fits Explore most naturally (it is nearly what Explore does today, minus the pills).
+  Costs: each Analyze sub-step module splits into a config part and a result part
+  (`module_analysis_modelspec.R` already is); sub-step locking moves into the section body;
+  the "one primary action" rule becomes one per open section; Model › Summary has almost no
+  settings; check long sections (Performance, LASSO) at 1280 x 800.
+
+(Earlier options B - a radio mode selector for Step 3 only - and C - promoting sub-steps to
+steps, bringing back nine pills - are dropped.) Until the user picks, Stage 5 assumes A.
 
 ---
 
@@ -116,9 +131,15 @@ for the quoted code if a line has moved.)*
 
 - **Data Preview is 3 tab levels deep** (navbar > `prepare_tabs` > `navset_card_tab` > `navset_tab`).
 - **Analyze › Model › Diagnostics is 9 containers deep.**
-- **Two idioms for one concept:** Step 3 sub-steps are pills inside pills
-  (`module_analysis_varinvestigation.R:116`); Step 5 sub-steps are underline tabs
-  (`module_analysis_main.R:64`). See D8.
+- **Three looks for one concept (sub-step / mode):** Explore's modes are pills inside the
+  sidebar (`edark.R:150`), Report's are pills in the main panel (`module_report.R:47`), Step 3's
+  are pills inside the step pills (`module_analysis_varinvestigation.R:116`), Step 5's are
+  underline tabs (`module_analysis_main.R:64`). See D8 / §1.2.
+- **Three looks for one level (page within a stage):** card tabs in Prepare (`edark.R:112`),
+  plain tabs in Explore (`edark.R:142`), pills in Analyze.
+- **Pill styling reaches one place only.** The only nav CSS (`edark.R:48-75`, from commit
+  `63ced12`) is scoped to `.sidebar .nav-pills`, so it styles Explore's sidebar pills and
+  nothing else; Analyze's step pills and the navbar are stock Flatly.
 - **Step pills wrap to two rows** at ~1500 px (long labels, e.g. "3 · Variable Investigation").
 
 (Report being a sub-tab of Explore was listed here as a problem in the first assessment. It
@@ -246,6 +267,9 @@ Pure R plus the first few lines of `inst/www/edark.css`.
   Performance and Results (currently enabled-then-toast) and to the already-disabled Step 3
   and Create buttons. Remove the validate-on-click toasts (`module_analysis_table1.R:233`,
   `module_analysis_modelspec.R:314`).
+- **Step states for the Analyze pills.** Alongside `disabled`, `.apply_gate()` (or a sibling)
+  adds `edark-step-done` to a step whose output exists and is current, from R. Stage 3 styles
+  the states; until then the class is harmless.
 - **Toasts only confirm.** `showNotification()` is kept for transient success ("Added to
   report", "Reset to original"). Any error or warning that toasts today moves to the
   messages area (Stage 4) - until then, to inline text beside the control.
@@ -293,7 +317,24 @@ Extend `inst/www/edark.css`:
 - CSS custom properties on `:root` and `[data-bs-theme="dark"]`: the status colours and four
   column-type colours (`--edark-type-{numeric,factor,datetime,character}`), resolving the
   "amber means three things" problem by naming.
-- Navbar control contrast; visible `:focus-visible` outline.
+- **Navbar:** a calm bar instead of Flatly's solid primary - body background, 1 px bottom
+  border, nav links in the secondary text colour, the active stage in primary with a 2 px
+  primary underline. This also fixes the theme / debug button contrast. (Bar colour may be
+  set with `page_navbar(navbar_options = ...)` instead of CSS.)
+- **Pills (level 2):** promote the existing rule at `edark.R:52-75` from `.sidebar .nav-pills`
+  to all level-2 pills - rounded, tertiary background with border when inactive, primary fill
+  when active.
+- **Analyze stepper states:** current = primary fill; done (`edark-step-done`) = light primary
+  tint with a check glyph; locked (`.disabled`) = muted, lock glyph, `cursor: not-allowed`.
+  Step numbers stay in the labels.
+- **Level 3 and 4 tabs:** one font weight (500) and one active colour (primary) for the
+  sub-step idiom and card tabs, so all nav reads as one family; slightly tighter nav padding.
+- **Typography:** `bs_theme(base_font = bslib::font_collection("system-ui", "-apple-system",
+  "Segoe UI", "Roboto", "sans-serif"))` - the native OS font, works offline. (Avoid
+  `font_google()`: it needs internet on first launch, a problem on locked-down hospital
+  machines.)
+- **Motion and focus:** `transition: background-color .15s, color .15s` on nav links;
+  visible `:focus-visible` outline on every interactive element.
 - Scroll containment for the column manager and transform table (`max-height`,
   `overflow: auto`, `position: sticky` header).
 - Pane styling for Stage 4 (info pane background, messages area spacing).
@@ -370,8 +411,12 @@ slot at the top of the centre column.
 
 ### Stage 5 - Flatten navigation
 
-- Sub-step idiom per D8 (assumed A: Step 3's `navset_pill` at
-  `module_analysis_varinvestigation.R:116` becomes `navset_underline`, matching Step 5).
+- **Apply the §1.2 vocabulary.** Level 2: Prepare's `navset_card_tab` (`edark.R:112`) and
+  Explore's `navset_tab` (`edark.R:142`) become pills. Level 3, per D8 (assumed A):
+  Step 3's `navset_pill` (`module_analysis_varinvestigation.R:116`), Report's Full / Custom
+  `navset_pill` (`module_report.R:47`) and Explore's sidebar `navset_pill` (`edark.R:150`)
+  become the sub-step idiom, matching Step 5. Keep the Explore -> Report hop and
+  `requested_report_subtab` working.
 - **Flatten Data Preview** from 3 tab levels to 1: Original/Working and Data/Summary become
   two `radioGroupButtons` in the left sidebar driving one output (`module_data_preview.R:19`).
 - Shorten Analyze step labels so the pills fit on one row at 1280 px: "1 · Setup",
@@ -379,8 +424,8 @@ slot at the top of the centre column.
 - Card tabs (`navset_card_tab`) are used only for views of one generated result
   (diagnostic checks, performance sets, result outputs).
 
-**Done when:** each nav component has one meaning (navbar = stage, pills = step,
-underline = sub-step, card tabs = result views); gating and the Explore -> Report hop
+**Done when:** each nav level has one look everywhere (§1.2 table) - no pills inside a
+sidebar or inside pills, and card tabs only for result views; gating and the Explore -> Report hop
 (`requested_tab`, `edark.R:432-442`) still work.
 
 ### Stage 6 - Small fixes
