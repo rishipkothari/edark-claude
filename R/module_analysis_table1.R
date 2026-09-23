@@ -18,22 +18,14 @@ NULL
 analysis_table1_ui <- function(id) {
   ns <- shiny::NS(id)
 
-  bslib::layout_sidebar(
-    sidebar = bslib::sidebar(
-      position = "left",
-      width    = 390,
-
+  edark_page(
+    config = shiny::tagList(
       shiny::uiOutput(ns("strat_ui")),
-
       shiny::tags$hr(class = "my-2"),
-      shiny::actionButton(
-        ns("btn_generate"),
-        label = shiny::tagList(shiny::icon("table"), " Generate Table 1"),
-        class = "btn-primary w-100"
-      )
+      edark_run_button(ns, "btn_generate", "Generate Table 1", icon = "table")
     ),
-
-    shiny::uiOutput(ns("table_area"))
+    result = shiny::uiOutput(ns("table_area")),
+    info   = shiny::uiOutput(ns("t1_info_ui"))
   )
 }
 
@@ -87,6 +79,38 @@ analysis_table1_ui <- function(id) {
 analysis_table1_server <- function(id, shared_state) {
   shiny::moduleServer(id, function(input, output, session) {
 
+
+    # -- Info pane: the sample the table will describe -------------------------
+    output$t1_info_ui <- shiny::renderUI({
+      spec  <- shared_state$analysis_spec
+      adata <- shared_state$analysis_data
+      if (is.null(spec) || is.null(adata)) {
+        return(shiny::tags$p(class = "small text-muted",
+                             edark_lock_reason("analysis_start")))
+      }
+
+      roles <- spec$variable_roles
+      strat <- if (isTRUE(input$strat_by_exposure)) roles$exposure_variable
+               else if (isTRUE(input$strat_by_outcome)) roles$outcome_variable
+               else NULL
+
+      counts <- if (!is.null(strat) && strat %in% names(adata)) {
+        tb <- table(adata[[strat]], useNA = "no")
+        lapply(names(tb), function(l) edark_info_row(l, as.integer(tb[[l]])))
+      }
+
+      shiny::tagList(
+        edark_section_label("Sample", first = TRUE),
+        edark_info_row("Rows",      format(nrow(adata), big.mark = ",")),
+        edark_info_row("Variables", ncol(adata)),
+
+        edark_section_label("Stratified by"),
+        edark_info_row("Column",
+                       if (is.null(strat)) shiny::tags$em(class = "text-muted", "none")
+                       else strat),
+        counts
+      )
+    })
     ns <- session$ns
 
     # ── Which roles are eligible to stratify on ──────────────────────────────
@@ -215,8 +239,7 @@ analysis_table1_server <- function(id, shared_state) {
       )
 
       shiny::tagList(
-        shiny::tags$p("Stratification",
-          class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+        edark_section_label("Stratification"),
         exp_block,
         out_block,
         shiny::tags$small(class = "text-muted",
@@ -224,21 +247,27 @@ analysis_table1_server <- function(id, shared_state) {
       )
     })
 
+    # ── Precondition ─────────────────────────────────────────
+    # Step 1 must have frozen a dataset and assigned at least one role. The
+    # button says so itself rather than answering a click with a toast.
+    t1_block <- shiny::reactive({
+      spec  <- shared_state$analysis_spec
+      adata <- shared_state$analysis_data
+      if (is.null(spec) || is.null(adata)) return("analysis_start")
+      vr <- spec$variable_roles
+      if (is.null(vr$outcome_variable) && is.null(vr$exposure_variable) &&
+          is.null(vr$candidate_covariates)) return("analysis_roles")
+      NULL
+    })
+    edark_run_gate(output, "btn_generate",
+                   enabled = shiny::reactive(is.null(t1_block())),
+                   reason  = shiny::reactive(edark_lock_reason(t1_block())))
+
     # ── Generate Table 1 ─────────────────────────────────────────────────────
     shiny::observeEvent(input$btn_generate, {
       spec  <- shiny::isolate(shared_state$analysis_spec)
       adata <- shiny::isolate(shared_state$analysis_data)
-
-      if (is.null(spec) || is.null(adata)) {
-        shiny::showNotification("Start analysis first (Step 1).", type = "warning")
-        return()
-      }
-      if (is.null(spec$variable_roles$outcome_variable) &&
-          is.null(spec$variable_roles$exposure_variable) &&
-          is.null(spec$variable_roles$candidate_covariates)) {
-        shiny::showNotification("Assign at least one variable role in Step 1.", type = "warning")
-        return()
-      }
+      if (!is.null(shiny::isolate(t1_block()))) return()   # the button is disabled
 
       # Gate every input read on current eligibility — an input left over from
       # a previous role assignment must not reach build_table1().

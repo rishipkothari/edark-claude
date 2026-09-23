@@ -41,7 +41,6 @@ NULL
 #' @export
 analysis_results_ui <- function(id) {
   ns <- shiny::NS(id)
-  .hdr <- function(x) shiny::tags$p(x, class = "text-muted small text-uppercase fw-semibold mt-2 mb-1")
   .choice <- function(o) {
     shiny::checkboxInput(
       ns(paste0("out_", o$id)), value = TRUE, width = "100%",
@@ -49,11 +48,9 @@ analysis_results_ui <- function(id) {
                           shiny::span(class = "small text-muted", o$description)))
   }
 
-  bslib::layout_sidebar(
-    sidebar = bslib::sidebar(
-      position = "left",
-      width    = 340,
-      .hdr("Outputs"),
+  edark_page(
+    config = shiny::tagList(
+      edark_section_label("Outputs", first = TRUE),
       .choice(.RESULTS_OUTPUTS[[1]]),
       shiny::conditionalPanel(
         condition = "input.out_results_table", ns = ns,
@@ -63,24 +60,24 @@ analysis_results_ui <- function(id) {
       ),
       lapply(.RESULTS_OUTPUTS[-1], .choice),
       shiny::tags$hr(class = "my-2"),
-      shiny::actionButton(ns("btn_generate"),
-                          label = shiny::tagList(shiny::icon("play"), " Generate Outputs"),
-                          class = "btn-primary w-100"),
+      edark_run_button(ns, "btn_generate", "Generate Outputs"),
       shiny::tags$p(class = "small text-muted mt-2 mb-0",
                     "Only the ticked outputs are created, and only created outputs can be",
                     "exported in Step 6. The Summary tab is always shown.")
     ),
-    shiny::tags$script(shiny::HTML("
-      function edarkCopyText(id, btn) {
-        var el = document.getElementById(id);
-        if (!el || !navigator.clipboard) return;
-        navigator.clipboard.writeText(el.innerText).then(function() {
-          var old = btn.innerHTML; btn.innerHTML = 'Copied';
-          setTimeout(function() { btn.innerHTML = old; }, 1500);
-        });
-      }")),
-    shiny::uiOutput(ns("header_ui")),
-    shiny::uiOutput(ns("tabs_ui"))
+    result = shiny::tagList(
+      shiny::tags$script(shiny::HTML("
+        function edarkCopyText(id, btn) {
+          var el = document.getElementById(id);
+          if (!el || !navigator.clipboard) return;
+          navigator.clipboard.writeText(el.innerText).then(function() {
+            var old = btn.innerHTML; btn.innerHTML = 'Copied';
+            setTimeout(function() { btn.innerHTML = old; }, 1500);
+          });
+        }")),
+      shiny::uiOutput(ns("tabs_ui"))
+    ),
+    info = shiny::uiOutput(ns("header_ui"))
   )
 }
 
@@ -95,19 +92,26 @@ analysis_results_server <- function(id, shared_state) {
     has_model <- shiny::reactive({
       !is.null(shared_state$analysis_result$fitted_models$primary_model)
     })
-    shiny::observe(shinyjs::toggleState("btn_generate", condition = has_model()))
+    .selected_outputs <- function() {
+      ids <- vapply(.RESULTS_OUTPUTS, `[[`, character(1), "id")
+      ids[vapply(ids, function(i) isTRUE(input[[paste0("out_", i)]]), logical(1))]
+    }
+
+    # A fitted model, and at least one output ticked.
+    res_block <- shiny::reactive({
+      if (!has_model()) return("fit_model")
+      if (length(.selected_outputs()) == 0L) return("pick_output")
+      NULL
+    })
+    edark_run_gate(output, "btn_generate",
+                   enabled = shiny::reactive(is.null(res_block())),
+                   reason  = shiny::reactive(edark_lock_reason(res_block())))
 
     # ── Generate ─────────────────────────────────────────────────────────────
     shiny::observeEvent(input$btn_generate, {
       res <- shiny::isolate(shared_state$analysis_result)
-      if (is.null(res$fitted_models$primary_model)) return()
-
-      ids <- vapply(.RESULTS_OUTPUTS, `[[`, character(1), "id")
-      selected <- ids[vapply(ids, function(i) isTRUE(input[[paste0("out_", i)]]), logical(1))]
-      if (length(selected) == 0L) {
-        shiny::showNotification("Tick at least one output to generate.", type = "warning", duration = 4)
-        return()
-      }
+      if (!is.null(shiny::isolate(res_block()))) return()   # the button is disabled
+      selected <- .selected_outputs()
       want_unadj <- "results_table" %in% selected && isTRUE(input$include_unadjusted)
 
       shiny::showModal(.analysis_progress_modal("Generating Outputs\u2026"))
@@ -160,21 +164,18 @@ analysis_results_server <- function(id, shared_state) {
     # ── Main: header ─────────────────────────────────────────────────────────
     output$header_ui <- shiny::renderUI({
       res <- shared_state$analysis_result
-      if (!has_model()) return(.ms_placeholder("Fit a model in the Create tab to see results."))
+      if (!has_model()) return(.ms_placeholder(edark_lock_reason("fit_model")))
       snap <- res$specification_snapshot
       mt   <- snap$model_design$model_type
       gen  <- res$results_generation
-      bslib::card(
-        bslib::card_body(
-          class = "py-2",
-          shiny::div(class = "fw-semibold", .ANALYSIS_MODEL_LABELS[[mt]]),
-          shiny::div(class = "small mt-1",
-                     shiny::span(class = "text-muted", "Formula: "),
-                     shiny::tags$code(paste(deparse(res$run_status$formula, width.cutoff = 500L), collapse = " "))),
-          shiny::div(class = "small text-muted mt-1",
-                     if (is.null(gen)) "Outputs not generated yet."
-                     else sprintf("Outputs generated %s", format(gen$generated_at, "%H:%M:%S")))
-        )
+      edark_model_header(
+        title  = .ANALYSIS_MODEL_LABELS[[mt]],
+        fields = list(
+          Formula = shiny::tags$code(
+            paste(deparse(res$run_status$formula, width.cutoff = 500L), collapse = " "))
+        ),
+        notes  = if (is.null(gen)) "Outputs not generated yet."
+                 else sprintf("Outputs generated %s", format(gen$generated_at, "%H:%M:%S"))
       )
     })
 

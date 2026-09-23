@@ -26,6 +26,11 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
   # ── Validate ───────────────────────────────────────────────────────────────
   validate_input(dataset, max_factor_levels)
 
+  # ── Static assets ──────────────────────────────────────────────────────────
+  # Serve inst/www at /edark so the stylesheet can be linked in the UI header
+  # below. One CSS file, no build step (PRD/BUILD_UI-redesign.md D5).
+  shiny::addResourcePath("edark", system.file("www", package = "edark"))
+
   # ── Pre-process (runs once, before the reactive graph starts) ──────────────
   dataset_cast  <- cast_column_types(dataset, max_factor_levels)
   column_types  <- detect_column_types(dataset_cast)
@@ -40,76 +45,33 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
     theme = bslib::bs_theme(
       version    = 5,
       bootswatch = "flatly",
-      primary    = "#2c7be5"
+      primary    = "#2c7be5",
+      # The native OS font stack, not font_google(): a Google font needs
+      # internet on first launch, which locked-down hospital machines do not
+      # have (§BUILD_UI-redesign Stage 3).
+      base_font  = bslib::font_collection(
+        "system-ui", "-apple-system", "Segoe UI", "Roboto", "sans-serif"
+      )
     ),
     header = shiny::tagList(
       # Required for shinyjs::disabled() / toggleState() to take effect
       shinyjs::useShinyjs(),
-      shiny::tags$head(shiny::tags$style(shiny::HTML("
-      /* ── EDARK custom properties ── change values here, nowhere else ────── */
-
-      /* sidebar nav-pill tabs */
-      .sidebar .nav-pills .nav-link {
-        padding-left: 0.6rem;
-        padding-right: 0.6rem;
-        border-radius: 20px;
-        font-size: 0.95rem;
-        font-weight: 500;
-      }
-      .sidebar .nav-pills .nav-link:not(.active) {
-        background-color: var(--bs-tertiary-bg);
-        color: var(--bs-secondary-color);
-        border: 1px solid var(--bs-border-color);
-      }
-      .sidebar .nav-pills .nav-link:not(.active):hover {
-        background-color: var(--bs-secondary-bg);
-        color: var(--bs-body-color);
-      }
-
-      /* gap below tab bar, then leading whitespace inside each tab content */
-      .sidebar .nav-pills {
-        margin-bottom: 0.75rem;
-      }
-      .sidebar .tab-content > .tab-pane {
-        padding-top: 0.75rem;
-      }
-
-      /* pickerInput button background */
-      .bootstrap-select > .btn {
-        background-color: var(--bs-body-bg) !important;
-        border-color: var(--bs-border-color) !important;
-      }
-      .bootstrap-select > .btn:hover,
-      .bootstrap-select > .btn:focus,
-      .bootstrap-select.show > .btn {
-        background-color: var(--bs-body-bg) !important;
-        border-color: #86b7fe !important;
-      }
-
-      /* theme + debug navbar buttons */
-      #theme_toggle, #debug_btn {
-        background: none;
-        border: none;
-        color: rgba(255,255,255,0.75);
-        font-size: 1.1rem;
-        padding: 0.25rem 0.5rem;
-        line-height: 1;
-      }
-      #theme_toggle:hover, #debug_btn:hover { color: #ffffff; }
-    ")))),
+      # The one stylesheet (inst/www/edark.css, served at /edark)
+      shiny::tags$head(
+        shiny::tags$link(rel = "stylesheet", type = "text/css",
+                         href = "edark/edark.css")
+      )
+    ),
 
     # ── Tab 1: Prepare ───────────────────────────────────────────────────────
     bslib::nav_panel(
       value = "prepare",
       title = shiny::tagList(shiny::icon("sliders"), " 1 \u00b7 Prepare"),
-      bslib::layout_sidebar(
-        sidebar = bslib::sidebar(
-          # title    = "Apply",
-          position = "left",
-          width    = 400,
-          prepare_confirm_ui("prepare_confirm")
-        ),
-        bslib::navset_card_tab(
+      edark_page(
+        config   = prepare_confirm_ui("prepare_confirm"),
+        messages = prepare_confirm_messages_ui("prepare_confirm"),
+        info     = prepare_confirm_info_ui("prepare_confirm"),
+        result   = bslib::navset_pill(
           id = "prepare_tabs",
           bslib::nav_panel(
             value = "columns",
@@ -139,21 +101,32 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
     bslib::nav_panel(
       value = "explore",
       title = shiny::tagList(shiny::icon("magnifying-glass-chart"), " 2 \u00b7 Explore"),
-      bslib::navset_tab(
+      bslib::navset_pill(
         id = "explore_tabs",
         bslib::nav_panel(
           value = "plot",
-          title = shiny::tagList(shiny::icon("chart-area"), " Plot"),
-          bslib::layout_sidebar(
-            sidebar = bslib::sidebar(
-              width = 400,
+          title = shiny::tagList(shiny::icon("chart-area"), " Explore Data"),
+          edark_page(
+            config = shiny::tagList(
+              # Describe / Correlate / Trend are modes: each stages its own
+              # pickers and they all feed the one plot panel (level 3a, D8).
+              # Appearance is not a mode - it is the app's single set of live
+              # aesthetics (D9) - but it sits in the same row rather than
+              # under a tab level of its own, which would nest pills inside
+              # pills (§BUILD_UI-redesign 2.3).
               bslib::navset_pill(
                 bslib::nav_panel("Describe",  describe_controls_ui("describe_controls")),
                 bslib::nav_panel("Correlate", relationship_controls_ui("relationship_controls")),
-                bslib::nav_panel("Trend",     trend_controls_ui("trend_controls"))
+                bslib::nav_panel("Trend",     trend_controls_ui("trend_controls")),
+                bslib::nav_panel(
+                  title = shiny::tagList(shiny::icon("palette"), " Appearance"),
+                  appearance_controls_ui("appearance_controls")
+                )
               )
             ),
-            explore_output_ui("explore_output")
+            result   = explore_output_ui("explore_output"),
+            messages = explore_output_messages_ui("explore_output"),
+            info     = explore_output_info_ui("explore_output")
           )
         ),
         bslib::nav_panel(
@@ -175,8 +148,12 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
     bslib::nav_item(
       shiny::actionButton("debug_btn", label = shiny::icon("bug"))
     ),
+    # Bootstrap 5.3 colour modes, not a preset swap. The old toggle rebuilt the
+    # whole theme (flatly <-> darkly) on every click, which re-sends the
+    # stylesheet and re-lays out the page; this flips one attribute and the
+    # variables in edark.css follow (§BUILD_UI-redesign Stage 3).
     bslib::nav_item(
-      shiny::actionButton("theme_toggle", label = shiny::tagList(shiny::tags$span("Theme", class = "me-2"), shiny::icon("moon")))
+      bslib::input_dark_mode(id = "dark_mode")
     )
   )
 
@@ -226,7 +203,7 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       color_palette           = "Set2",
       show_data_labels        = FALSE,
       show_legend             = TRUE,
-      legend_position         = "right",
+      legend_position         = "top",
 
       # Plot options (captured on plot button click, not reactive)
       bar_display             = "count",
@@ -322,23 +299,9 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       bslib::nav_select("prepare_tabs", last_prepare_tab())
     }, ignoreInit = TRUE)
 
-    # ── Light / dark theme toggle ─────────────────────────────────────────────
-    is_dark_theme <- shiny::reactiveVal(FALSE)
-
-    shiny::observeEvent(input$theme_toggle, {
-      dark <- !is_dark_theme()
-      is_dark_theme(dark)
-      session$setCurrentTheme(
-        bslib::bs_theme(
-          version    = 5,
-          bootswatch = if (dark) "darkly" else "flatly",
-          primary    = "#2c7be5"
-        )
-      )
-      shiny::updateActionButton(session, "theme_toggle",
-        label = shiny::tagList(span("Theme", class = "me-2"), icon(if (dark) "sun" else "moon"))
-      )
-    }, ignoreInit = TRUE)
+    # Light / dark mode needs no server code: bslib::input_dark_mode() sets
+    # data-bs-theme on <html> in the browser, and every colour in edark.css is
+    # a Bootstrap variable, so both modes follow from one stylesheet.
 
     # ── Debug button ──────────────────────────────────────────────────────────
      shiny::observeEvent(input$debug_btn, {
@@ -443,6 +406,7 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
     describe_controls_server("describe_controls",         shared_state)
     relationship_controls_server("relationship_controls", shared_state)
     trend_controls_server("trend_controls",               shared_state)
+    appearance_controls_server("appearance_controls",     shared_state)
     explore_output_server("explore_output",   shared_state)
     report_server("report",                   shared_state)
     analysis_main_server("analysis_main",     shared_state)

@@ -11,82 +11,6 @@
 #' @name module_explore_controls
 NULL
 
-# ── Shared aesthetics UI helper ───────────────────────────────────────────────
-# Used by both Describe and Relationship modules.
-.aesthetics_accordion <- function(ns) {
-  bslib::accordion(
-    open = FALSE,
-    bslib::accordion_panel(
-      "Plot Aesthetics",
-      icon = shiny::icon("palette"),
-      shinyWidgets::pickerInput(
-        ns("ggplot_theme"),
-        label    = "Plot theme:",
-        choices  = c(
-          "Minimal"          = "minimal",
-          "Publication"      = "publication",
-          "Cowplot"          = "cowplot",
-          "Economist"        = "economist",
-          "FiveThirtyEight"  = "fivethirtyeight",
-          "Tufte"            = "tufte",
-          "Modern"           = "modern"
-        ),
-        selected = "minimal"
-      ),
-      shinyWidgets::pickerInput(
-        ns("color_palette"),
-        label    = "Colour palette:",
-        choices  = c("Set2", "Set1", "Dark2", "Paired", "Accent",
-                     "Blues", "Greens", "Reds", "Purples"),
-        selected = "Set2"
-      ),
-      shiny::checkboxInput(ns("show_data_labels"), "Show data labels", value = FALSE),
-      shiny::checkboxInput(ns("show_legend"),      "Show legend",      value = TRUE),
-      shinyWidgets::radioGroupButtons(
-        ns("legend_position"),
-        label    = "Legend position:",
-        choices  = c("right", "left", "top", "bottom"),
-        selected = "top",
-        size     = "sm"
-      )
-    )
-  )
-}
-
-# ── Shared aesthetics server helper ───────────────────────────────────────────
-.aesthetics_observers <- function(input, shared_state) {
-  shiny::observeEvent(input$ggplot_theme, {
-    val <- input$ggplot_theme
-    if (!is.null(val) && !identical(shared_state$ggplot_theme, val))
-      shared_state$ggplot_theme <- val
-  })
-  shiny::observeEvent(input$color_palette, {
-    val <- input$color_palette
-    if (!is.null(val) && !identical(shared_state$color_palette, val))
-      shared_state$color_palette <- val
-  })
-  shiny::observeEvent(input$show_data_labels, {
-    val <- isTRUE(input$show_data_labels)
-    if (!identical(shared_state$show_data_labels, val))
-      shared_state$show_data_labels <- val
-  })
-  shiny::observeEvent(input$show_legend, {
-    val <- isTRUE(input$show_legend)
-    if (!identical(shared_state$show_legend, val))
-      shared_state$show_legend <- val
-  })
-  shiny::observeEvent(input$legend_position, {
-    val <- input$legend_position
-    if (!is.null(val) && !identical(shared_state$legend_position, val))
-      shared_state$legend_position <- val
-  })
-}
-
-# ── Sidebar label helper ──────────────────────────────────────────────────────
-.sidebar_label <- function(text) {
-  shiny::tags$p(text, class = "text-muted small text-uppercase fw-semibold mt-2 mb-1")
-}
-
 
 # ==============================================================================
 # Describe module
@@ -99,24 +23,15 @@ describe_controls_ui <- function(id) {
 
   shiny::tagList(
 
-    .sidebar_label("Variable"),
+    edark_section_label("Variable"),
     shiny::uiOutput(ns("primary_var_picker")),
     shiny::uiOutput(ns("bar_display_ui")),
 
-    .sidebar_label("Stratify By"),
+    edark_section_label("Stratify By"),
     shiny::uiOutput(ns("stratify_picker")),
 
     shiny::tags$div(class = "mt-3",
-      shiny::actionButton(
-        ns("describe_btn"),
-        label = "Describe",
-        icon  = shiny::icon("chart-bar"),
-        class = "btn-primary w-100"
-      )
-    ),
-
-    shiny::tags$div(class = "mt-3",
-      .aesthetics_accordion(ns)
+      edark_button(ns, "describe_btn", "Describe", icon = "chart-bar")
     )
   )
 }
@@ -184,7 +99,6 @@ describe_controls_server <- function(id, shared_state) {
       shared_state$plot_specification <- build_univariate_plot_spec(shared_state)
     })
 
-    .aesthetics_observers(input, shared_state)
   })
 }
 
@@ -200,7 +114,7 @@ relationship_controls_ui <- function(id) {
 
   shiny::tagList(
 
-    .sidebar_label("Primary Variable"),
+    edark_section_label("Primary Variable"),
     shiny::uiOutput(ns("primary_var_picker")),
     shinyWidgets::radioGroupButtons(
       ns("primary_role"),
@@ -212,24 +126,15 @@ relationship_controls_ui <- function(id) {
       width    = "100%"
     ),
 
-    .sidebar_label("Secondary Variable"),
+    edark_section_label("Secondary Variable"),
     shiny::uiOutput(ns("secondary_var_picker")),
     shiny::uiOutput(ns("bar_display_ui")),
 
-    .sidebar_label("Stratify By"),
+    edark_section_label("Stratify By"),
     shiny::uiOutput(ns("stratify_picker")),
 
     shiny::tags$div(class = "mt-3",
-      shiny::actionButton(
-        ns("plot_btn"),
-        label = "Plot Relationship",
-        icon  = shiny::icon("chart-line"),
-        class = "btn-primary w-100"
-      )
-    ),
-
-    shiny::tags$div(class = "mt-3",
-      .aesthetics_accordion(ns)
+      edark_button(ns, "plot_btn", "Plot Relationship", icon = "chart-line")
     )
   )
 }
@@ -313,6 +218,5 @@ relationship_controls_server <- function(id, shared_state) {
       shared_state$plot_specification <- build_bivariate_plot_spec(shared_state)
     })
 
-    .aesthetics_observers(input, shared_state)
   })
 }

@@ -38,22 +38,6 @@ NULL
 
 .ms_js <- function(ns) {
   shiny::tagList(
-    shiny::tags$style(shiny::HTML("
-      .edark-pulse { animation: edark-pulse 1s ease-out; border-radius: .375rem; }
-      @keyframes edark-pulse {
-        0%   { box-shadow: 0 0 0 0 rgba(220, 53, 69, .6); }
-        100% { box-shadow: 0 0 0 14px rgba(220, 53, 69, 0); }
-      }
-      .edark-summary-row { display: flex; gap: 1rem; padding: .3rem 0;
-                           border-bottom: 1px solid var(--bs-border-color-translucent); }
-      .edark-summary-row:last-child { border-bottom: 0; }
-      .edark-summary-label { flex: 0 0 210px; color: var(--bs-secondary-color); }
-      .edark-summary-value { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
-      @media (max-width: 576px) {
-        .edark-summary-row { flex-direction: column; gap: 0; }
-        .edark-summary-label { flex-basis: auto; }
-      }
-    ")),
     # Bootstrap gives disabled buttons pointer-events: none, so a click on the
     # disabled Run Model lands on its wrapper — pulse the preflight box then.
     shiny::tags$script(shiny::HTML(paste0("
@@ -79,8 +63,33 @@ analysis_modelspec_summary_ui <- function(id) {
   ns <- shiny::NS(id)
   shiny::tagList(
     .ms_js(ns),
-    shiny::div(class = "pt-3", style = "max-width: 1000px;",
-               shiny::uiOutput(ns("summary_ui")))
+    # Summary is an audit view: it has no settings of its own, which is why it
+    # had no sidebar at all before Stage 4. D6 keeps the page shape anyway, so
+    # the config pane says where each part of what is shown is actually set -
+    # useful on a page whose whole job is "is this the model I meant?".
+    edark_page(
+      config = shiny::tagList(
+        edark_section_label("Nothing to set here", first = TRUE),
+        shiny::tags$p(
+          class = "small text-muted",
+          "This page reports the model that Steps 1 to 4 have specified. To
+           change any of it, go back to the step that owns it:"
+        ),
+        shiny::tags$ul(
+          class = "small text-muted ps-3 mb-0",
+          shiny::tags$li(shiny::tags$strong("Step 1 \u00b7 Setup"),
+                         " - outcome, exposure, clusters, study type, purpose, split"),
+          shiny::tags$li(shiny::tags$strong("Step 3 \u00b7 Variable Investigation"),
+                         " - which covariates are suggested"),
+          shiny::tags$li(shiny::tags$strong("Step 4 \u00b7 Covariate Confirmation"),
+                         " - the final covariates and their reference levels"),
+          shiny::tags$li(shiny::tags$strong("Model \u203a Create"),
+                         " - model type, optimizer, and fitting")
+        )
+      ),
+      result = shiny::uiOutput(ns("summary_ui")),
+      info   = shiny::uiOutput(ns("summary_info_ui"))
+    )
   )
 }
 
@@ -89,40 +98,32 @@ analysis_modelspec_summary_ui <- function(id) {
 #' @export
 analysis_modelspec_create_ui <- function(id) {
   ns <- shiny::NS(id)
-  .hdr <- function(x) shiny::tags$p(x, class = "text-muted small text-uppercase fw-semibold mt-2 mb-1")
 
-  bslib::layout_sidebar(
-    sidebar = bslib::sidebar(
-      position = "left",
-      width    = 340,
-      .hdr("Model"),
+  edark_page(
+    config = shiny::tagList(
+      edark_section_label("Model", first = TRUE),
       shiny::uiOutput(ns("model_select_ui")),
       shiny::uiOutput(ns("advanced_ui")),
-      .hdr("Preflight"),
+      edark_section_label("Preflight"),
       shiny::div(id = ns("preflight_box"), class = "p-1",
                  shiny::uiOutput(ns("preflight_ui"))),
       shiny::div(
         id = ns("run_wrap"), class = "mt-3",
-        shinyjs::disabled(
-          shiny::actionButton(
-            ns("btn_run"),
-            label = shiny::tagList(shiny::icon("play"), " Run Model"),
-            class = "btn-primary w-100"
-          )
-        )
-      ),
-      shiny::uiOutput(ns("run_hint_ui"))
-    ),
-    shiny::uiOutput(ns("model_header_ui")),
-    shiny::uiOutput(ns("results_ui")),
-    bslib::accordion(
-      open = FALSE, class = "mt-3",
-      bslib::accordion_panel(
-        "R Code Preview", icon = shiny::icon("code"),
-        shiny::tags$p(class = "text-muted fst-italic mb-0",
-                      "The reproducible R script for this analysis will appear here in a later phase.")
+        edark_run_button(ns, "btn_run", "Run Model")
       )
-    )
+    ),
+    result = shiny::tagList(
+      shiny::uiOutput(ns("results_ui")),
+      bslib::accordion(
+        open = FALSE, class = "mt-3",
+        bslib::accordion_panel(
+          "R Code Preview", icon = shiny::icon("code"),
+          shiny::tags$p(class = "text-muted fst-italic mb-0",
+                        "The reproducible R script for this analysis will appear here in a later phase.")
+        )
+      )
+    ),
+    info = shiny::uiOutput(ns("model_header_ui"))
   )
 }
 
@@ -172,19 +173,25 @@ analysis_modelspec_server <- function(id, shared_state) {
       validate_analysis(spec, adata, tier = "full", verbose = TRUE)
     })
 
-    can_run <- shiny::reactive({
+    # NULL when the model may be fitted; otherwise the lock-reason key.
+    run_block <- shiny::reactive({
       v    <- validation()
       spec <- shared_state$analysis_spec
-      !is.null(v) && !is.null(spec$model_design$model_type) && v$validity_flag != "invalid"
+      if (is.null(v)) return("analysis_start")
+      if (is.null(spec$model_design$model_type)) return("model_type_none")
+      if (v$validity_flag == "invalid") return("model_preflight")
+      NULL
     })
+    can_run <- shiny::reactive(is.null(run_block()))
 
-    shiny::observe(shinyjs::toggleState("btn_run", condition = can_run()))
+    edark_run_gate(output, "btn_run", can_run,
+                   shiny::reactive(edark_lock_reason(run_block())))
 
     # ── Sidebar: model select ────────────────────────────────────────────────
     output$model_select_ui <- shiny::renderUI({
       o <- opts_view()
       if (is.null(o)) {
-        return(shiny::tags$p(class = "small text-muted", "Start the analysis in Step 1."))
+        return(shiny::tags$p(class = "small text-muted", edark_lock_reason("analysis_start")))
       }
       rec <- attr(o, "recommended")
       labels <- ifelse(o$available, o$label, paste0(o$label, " - ", o$reason))
@@ -256,8 +263,8 @@ analysis_modelspec_server <- function(id, shared_state) {
         shiny::tags$small(class = "text-muted",
                           "Cancel keeps the current optimizer and results."),
         footer = shiny::tagList(
-          shiny::actionButton(ns("cancel_optimizer"),  "Cancel",           class = "btn-secondary"),
-          shiny::actionButton(ns("confirm_optimizer"), "Clear & Continue", class = "btn-warning")
+          edark_button(ns, "cancel_optimizer", "Cancel", variant = "secondary", size = "dialog"),
+          edark_button(ns, "confirm_optimizer", "Clear & Continue", variant = "warning", size = "dialog")
         ),
         easyClose = FALSE
       ))
@@ -292,29 +299,14 @@ analysis_modelspec_server <- function(id, shared_state) {
       )
     })
 
-    output$run_hint_ui <- shiny::renderUI({
-      v    <- validation()
-      spec <- shared_state$analysis_spec
-      if (is.null(v)) return(NULL)
-      msg <- if (is.null(spec$model_design$model_type)) {
-        "No model is available for this outcome."
-      } else if (v$validity_flag == "invalid") {
-        "Resolve the errors above to run the model."
-      }
-      if (is.null(msg)) return(NULL)
-      shiny::tags$p(class = "small text-danger mt-2 mb-0", msg)
-    })
 
     # ── Run ──────────────────────────────────────────────────────────────────
     shiny::observeEvent(input$btn_run, {
       spec  <- shiny::isolate(shared_state$analysis_spec)
       adata <- shiny::isolate(shared_state$analysis_data)
       v     <- validate_analysis(spec, adata, tier = "full")
-      if (is.null(spec$model_design$model_type) || v$validity_flag == "invalid") {
-        shiny::showNotification("Resolve the preflight errors before running the model.",
-                                type = "error", duration = 8)
-        return()
-      }
+      if (is.null(spec$model_design$model_type) ||
+          v$validity_flag == "invalid") return()   # the button is disabled
 
       label <- .ANALYSIS_MODEL_LABELS[[spec$model_design$model_type]]
       shiny::showModal(.analysis_progress_modal(paste0("Fitting ", label, "\u2026")))
@@ -367,35 +359,24 @@ analysis_modelspec_server <- function(id, shared_state) {
       spec  <- shared_state$analysis_spec
       adata <- shared_state$analysis_data
       if (is.null(spec) || is.null(adata) || is.null(spec$variable_roles$outcome_variable)) {
-        return(.ms_placeholder("Start the analysis and assign an outcome in Step 1."))
+        return(.ms_placeholder(edark_lock_reason("analysis_outcome")))
       }
       mt <- spec$model_design$model_type
       ev <- analysis_outcome_event(spec, adata)
       fmla <- if (!is.null(mt)) paste(deparse(build_analysis_formula(spec), width.cutoff = 500L), collapse = " ")
       sr   <- analysis_split_rows(spec, adata)
 
-      bslib::card(
-        bslib::card_body(
-          class = "py-2",
-          shiny::div(class = "fw-semibold",
-                     if (is.null(mt)) "No model available" else .ANALYSIS_MODEL_LABELS[[mt]]),
-          if (!is.null(ev)) {
-            shiny::div(class = "small",
-                       shiny::span(class = "text-muted", "Modelling: "),
-                       shiny::tags$strong(sprintf("%s = %s", ev$variable, ev$event)),
-                       sprintf(" (vs %s)", ev$reference))
-          },
-          if (!is.null(sr)) {
-            shiny::div(class = "small",
-                       shiny::span(class = "text-muted", "Fitted on: "),
-                       sprintf("training set, %s = %s (%d rows); %d test rows held out for Performance",
-                               sr$variable, sr$training_level, sum(sr$training), sum(sr$test)))
-          },
-          if (!is.null(fmla)) {
-            shiny::div(class = "small mt-1",
-                       shiny::span(class = "text-muted", "Formula: "),
-                       shiny::tags$code(fmla))
-          }
+      edark_model_header(
+        title  = if (is.null(mt)) "No model available" else .ANALYSIS_MODEL_LABELS[[mt]],
+        fields = list(
+          Modelling = if (!is.null(ev)) shiny::tagList(
+            shiny::tags$strong(sprintf("%s = %s", ev$variable, ev$event)),
+            sprintf(" (vs %s)", ev$reference)
+          ),
+          `Fitted on` = if (!is.null(sr))
+            sprintf("training set, %s = %s (%d rows); %d test rows held out for Performance",
+                    sr$variable, sr$training_level, sum(sr$training), sum(sr$test)),
+          Formula = if (!is.null(fmla)) shiny::tags$code(fmla)
         )
       )
     })
@@ -445,10 +426,47 @@ analysis_modelspec_server <- function(id, shared_state) {
       adata <- shared_state$analysis_data
       res   <- shared_state$analysis_result
       if (is.null(spec) || is.null(adata)) {
-        return(.ms_placeholder("Start the analysis in Step 1."))
+        return(.ms_placeholder(edark_lock_reason("analysis_start")))
       }
       sections <- build_analysis_summary(spec, res, adata, validation())
       shiny::tagList(lapply(sections, .ms_section_card))
+    })
+
+    # Info pane: the scalar facts about what Steps 1-4 have specified, so the
+    # audit view in the centre does not have to restate them (D2).
+    output$summary_info_ui <- shiny::renderUI({
+      spec  <- shared_state$analysis_spec
+      adata <- shared_state$analysis_data
+      res   <- shared_state$analysis_result
+      if (is.null(spec) || is.null(adata)) {
+        return(shiny::tags$p(class = "small text-muted",
+                             edark_lock_reason("analysis_start")))
+      }
+
+      roles <- spec$variable_roles
+      mt    <- spec$model_design$model_type
+      fitted <- !is.null(res$fitted_models$primary_model)
+
+      shiny::tagList(
+        edark_section_label("This model", first = TRUE),
+        edark_info_row("Model type",
+                       if (is.null(mt)) "-" else .ANALYSIS_MODEL_LABELS[[mt]]),
+        edark_info_row("Outcome",  roles$outcome_variable  %||% "-"),
+        edark_info_row("Exposure", roles$exposure_variable %||% "-"),
+        edark_info_row("Covariates", length(spec$final_covariates %||% character(0))),
+        edark_info_row("Clusters", length(roles$cluster_variables %||% character(0))),
+
+        edark_section_label("Sample"),
+        edark_info_row("Rows in analysis set", format(nrow(adata), big.mark = ",")),
+        edark_info_row("Complete cases",
+                       tryCatch(format(compute_complete_cases(spec, adata), big.mark = ","),
+                                error = function(e) "-")),
+
+        edark_section_label("Status"),
+        edark_info_row("Fitted",
+                       if (fitted) shiny::tags$span(class = "text-success", "yes")
+                       else shiny::tags$span(class = "text-muted", "not yet"))
+      )
     })
   })
 }

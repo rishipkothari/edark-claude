@@ -4,5 +4,10 @@
 ^\.claude$
 ^PRD$
 ^CLAUDE\.md$
-^themetest\.R$
-^testrun\.R$
+^app\.R$
+^manifest\.json$
+^\.rscignore$
+^\.misc$
+^\.gitignore$
+^\.posit$
+^\.vscode$

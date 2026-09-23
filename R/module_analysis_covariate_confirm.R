@@ -142,20 +142,44 @@ analysis_covariate_confirm_ui <- function(id) {
 
   shiny::tagList(
     .cc_js(ns),
-    bslib::layout_sidebar(
-      sidebar = bslib::sidebar(
-        position = "right",
-        width    = 360,
-        shiny::uiOutput(ns("sample_ui")),
-        shiny::uiOutput(ns("checks_ui"))
+    # This page's configuration is the table: one row per candidate, with its
+    # own checkbox and reference-level control. That is the shape the contract
+    # asks for (table-shaped config stays in the centre), so the config pane
+    # carries what the table cannot - how to read it - rather than a duplicate
+    # set of controls. It is the thinnest config pane in the app; if global
+    # table actions are ever added, they belong here.
+    edark_page(
+      config = shiny::tagList(
+        edark_section_label("How to use this table", first = TRUE),
+        shiny::tags$ul(
+          class = "small text-muted ps-3",
+          shiny::tags$li("Tick a variable to keep it in the model."),
+          shiny::tags$li("Set each factor's reference level - every effect is reported against it."),
+          shiny::tags$li(
+            "The method columns carry Step 3's suggestions. ",
+            shiny::tags$strong("Add"), " unions them into your selection; ",
+            shiny::tags$strong("Replace"), " overwrites it."
+          )
+        ),
+        shiny::tags$p(
+          class = "small text-muted mb-0",
+          "Sample size and the checks on the right update as you tick."
+        )
       ),
-      shiny::tagList(
+      # main_message stays *outside* cc_table_wrap: .cc_js() hangs a
+      # MutationObserver on that div to re-patch the embedded inputs, and
+      # anything else re-rendering inside it would wake the observer for no
+      # reason (§N1.4).
+      result = shiny::tagList(
         shiny::uiOutput(ns("main_message")),
         shiny::div(
           id = ns("cc_table_wrap"),
           reactable::reactableOutput(ns("cc_table"))
         )
-      )
+      ),
+      messages  = edark_messages_ui(ns),
+      info      = shiny::uiOutput(ns("sample_ui")),
+      info_open = "closed"
     )
   )
 }
@@ -377,7 +401,7 @@ analysis_covariate_confirm_server <- function(id, shared_state) {
       spec  <- shared_state$analysis_spec
       adata <- shared_state$analysis_data
       msg <- if (is.null(spec) || is.null(adata)) {
-        "Start the analysis in Step 1 to select covariates."
+        edark_lock_reason("analysis_start")
       } else if (is.null(spec$variable_roles$outcome_variable)) {
         "Assign an outcome in Step 1 to select covariates."
       }
@@ -711,8 +735,8 @@ analysis_covariate_confirm_server <- function(id, shared_state) {
         shiny::tags$small(class = "text-muted",
                           "Cancel undoes your change and keeps everything as it was."),
         footer = shiny::tagList(
-          shiny::actionButton(ns("cancel_change"),  "Cancel",           class = "btn-secondary"),
-          shiny::actionButton(ns("confirm_change"), "Clear & Continue", class = "btn-warning")
+          edark_button(ns, "cancel_change", "Cancel", variant = "secondary", size = "dialog"),
+          edark_button(ns, "confirm_change", "Clear & Continue", variant = "warning", size = "dialog")
         ),
         easyClose = FALSE
       ))
@@ -800,7 +824,7 @@ analysis_covariate_confirm_server <- function(id, shared_state) {
             body,
             footer = shiny::tagList(
               shiny::modalButton("Cancel"),
-              shiny::actionButton(ns("confirm_replace"), "Replace", class = "btn-warning")
+              edark_button(ns, "confirm_replace", "Replace", variant = "warning", size = "dialog")
             ),
             easyClose = TRUE
           ))
@@ -836,12 +860,10 @@ analysis_covariate_confirm_server <- function(id, shared_state) {
       n_cov <- length(intersect(staged()$covariates, r$candidates))
 
       shiny::tagList(
-        shiny::tags$p("Model",
-          class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+        edark_section_label("Model"),
         .row("Covariates selected", n_cov),
         .row("Parameters", si$n_params),
-        shiny::tags$p("Sample",
-          class = "text-muted small text-uppercase fw-semibold mt-3 mb-1"),
+        edark_section_label("Sample"),
         .row("Total rows", n),
         .row(base_lbl, .pct(si$n_base)),
         .row("With selected covariates", .pct(si$n_fixed)),
@@ -860,41 +882,29 @@ analysis_covariate_confirm_server <- function(id, shared_state) {
       )
     })
 
-    output$checks_ui <- shiny::renderUI({
+    # -- Messages: the checks, in the page's one messages slot (D3) -----------
+    # These used to sit under the sample summary in the right sidebar, mixing
+    # neutral facts with warnings in one stack (§BUILD_UI-redesign 2.2). The
+    # info pane keeps the counts; the problems come here.
+    edark_messages_server(output, shiny::reactive({
       si <- sample_info()
       if (is.null(si)) return(NULL)
       iss <- si$issues
+      if (nrow(iss) == 0L) return(NULL)
 
-      .item <- function(level, msg) {
-        cfg <- switch(level,
-          error   = list(icon = "circle-xmark",         cls = "text-danger"),
-          warning = list(icon = "triangle-exclamation", cls = "text-warning"),
-          list(icon = "circle-info", cls = "text-muted"))
-        shiny::div(
-          class = "d-flex gap-2 small mb-1",
-          shiny::span(class = cfg$cls, shiny::icon(cfg$icon)),
-          shiny::span(msg)
-        )
+      ord <- order(match(iss$level, c("error", "warning", "note")))
+      lvl <- c(error = "error", warning = "warn", note = "info")
+
+      msgs <- lapply(ord, function(i) {
+        edark_message(unname(lvl[[iss$level[i]]]), iss$message[i])
+      })
+      if (any(iss$level == "error")) {
+        msgs <- c(msgs, list(edark_message(
+          "error", "Resolve the errors above before running the model."
+        )))
       }
-
-      shiny::tagList(
-        shiny::tags$p("Checks",
-          class = "text-muted small text-uppercase fw-semibold mt-3 mb-1"),
-        if (nrow(iss) == 0L) {
-          shiny::div(class = "small text-success",
-                     shiny::icon("circle-check"), " No issues found.")
-        } else {
-          ord <- order(match(iss$level, c("error", "warning", "note")))
-          shiny::tagList(
-            lapply(ord, function(i) .item(iss$level[i], iss$message[i])),
-            if (any(iss$level == "error")) {
-              shiny::tags$p(class = "small text-danger mt-2 mb-0",
-                            "Resolve the errors above before running the model.")
-            }
-          )
-        }
-      )
-    })
+      msgs
+    }))
   })
 }
 

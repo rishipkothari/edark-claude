@@ -1,0 +1,10 @@
+PRD
+data-raw
+tests
+man
+templates
+testrun.R
+themetest.R
+CLAUDE.md
+.claude
+.vscode

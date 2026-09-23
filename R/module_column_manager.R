@@ -19,10 +19,12 @@ column_manager_ui <- function(id) {
     bslib::card_header(
       shiny::icon("table-columns"), " Columns",
       shiny::actionLink(ns("select_all"),   "Select all",   class = "ms-3 small"),
-      shiny::actionLink(ns("deselect_all"), "Deselect all", class = "ms-2 small")
+      shiny::actionLink(ns("deselect_all"), "Clear", class = "ms-2 small")
     ),
     bslib::card_body(
-      class = "p-0",
+      # Scroll the rows, not the page, so "Select all" and the header stay put
+      # however many columns the dataset has (§BUILD_UI-redesign 2.6).
+      class = "p-0 edark-scroll-table",
       shiny::uiOutput(ns("column_table"))
     )
   )
@@ -63,7 +65,7 @@ column_manager_server <- function(id, shared_state) {
 
         shiny::tags$tr(
           shiny::tags$td(
-            class = "text-center ps-2 py-0",
+            class = "edark-checkbox-cell text-center ps-2 py-0",
             shiny::checkboxInput(ns(paste0("include_", col)), label = NULL, value = is_included)
           ),
           shiny::tags$td(class = "py-1 align-middle small fw-semibold", col),
@@ -88,11 +90,6 @@ column_manager_server <- function(id, shared_state) {
 
       shiny::tags$table(
         class = "table table-sm table-hover align-middle mb-0",
-        shiny::tags$style(shiny::HTML(
-          ".form-check { margin-bottom: 0 !important; display: flex !important;
-             justify-content: center !important; }
-           .form-check-input { margin-top: 0 !important; margin-left: 0 !important; }"
-        )),
         header,
         shiny::tags$tbody(rows)
       )

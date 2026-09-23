@@ -15,6 +15,14 @@
 NULL
 
 
+# Labels of the nav items whose titles are rendered from the server, so a
+# locked one can carry its own reason (see .nav_title()). They must read
+# exactly as the nav shows them - the lock reasons name destinations this way.
+.ANALYSIS_NAV_STEPS <- c(step5 = "5 \u00b7 Model", step6 = "6 \u00b7 Export")
+.ANALYSIS_NAV_MODEL <- c(diagnostics = "Diagnostics", performance = "Performance",
+                         results     = "Results")
+
+
 #' @rdname module_analysis_main
 #' @export
 analysis_main_ui <- function(id) {
@@ -50,17 +58,17 @@ analysis_main_ui <- function(id) {
       ),
       bslib::nav_panel(
         value = "step3",
-        title = "3 \u00b7 Variable Investigation",
+        title = "3 \u00b7 Variables",
         analysis_varinvestigation_ui(ns("varinvestigation"))
       ),
       bslib::nav_panel(
         value = "step4",
-        title = "4 \u00b7 Covariate Confirmation",
+        title = "4 \u00b7 Covariates",
         analysis_covariate_confirm_ui(ns("covariate_confirm"))
       ),
       bslib::nav_panel(
         value = "step5",
-        title = "5 \u00b7 Model",
+        title = shiny::uiOutput(ns("title_step5"), inline = TRUE),
         bslib::navset_underline(
           id = ns("model_tabs"),
           bslib::nav_panel(
@@ -72,22 +80,25 @@ analysis_main_ui <- function(id) {
             shiny::div(class = "pt-2", analysis_modelspec_create_ui(ns("modelspec")))
           ),
           bslib::nav_panel(
-            value = "diagnostics", title = "Diagnostics",
+            value = "diagnostics",
+            title = shiny::uiOutput(ns("title_diagnostics"), inline = TRUE),
             shiny::div(class = "pt-2", analysis_diagnostics_ui(ns("diagnostics")))
           ),
           bslib::nav_panel(
-            value = "performance", title = "Performance",
+            value = "performance",
+            title = shiny::uiOutput(ns("title_performance"), inline = TRUE),
             shiny::div(class = "pt-2", analysis_performance_ui(ns("performance")))
           ),
           bslib::nav_panel(
-            value = "results", title = "Results",
+            value = "results",
+            title = shiny::uiOutput(ns("title_results"), inline = TRUE),
             shiny::div(class = "pt-2", analysis_results_ui(ns("results")))
           )
         )
       ),
       bslib::nav_panel(
         value = "step6",
-        title = "6 \u00b7 Export",
+        title = shiny::uiOutput(ns("title_step6"), inline = TRUE),
         analysis_export_ui(ns("export"))
       )
     )
@@ -132,41 +143,99 @@ analysis_main_server <- function(id, shared_state) {
       )
     })
 
-    fit_first <- "Fit a model in Model \u203a Create first."
-    lock_reason <- c(
-      step5       = "Start the analysis and assign an outcome in Step 1 first.",
-      step6       = fit_first,
-      diagnostics = fit_first,
-      performance = fit_first,
-      results     = fit_first
-    )
+    # Which lock reason each gated destination shows. The strings live in
+    # R/ui_helpers.R, so this popover, the in-panel placeholders and the
+    # disabled run buttons cannot disagree.
+    lock_key <- c(step5       = "analysis_outcome",
+                  step6       = "fit_model",
+                  diagnostics = "fit_model",
+                  performance = "fit_model",
+                  results     = "fit_model")
 
-    # Disable locked tab links; if the open tab just became locked, fall back
-    # to the furthest open tab before it.
-    .apply_gate <- function(navset_id, unlocked) {
+    # A step is done when its output exists and is current. Stage 3 styles the
+    # class; until then it is inert. Step 4 rewrites its covariate list on
+    # every change, so done there means at least one covariate is confirmed;
+    # Step 6 is still a stub (Phase 8), so it is never done.
+    done <- shiny::reactive({
+      spec <- shared_state$analysis_spec
+      res  <- shared_state$analysis_result
+      vi   <- res$variable_investigation
+      c(step1 = !is.null(shared_state$analysis_data) &&
+                !is.null(spec$variable_roles$outcome_variable),
+        step2 = !is.null(res$result_tables$table1_overall),
+        step3 = !is.null(vi$univariable) || !is.null(vi$stepwise) ||
+                !is.null(vi$lasso),
+        step4 = length(spec$variable_roles$final_model_covariates) > 0L,
+        step5 = !is.null(res$fitted_models$primary_model) &&
+                !analysis_fit_is_stale(spec, res),
+        step6 = FALSE)
+    })
+
+    # Nav titles come from the server so a locked item can explain itself: the
+    # label gains a lock glyph and a popover holding the reason. The app CSS
+    # keeps the click alive (Bootstrap's .nav-link.disabled would swallow it)
+    # while Bootstrap still refuses to switch tabs, so the click only opens
+    # the popover. Steps 1-4 and Model > Summary / Create are never locked, so
+    # their titles stay static in the UI.
+    .nav_title <- function(key, label, unlocked) {
+      out_id <- paste0("title_", key)
+      force(label)   # the renderUI below is lazy; capture this loop value now
+      output[[out_id]] <- shiny::renderUI({
+        if (isTRUE(unlocked()[[key]])) return(shiny::span(label))
+        bslib::popover(
+          shiny::span(shiny::icon("lock"), " ", label),
+          edark_lock_reason(lock_key[[key]]),
+          title = "Locked"
+        )
+      })
+      # The pill header sits inside the Analyze panel, so it counts as hidden
+      # until the stage is opened; render anyway so the state is right on
+      # arrival rather than one flush later.
+      shiny::outputOptions(output, out_id, suspendWhenHidden = FALSE)
+    }
+
+    steps_unlocked <- shiny::reactive(gate()$steps)
+    model_unlocked <- shiny::reactive(gate()$model)
+    for (k in names(.ANALYSIS_NAV_STEPS)) {
+      .nav_title(k, .ANALYSIS_NAV_STEPS[[k]], steps_unlocked)
+    }
+    for (k in names(.ANALYSIS_NAV_MODEL)) {
+      .nav_title(k, .ANALYSIS_NAV_MODEL[[k]], model_unlocked)
+    }
+
+    # The last selection that was allowed, per navset. Restoring the click
+    # (see inst/www/edark.css) means Bootstrap does switch to a locked tab, so
+    # we send the user back where they were - which also covers the case of a
+    # step becoming locked while it is open.
+    last_ok <- shiny::reactiveValues(analysis_steps = "step1", model_tabs = "summary")
+
+    # Disable locked tab links, mark finished steps, and keep the selection on
+    # a tab the user is allowed to be on.
+    .apply_gate <- function(navset_id, unlocked, finished = logical(0)) {
       tabs_sel <- paste0("#", ns(navset_id))
       for (tab in names(unlocked)) {
         link <- sprintf("%s a[data-value='%s']", tabs_sel, tab)
         shinyjs::toggleClass(selector = link, class = "disabled",
                              condition = !unlocked[[tab]])
-        # Tooltip on the <li>: the disabled link itself has pointer-events: none
-        tip <- if (unlocked[[tab]]) "" else lock_reason[[tab]]
-        shinyjs::runjs(sprintf("$(\"%s\").parent().attr('title', %s);",
-                               link, jsonlite::toJSON(tip, auto_unbox = TRUE)))
+        shinyjs::toggleClass(selector = link, class = "edark-step-done",
+                             condition = isTRUE(unname(finished[tab])))
       }
 
-      current <- shiny::isolate(input[[navset_id]])
-      if (!is.null(current) && current %in% names(unlocked) && !unlocked[[current]]) {
-        open_tabs <- names(unlocked)[unlocked]
-        open_tabs <- open_tabs[match(open_tabs, names(unlocked)) <
-                               match(current, names(unlocked))]
-        bslib::nav_select(navset_id, selected = utils::tail(open_tabs, 1))
+      # Read, do not isolate: this observer must also fire when the user
+      # clicks a locked tab, not only when the gate changes.
+      current <- input[[navset_id]]
+      if (!is.null(current) && current %in% names(unlocked)) {
+        if (unlocked[[current]]) {
+          last_ok[[navset_id]] <- current
+        } else {
+          bslib::nav_select(navset_id, selected = last_ok[[navset_id]])
+        }
       }
     }
 
     shiny::observe({
       g <- gate()
-      .apply_gate("analysis_steps", g$steps)
+      .apply_gate("analysis_steps", g$steps, done())
       .apply_gate("model_tabs",     g$model)
     })
   })

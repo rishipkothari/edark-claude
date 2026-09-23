@@ -16,9 +16,9 @@ Explore lets the user look at the working dataset one variable, one relationship
 
 ## E2 — Layout
 
-- **Left sidebar (400 px):** `navset_pill` with three pills — **Describe** (§E3), **Correlate** (§E4), **Trend** (§E5).
+- **Left sidebar (400 px):** `navset_pill` with three mode pills — **Describe** (§E3), **Correlate** (§E4), **Trend** (§E5) — plus an **Appearance** panel (§E7). Appearance sits in the same row without being a mode: the three modes stage their settings, Appearance applies live.
 - **Main area:** one shared output panel (§E6). All three pills write `plot_specification`; the latest click wins.
-- Sidebar convention: flat sections, small uppercase section labels, one full-width primary button per pill, a collapsed **Plot Aesthetics** accordion (§E7).
+- Sidebar convention: flat sections, small uppercase section labels, one full-width primary button per pill. Aesthetics are not per-pill - they have their own **Appearance** panel (§E7).
 
 ---
 
@@ -106,7 +106,11 @@ Datetime pairings are not routed; Trend handles time (§E5). An unsupported comb
 
 ## E7 — Aesthetics
 
-A collapsed **Plot Aesthetics** accordion in each pill. These are the only Explore settings that re-render **live** (§M2.3): the stored spec is reused and only styling changes.
+One app-level setting, in one place: the **Appearance** panel of the Explore config pane, in the same pill row as Describe / Correlate / Trend (`R/module_appearance.R`). There is exactly one copy of the controls and one set of stored values, and the Appearance module is their only writer.
+
+These are the only Explore settings that re-render **live** (§M2.3): the stored spec is reused and only styling changes. That is why they sit apart from the mode panels, whose pickers are all staged until that mode's button is clicked — the split removes a collision the old per-pill accordion created (BUILD_UI-redesign §2.6, D9).
+
+The same values drive the plot on screen, **Full Report** generation, and each **Custom Report** item at the moment it is added (§E12). Report has no aesthetics controls of its own (D7): a generated document reproduces what was on screen.
 
 | Setting | Options | Default |
 |---|---|---|
@@ -114,7 +118,7 @@ A collapsed **Plot Aesthetics** accordion in each pill. These are the only Explo
 | Colour palette | Set2 · Set1 · Dark2 · Paired · Accent · Blues · Greens · Reds · Purples | Set2 |
 | Show data labels | on / off | off |
 | Show legend | on / off | on |
-| Legend position | right · left · top · bottom | right |
+| Legend position | right · left · top · bottom | top |
 
 ---
 
@@ -174,7 +178,7 @@ The Report sub-tab turns the working dataset into a slide deck or document. Two 
 - **Full Report** (§E11) — generated automatically from chosen variables.
 - **Custom Report** (§E12) — the plots the user added from Plot, in the user's order.
 
-Each pill has a sidebar with **Generate & Download** (primary), **Output Format** (PowerPoint · Word · HTML), its own options, and its own **Plot Aesthetics** accordion (same settings as §E7, legend default *top*). Generation runs in a blocking progress modal (§M3.5).
+Each pill has a sidebar with **Generate & Download** (primary), **Output Format** (PowerPoint · Word · HTML) and its own options. Neither pill has aesthetics controls: both generate with the values in force in **Appearance** (§E7), so the document matches the plot on screen (D7). Generation runs in a blocking progress modal (§M3.5).
 
 Datetime columns are excluded from reports.
 
@@ -203,7 +207,7 @@ Variables are chosen in a **Select Variables** modal.
 
 ## E12 — Custom Report
 
-- **Add to Custom Report** in the Plot output panel snapshots the current plot spec (including aesthetics at that moment) and a thumbnail.
+- **Add to Custom Report** in the Plot output panel snapshots the current plot spec and a thumbnail, with the aesthetics in force at that moment written into the item's own spec. Items added under different appearance settings therefore keep their own look; nothing restyles them at generation time.
 - The pill shows a **gallery** of queued items with move up / move down / remove; the main area previews thumbnails.
 - At generation time each item is **re-rendered from the current working dataset** — the data is not snapshotted.
 - An item whose columns no longer exist renders a placeholder; the rest of the report still generates (§M3.7).
@@ -256,4 +260,4 @@ edark_report(liver_tx, report_type = "primary_vs_others",
 
 `edark_report(data, report_type = "all_vars", variables = NULL, primary_variable = NULL, primary_role = "exposure", stratify_variable = NULL, report_format = "html", output_path = NULL, max_factor_levels = 20)` validates and casts the data like `edark()` (§P2), then calls `generate_report()`.
 
-`generate_report()` and `generate_custom_report()` take plain arguments (dataset, column types, format, output path, aesthetics, optional `progress_fn(fraction, detail)`), so the same code serves the app's download buttons and scripts. `generate_report()`'s `include_dataset_summary` / `include_tableone` default to on / off.
+`generate_report()` and `generate_custom_report()` take plain arguments (dataset, column types, format, output path, aesthetics, optional `progress_fn(fraction, detail)`), so the same code serves the app's download buttons and scripts. `generate_custom_report()`'s aesthetic arguments default to `NULL`, meaning "keep the appearance each item was captured with" — which is how the app calls it. Passing a value overrides *every* item, for programmatic callers who want one consistent look. `generate_report()`'s `include_dataset_summary` / `include_tableone` default to on / off.

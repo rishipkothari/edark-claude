@@ -46,30 +46,27 @@ NULL
 #' @export
 analysis_diagnostics_ui <- function(id) {
   ns <- shiny::NS(id)
-  .hdr <- function(x) shiny::tags$p(x, class = "text-muted small text-uppercase fw-semibold mt-2 mb-1")
   .links <- function(all_id, none_id) {
     shiny::div(class = "small mb-1",
                shiny::actionLink(ns(all_id), "Select all"), " \u00b7 ",
-               shiny::actionLink(ns(none_id), "Deselect all"))
+               shiny::actionLink(ns(none_id), "Clear"))
   }
 
-  bslib::layout_sidebar(
-    sidebar = bslib::sidebar(
-      position = "left",
-      width    = 340,
-      .hdr("Model assumptions"),
+  edark_page(
+    config = shiny::tagList(
+      edark_section_label("Model assumptions", first = TRUE),
       .links("assump_all", "assump_none"),
       shiny::uiOutput(ns("assump_ui")),
       shiny::tags$hr(class = "my-2"),
-      shiny::actionButton(ns("btn_run"),
-                          label = shiny::tagList(shiny::icon("play"), " Run Diagnostics"),
-                          class = "btn-primary w-100"),
+      edark_run_button(ns, "btn_run", "Run Diagnostics"),
       shiny::tags$p(class = "small text-muted mt-2 mb-0",
                     "Sample accounting and fitting warnings are always included.",
                     "Diagnostics are advisory - they never block the next steps.")
     ),
-    shiny::uiOutput(ns("header_ui")),
-    shiny::uiOutput(ns("results_ui"))
+    result = shiny::uiOutput(ns("results_ui")),
+    # The model header is a fact about the result, so it belongs in the info
+    # pane rather than above the output (D2).
+    info   = shiny::uiOutput(ns("header_ui"))
   )
 }
 
@@ -105,7 +102,9 @@ analysis_diagnostics_server <- function(id, shared_state) {
 
     output$assump_ui <- shiny::renderUI({
       o <- options_tbl()
-      if (is.null(o)) return(shiny::tags$p(class = "small text-muted", "Fit a model in the Create tab first."))
+      if (is.null(o)) {
+        return(shiny::tags$p(class = "small text-muted", edark_lock_reason("fit_model")))
+      }
       ch <- .choices(o)
       shiny::checkboxGroupInput(ns("assump"), label = NULL, choiceNames = ch$names,
                                 choiceValues = ch$values, selected = o$id, width = "100%")
@@ -123,9 +122,9 @@ analysis_diagnostics_server <- function(id, shared_state) {
     shiny::observeEvent(input$assump_all,  .set_all(TRUE))
     shiny::observeEvent(input$assump_none, .set_all(FALSE))
 
-    shiny::observe({
-      shinyjs::toggleState("btn_run", condition = !is.null(model_type()))
-    })
+    edark_run_gate(output, "btn_run",
+                   enabled = shiny::reactive(!is.null(model_type())),
+                   reason  = edark_lock_reason("fit_model"))
 
     # ── Run ──────────────────────────────────────────────────────────────────
     shiny::observeEvent(input$btn_run, {
@@ -176,21 +175,17 @@ analysis_diagnostics_server <- function(id, shared_state) {
     output$header_ui <- shiny::renderUI({
       res <- shared_state$analysis_result
       mt  <- model_type()
-      if (is.null(mt)) return(.ms_placeholder("Fit a model in the Create tab to run diagnostics."))
+      if (is.null(mt)) return(.ms_placeholder(edark_lock_reason("fit_model")))
       rs  <- res$run_status
       dg  <- diag()
-      bslib::card(
-        bslib::card_body(
-          class = "py-2",
-          shiny::div(class = "fw-semibold", .ANALYSIS_MODEL_LABELS[[mt]]),
-          shiny::div(class = "small mt-1",
-                     shiny::span(class = "text-muted", "Formula: "),
-                     shiny::tags$code(paste(deparse(rs$formula, width.cutoff = 500L), collapse = " "))),
-          if (!is.null(dg)) {
-            shiny::div(class = "small text-muted mt-1",
-                       sprintf("Diagnostics run %s", format(dg$run_at, "%H:%M:%S")))
-          }
-        )
+      edark_model_header(
+        title  = .ANALYSIS_MODEL_LABELS[[mt]],
+        fields = list(
+          Formula = shiny::tags$code(
+            paste(deparse(rs$formula, width.cutoff = 500L), collapse = " "))
+        ),
+        notes  = if (!is.null(dg))
+          sprintf("Diagnostics run %s", format(dg$run_at, "%H:%M:%S"))
       )
     })
 

@@ -44,7 +44,7 @@ report_ui <- function(id) {
       "});"
     )),
 
-  bslib::navset_pill(
+  bslib::navset_underline(
     id = ns("report_mode_tabs"),
 
     # ── Full Report pill ──────────────────────────────────────────────────────
@@ -52,32 +52,12 @@ report_ui <- function(id) {
       value = "full_report",
       title = shiny::tagList(shiny::icon("file-lines"), " Full Report"),
 
-      bslib::layout_sidebar(
-        sidebar = bslib::sidebar(
-          width = 380,
-
-          # ── Generate ──────────────────────────────────────────────────────
-          shiny::downloadButton(
-            ns("download_btn"),
-            label = "Generate & Download",
-            class = "btn-primary w-75"
-          ),
-
-          # ── Output format ──────────────────────────────────────────────────
-          shiny::tags$p("Output Format", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
-          shinyWidgets::radioGroupButtons(
-            ns("output_format"),
-            label    = NULL,
-            choices  = c("PowerPoint" = "pptx",
-                         "Word"       = "docx",
-                         "HTML"       = "html"),
-            selected = "pptx",
-            size     = "sm",
-            width    = "100%"
-          ),
-
-          # ── Report type ────────────────────────────────────────────────────
-          shiny::tags$p("Report Type", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+      edark_page(
+        # Config: settings first, then output format, then the one primary
+        # action last - in every mode of every page (F3). Generate used to sit
+        # at the *top* here and at the bottom in Custom (§1.3k).
+        config = shiny::tagList(
+          edark_section_label("Report Type", first = TRUE),
           shinyWidgets::radioGroupButtons(
             ns("report_type"),
             label    = NULL,
@@ -91,7 +71,7 @@ report_ui <- function(id) {
           # ── Primary variable (Correlation only) ────────────────────────────
           shiny::conditionalPanel(
             condition = paste0("input['", ns("report_type"), "'] == 'primary_vs_others'"),
-            shiny::tags$p("Primary Variable", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+            edark_section_label("Primary Variable"),
             shiny::uiOutput(ns("primary_var_picker")),
             shinyWidgets::radioGroupButtons(
               ns("primary_role"),
@@ -104,22 +84,16 @@ report_ui <- function(id) {
             )
           ),
 
-          # ── Variable selection ─────────────────────────────────────────────
-          shiny::tags$p("Variables", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+          edark_section_label("Variables"),
           shiny::uiOutput(ns("var_selection_summary")),
-          shiny::actionButton(
-            ns("open_var_modal"),
-            label = "Select Variables\u2026",
-            icon  = shiny::icon("sliders"),
-            class = "btn-outline-secondary w-100 mt-1"
-          ),
-          
-          # ── Options ────────────────────────────────────────────────────
-          shiny::tags$p("Options", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+          edark_button(ns, "open_var_modal", "Select Variables\u2026",
+                       icon = "sliders", variant = "secondary", outline = TRUE,
+                       class = "mt-1"),
+
+          edark_section_label("Options"),
           shiny::uiOutput(ns("stratify_picker")),
 
-          # ── Report contents ────────────────────────────────────────────────
-          shiny::tags$p("Report Contents", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+          edark_section_label("Report Contents"),
           shiny::checkboxInput(ns("include_dataset_summary"),
                                "Dataset Summary", value = TRUE),
           shiny::conditionalPanel(
@@ -128,55 +102,31 @@ report_ui <- function(id) {
                                  "Table One", value = FALSE)
           ),
 
-          # ── Plot aesthetics ────────────────────────────────────────────────
-          bslib::accordion(
-            open = FALSE,
-            bslib::accordion_panel(
-              "Plot Aesthetics",
-              icon = shiny::icon("palette"),
-              shinyWidgets::pickerInput(
-                ns("ggplot_theme"),
-                label    = "Plot theme:",
-                choices  = c(
-                  "Minimal"         = "minimal",
-                  "Publication"     = "publication",
-                  "Cowplot"         = "cowplot",
-                  "Economist"       = "economist",
-                  "FiveThirtyEight" = "fivethirtyeight",
-                  "Tufte"           = "tufte",
-                  "Modern"          = "modern"
-                ),
-                selected = "minimal"
-              ),
-              shinyWidgets::pickerInput(
-                ns("color_palette"),
-                label    = "Colour palette:",
-                choices  = c("Set2", "Set1", "Dark2", "Paired", "Accent",
-                             "Blues", "Greens", "Reds", "Purples"),
-                selected = "Set2"
-              ),
-              shiny::checkboxInput(ns("show_data_labels"), "Show data labels", value = FALSE),
-              shiny::checkboxInput(ns("show_legend"),      "Show legend",      value = TRUE),
-              shinyWidgets::radioGroupButtons(
-                ns("legend_position"),
-                label    = "Legend position:",
-                choices  = c("right", "left", "top", "bottom"),
-                selected = "top",
-                size     = "sm"
-              )
-            )
+          edark_section_label("Output Format"),
+          shinyWidgets::radioGroupButtons(
+            ns("output_format"),
+            label    = NULL,
+            choices  = c("PowerPoint" = "pptx",
+                         "Word"       = "docx",
+                         "HTML"       = "html"),
+            selected = "pptx",
+            size     = "sm",
+            width    = "100%"
           ),
 
+          shiny::div(
+            class = "mt-3",
+            edark_button(ns, "download_btn", "Generate & Download",
+                         icon = "download", type = "download")
+          )
         ),
 
-        # Main panel
-        bslib::card(
-          full_screen = FALSE,
-          bslib::card_header(shiny::icon("file-export"), " Report Preview"),
-          bslib::card_body(
-            shiny::uiOutput(ns("report_summary_panel"))
-          )
-        )
+        # Result: the sections the current settings resolve to, in order. Not a
+        # restatement of the controls (F5) - which variables survive depends on
+        # eligibility, the primary variable and the stratify variable.
+        result   = shiny::uiOutput(ns("report_sections_panel")),
+        messages = edark_messages_ui(ns, "full_messages"),
+        info     = shiny::uiOutput(ns("full_info"))
       )
     ),
 
@@ -185,97 +135,42 @@ report_ui <- function(id) {
       value = "custom_report",
       title = shiny::tagList(shiny::icon("layer-group"), " Custom Report"),
 
-      bslib::layout_sidebar(
-        sidebar = bslib::sidebar(
-          width = 380,
+      # D11: no centre. The item list *is* the page's main presentation, and it
+      # lives in the config pane because reordering and deleting are
+      # configuration. The old main-panel "Preview" card showed the same list
+      # again and nothing else (F5), so it is gone.
+      edark_page(
+        config = shiny::tagList(
+          edark_section_label("Report Items", first = TRUE),
+          shiny::uiOutput(ns("custom_items_gallery")),
 
-          # ── Item gallery ───────────────────────────────────────────────────
-          bslib::card(
-            bslib::card_header(shiny::icon("images"), " Report Items"),
-            bslib::card_body(
-              shiny::uiOutput(ns("custom_items_gallery"))
-            )
+          edark_section_label("Output Format"),
+          shinyWidgets::radioGroupButtons(
+            ns("custom_output_format"),
+            label    = NULL,
+            choices  = c("PowerPoint" = "pptx",
+                         "Word"       = "docx",
+                         "HTML"       = "html"),
+            selected = "pptx",
+            size     = "sm",
+            width    = "100%"
           ),
 
-          shiny::br(),
-
-          # ── Plot aesthetics ────────────────────────────────────────────────
-          bslib::accordion(
-            open = FALSE,
-            bslib::accordion_panel(
-              "Plot Aesthetics",
-              icon = shiny::icon("palette"),
-              shinyWidgets::pickerInput(
-                ns("custom_ggplot_theme"),
-                label    = "Plot theme:",
-                choices  = c(
-                  "Minimal"         = "minimal",
-                  "Publication"     = "publication",
-                  "Cowplot"         = "cowplot",
-                  "Economist"       = "economist",
-                  "FiveThirtyEight" = "fivethirtyeight",
-                  "Tufte"           = "tufte",
-                  "Modern"          = "modern"
-                ),
-                selected = "minimal"
-              ),
-              shinyWidgets::pickerInput(
-                ns("custom_color_palette"),
-                label    = "Colour palette:",
-                choices  = c("Set2", "Set1", "Dark2", "Paired", "Accent",
-                             "Blues", "Greens", "Reds", "Purples"),
-                selected = "Set2"
-              ),
-              shiny::checkboxInput(ns("custom_show_data_labels"), "Show data labels", value = FALSE),
-              shiny::checkboxInput(ns("custom_show_legend"),      "Show legend",      value = TRUE),
-              shinyWidgets::radioGroupButtons(
-                ns("custom_legend_position"),
-                label    = "Legend position:",
-                choices  = c("right", "left", "top", "bottom"),
-                selected = "top",
-                size     = "sm"
-              )
-            )
-          ),
-
-          # ── Output format ──────────────────────────────────────────────────
-          bslib::card(
-            bslib::card_header(shiny::icon("download"), " Output Format"),
-            bslib::card_body(
-              shinyWidgets::radioGroupButtons(
-                ns("custom_output_format"),
-                label    = NULL,
-                choices  = c("PowerPoint" = "pptx",
-                             "Word"       = "docx",
-                             "HTML"       = "html"),
-                selected = "pptx",
-                size     = "sm",
-                width    = "100%"
-              )
-            )
-          ),
-
-          # ── Generate ──────────────────────────────────────────────────────
-          shiny::downloadButton(
-            ns("custom_download_btn"),
-            label = "Generate & Download",
-            class = "btn-primary w-100"
+          shiny::div(
+            class = "mt-3",
+            edark_button(ns, "custom_download_btn", "Generate & Download",
+                         icon = "download", type = "download")
           )
         ),
-
-        # Main panel — preview of items
-        bslib::card(
-          full_screen = FALSE,
-          bslib::card_header(shiny::icon("eye"), " Preview"),
-          bslib::card_body(
-            shiny::uiOutput(ns("custom_preview_panel"))
-          )
-        )
+        result   = NULL,
+        messages = edark_messages_ui(ns, "custom_messages"),
+        info     = shiny::uiOutput(ns("custom_info"))
       )
     )
-  )   # closes navset_pill
+  )   # closes navset_underline
   )   # closes tagList
 }
+
 
 
 #' @rdname module_report
@@ -382,24 +277,31 @@ report_server <- function(id, shared_state) {
         }
       }
 
+      # Actions at the *top*, above a list of unknown length, so they stay
+      # reachable without scrolling however many variables the dataset has
+      # (F6 / §1.3j). The list scrolls under them; the footer is empty.
       shiny::showModal(shiny::modalDialog(
         title = "Select Variables for Report",
-        shiny::checkboxGroupInput(
-          ns("modal_vars"),
-          label    = NULL,
-          choices  = elig,
-          selected = currently
-        ),
-        footer = shiny::tagList(
-          shiny::actionButton(ns("modal_select_all"),   "Select All",
-                              class = "btn-sm btn-outline-secondary"),
-          shiny::actionButton(ns("modal_deselect_all"), "Deselect All",
-                              class = "btn-sm btn-outline-secondary ms-2"),
+        shiny::div(
+          class = "d-flex align-items-center gap-2 mb-3 pb-2 border-bottom",
+          edark_button(ns, "modal_select_all", "Select All",
+                       variant = "secondary", size = "dialog", outline = TRUE),
+          edark_button(ns, "modal_deselect_all", "Clear",
+                       variant = "secondary", size = "dialog", outline = TRUE),
           shiny::tags$span(class = "flex-grow-1"),
-          shiny::actionButton(ns("modal_done"), "Done",
-                              class = "btn-primary"),
-          shiny::modalButton("Cancel")
+          shiny::modalButton("Cancel"),
+          edark_button(ns, "modal_done", "Done", size = "dialog")
         ),
+        shiny::div(
+          style = "max-height: 45vh; overflow-y: auto;",
+          shiny::checkboxGroupInput(
+            ns("modal_vars"),
+            label    = NULL,
+            choices  = elig,
+            selected = currently
+          )
+        ),
+        footer    = NULL,
         easyClose = FALSE,
         size      = "m"
       ))
@@ -424,13 +326,30 @@ report_server <- function(id, shared_state) {
       shiny::removeModal()
     })
 
-    # ── Full report: main panel summary ──────────────────────────────────────
-
-    output$report_summary_panel <- shiny::renderUI({
-      ds   <- shared_state$dataset_working
+    # -- Full report: what the current settings resolve to ---------------------
+    # Which variables become sections is derived, not stated: eligibility,
+    # the primary variable and the stratify variable all remove candidates.
+    full_sections <- shiny::reactive({
       elig <- eligible_vars()
       sel  <- selected_vars()
       if (is.null(sel)) sel <- elig
+      sv <- input$stratify_variable
+
+      v <- intersect(sel, elig)
+      if (identical(input$report_type, "primary_vs_others") &&
+          !is.null(input$primary_variable)) {
+        v <- setdiff(v, input$primary_variable)
+      }
+      if (!is.null(sv) && nzchar(sv)) v <- setdiff(v, sv)
+      v
+    })
+
+
+    # Info pane: the scalar facts about the file that will be produced.
+    output$full_info <- shiny::renderUI({
+      ds   <- shared_state$dataset_working
+      elig <- eligible_vars()
+      secs <- full_sections()
 
       type_label <- switch(input$report_type,
         all_vars          = "Describe Variables",
@@ -443,87 +362,80 @@ report_server <- function(id, shared_state) {
         html = "HTML (.html)",
         "-"
       )
-
-      n_rows <- if (!is.null(ds)) nrow(ds) else "-"
-      n_cols <- if (!is.null(ds)) ncol(ds) else "-"
-
       sv <- input$stratify_variable
-      strat_label <- if (is.null(sv) || !nzchar(sv)) "None" else sv
-
-      sec_vars <- if (input$report_type == "primary_vs_others" && !is.null(input$primary_variable)) {
-        v <- setdiff(intersect(sel, elig), input$primary_variable)
-        if (!is.null(sv) && nzchar(sv)) setdiff(v, sv) else v
-      } else {
-        v <- intersect(sel, elig)
-        if (!is.null(sv) && nzchar(sv)) setdiff(v, sv) else v
-      }
-      n_sections <- length(sec_vars)
-
-      primary_row <- if (input$report_type == "primary_vs_others") {
-        pv   <- input$primary_variable %||% "-"
-        role <- if ((input$primary_role %||% "exposure") == "exposure") "Exposure (X)" else "Outcome (Y)"
-        shiny::tagList(
-          shiny::tags$tr(
-            shiny::tags$th("Primary variable"),
-            shiny::tags$td(paste0(pv, " - ", role))
-          ),
-          shiny::tags$tr(
-            shiny::tags$th("Stratify by"),
-            shiny::tags$td(strat_label)
-          )
-        )
-      } else {
-        shiny::tags$tr(
-          shiny::tags$th("Stratify by"),
-          shiny::tags$td(strat_label)
-        )
-      }
 
       shiny::tagList(
-        shiny::tags$table(
-          class = "table table-sm table-borderless mb-3",
-          style = "max-width: 480px;",
-          shiny::tags$tbody(
-            shiny::tags$tr(
-              shiny::tags$th(style = "width:180px;", "Report type"),
-              shiny::tags$td(type_label)
-            ),
-            shiny::tags$tr(
-              shiny::tags$th("Output format"),
-              shiny::tags$td(format_label)
-            ),
-            shiny::tags$tr(
-              shiny::tags$th("Dataset"),
-              shiny::tags$td(paste0(n_rows, " rows \u00d7 ", n_cols, " columns"))
-            ),
-            primary_row,
-            shiny::tags$tr(
-              shiny::tags$th("Sections"),
-              shiny::tags$td(paste0(n_sections, " variable", if (n_sections != 1) "s" else ""))
-            )
+        edark_section_label("Will contain", first = TRUE),
+        edark_info_row("Report type",   type_label),
+        edark_info_row("Output format", format_label),
+        edark_info_row("Sections",      length(secs)),
+        edark_info_row("Variables",
+                       sprintf("%d of %d eligible", length(secs), length(elig))),
+        if (identical(input$report_type, "primary_vs_others")) {
+          edark_info_row(
+            "Primary variable",
+            paste0(input$primary_variable %||% "-", " - ",
+                   if ((input$primary_role %||% "exposure") == "exposure")
+                     "Exposure (X)" else "Outcome (Y)")
           )
-        ),
-        if (n_sections > 0) {
-          shiny::tags$div(
-            class = "text-muted small",
-            shiny::tags$strong("Variables: "),
-            paste(sec_vars, collapse = ", ")
-          )
-        } else {
-          shiny::tags$p(class = "text-warning small",
-                        shiny::icon("triangle-exclamation"), " No variables selected.")
         },
-        shiny::tags$hr(),
-        shiny::tags$p(
-          class = "text-muted small",
-          shiny::icon("circle-info"), " ",
-          "Configure your report in the sidebar, then click ",
-          shiny::tags$strong("Generate & Download"), ".",
-          shiny::tags$br(),
-          "Generation time scales with the number of variables."
+        edark_info_row("Stratify by",
+                       if (is.null(sv) || !nzchar(sv)) "None" else sv),
+        edark_info_row("Dataset summary",
+                       if (isTRUE(input$include_dataset_summary)) "Included" else "No"),
+        if (identical(input$report_type, "all_vars")) {
+          edark_info_row("Table One",
+                         if (isTRUE(input$include_tableone)) "Included" else "No")
+        },
+
+        edark_section_label("Source data"),
+        edark_info_row("Rows",    if (!is.null(ds)) format(nrow(ds), big.mark = ",") else "-"),
+        edark_info_row("Columns", if (!is.null(ds)) ncol(ds) else "-")
+      )
+    })
+
+
+    # Result: the ordered section list itself.
+    output$report_sections_panel <- shiny::renderUI({
+      secs <- full_sections()
+
+      if (length(secs) == 0) {
+        return(edark_empty_state(
+          "No sections to generate",
+          "Pick at least one variable under Variables, in the pane on the left.",
+          icon = "file-circle-question"
+        ))
+      }
+
+      bslib::card(
+        bslib::card_header(shiny::icon("list-ol"), " Sections in this report"),
+        bslib::card_body(
+          shiny::tags$ol(
+            class = "mb-0",
+            lapply(secs, function(v) shiny::tags$li(v))
+          )
         )
       )
     })
+
+
+    # Messages for the Full Report page.
+    edark_messages_server(output, shiny::reactive({
+      msgs <- list()
+      if (length(full_sections()) == 0) {
+        msgs <- c(msgs, list(edark_message(
+          "warn", "This report would have no sections.",
+          detail = "Select at least one variable before generating."
+        )))
+      }
+      if (isTRUE(shared_state$explore_needs_refresh)) {
+        msgs <- c(msgs, list(edark_message(
+          "stale", "The working dataset has changed since the last plot was drawn.",
+          detail = "The report is generated from the current working dataset."
+        )))
+      }
+      msgs
+    }), id = "full_messages")
 
     # ── Full report: download handler ─────────────────────────────────────────
 
@@ -576,6 +488,8 @@ report_server <- function(id, shared_state) {
         ))
         on.exit(shiny::removeModal(), add = TRUE)
 
+        aes_now <- edark_current_aesthetics(shared_state)
+
         tryCatch({
           generate_report(
             dataset                 = shared_state$dataset_working,
@@ -594,11 +508,14 @@ report_server <- function(id, shared_state) {
             include_dataset_summary = isTRUE(input$include_dataset_summary),
             include_tableone        = isTRUE(input$include_tableone) &&
                                         input$report_type == "all_vars",
-            ggplot_theme            = input$ggplot_theme      %||% "minimal",
-            color_palette           = input$color_palette     %||% "Set2",
-            show_data_labels        = isTRUE(input$show_data_labels),
-            show_legend             = isTRUE(input$show_legend),
-            legend_position         = input$legend_position   %||% "top",
+            # The aesthetics on screen, not a second set owned by Report, so
+            # the generated document matches the plot the user has been
+            # looking at (D7 / D9).
+            ggplot_theme            = aes_now$ggplot_theme,
+            color_palette           = aes_now$color_palette,
+            show_data_labels        = aes_now$show_data_labels,
+            show_legend             = aes_now$show_legend,
+            legend_position         = aes_now$legend_position,
             progress_fn             = function(frac, detail) {
               session$sendCustomMessage("edark_report_progress", list(frac = frac, detail = detail))
             }
@@ -651,22 +568,13 @@ report_server <- function(id, shared_state) {
             shiny::div(
               class = "d-flex flex-column gap-1",
               if (i > 1)
-                shiny::actionButton(
-                  ns(paste0("up_", item$id)),
-                  label = NULL, icon = shiny::icon("angle-up"),
-                  class = "btn-sm btn-outline-secondary p-1"
-                ),
+                edark_button(ns, paste0("up_", item$id), NULL, icon = "angle-up",
+                             variant = "secondary", size = "toolbar", class = "p-1"),
               if (i < n)
-                shiny::actionButton(
-                  ns(paste0("down_", item$id)),
-                  label = NULL, icon = shiny::icon("angle-down"),
-                  class = "btn-sm btn-outline-secondary p-1"
-                ),
-              shiny::actionButton(
-                ns(paste0("remove_", item$id)),
-                label = NULL, icon = shiny::icon("trash"),
-                class = "btn-sm btn-outline-danger p-1"
-              )
+                edark_button(ns, paste0("down_", item$id), NULL, icon = "angle-down",
+                             variant = "secondary", size = "toolbar", class = "p-1"),
+              edark_button(ns, paste0("remove_", item$id), NULL, icon = "trash",
+                           variant = "danger", size = "toolbar", class = "p-1")
             )
           )
         })
@@ -716,62 +624,77 @@ report_server <- function(id, shared_state) {
       registered_item_ids(c(registered_item_ids(), new_ids))
     })
 
-    # ── Custom Report: preview panel ──────────────────────────────────────────
-
-    output$custom_preview_panel <- shiny::renderUI({
+    # -- Custom Report: info pane ---------------------------------------------
+    # The page has no centre (D11), so this is the only place that describes
+    # the file. The old main-panel "Preview" card re-listed the items that the
+    # config pane already shows, and nothing else (F5).
+    output$custom_info <- shiny::renderUI({
       items <- shared_state$custom_report_items
       n     <- length(items)
 
+      format_label <- switch(input$custom_output_format %||% "pptx",
+        pptx = "PowerPoint (.pptx)",
+        docx = "Word (.docx)",
+        html = "HTML (.html)",
+        "-"
+      )
+
       if (n == 0) {
         return(shiny::tagList(
+          edark_section_label("Will contain", first = TRUE),
           shiny::tags$p(
-            class = "text-muted",
-            shiny::icon("circle-info"), " Your custom report is empty.",
-            shiny::tags$br(),
-            "Go to the ", shiny::tags$strong("Explore"), " tab, run a plot, then click ",
-            shiny::tags$strong("Add to Custom Report"), "."
+            class = "small text-muted",
+            "Nothing yet. Run a plot in Explore and click ",
+            shiny::tags$strong("Add to Custom Report"),
+            " to queue it here."
           )
         ))
       }
 
+      kinds <- table(vapply(items, function(it) it$plot_spec$plot_type %||% "plot",
+                            character(1)))
+
       shiny::tagList(
+        edark_section_label("Will contain", first = TRUE),
+        edark_info_row("Items",         n),
+        edark_info_row("Output format", format_label),
+
+        edark_section_label("Item types"),
+        lapply(names(kinds), function(k) edark_info_row(k, as.integer(kinds[[k]]))),
+
+        edark_section_label("Source data"),
+        edark_info_row("Rows",    format(nrow(shared_state$dataset_working), big.mark = ",")),
+        edark_info_row("Columns", ncol(shared_state$dataset_working)),
         shiny::tags$p(
-          class = "text-muted small mb-3",
-          shiny::icon("layer-group"),
-          paste0(" ", n, " item", if (n != 1) "s" else "", " queued for export.")
-        ),
-        # Thumbnail grid preview
-        shiny::div(
-          class = "d-flex flex-wrap gap-3",
-          lapply(seq_along(items), function(i) {
-            item <- items[[i]]
-            shiny::div(
-              class = "text-center",
-              style = "width:140px;",
-              shiny::tags$img(
-                src   = .thumb_src(item$thumb_path),
-                width = "140px", height = "105px",
-                style = "object-fit:cover; border-radius:6px; border:1px solid #dee2e6;"
-              ),
-              shiny::tags$div(
-                class = "small text-muted mt-1",
-                style = "word-break:break-word;",
-                paste0(i, ". ", item$title)
-              )
-            )
-          })
-        ),
-        shiny::tags$hr(),
-        shiny::tags$p(
-          class = "text-muted small",
-          shiny::icon("circle-info"), " ",
-          "Select output format and click ",
-          shiny::tags$strong("Generate & Download"), " in the sidebar.",
-          shiny::tags$br(),
-          "Plots are re-rendered using the current working dataset."
+          class = "small text-muted mt-2 mb-0",
+          "Each item is re-drawn from the current working dataset when the
+           report is generated, so the file reflects the data as it is now."
         )
       )
     })
+
+
+    # Messages for the Custom Report page. There is no centre, so the page
+    # contract puts these at the top of the info column.
+    edark_messages_server(output, shiny::reactive({
+      msgs <- list()
+      if (length(shared_state$custom_report_items) == 0) {
+        msgs <- c(msgs, list(edark_message(
+          "info", "Your custom report is empty.",
+          detail = shiny::tagList(
+            "Go to ", shiny::tags$strong("Explore"), ", run a plot, then click ",
+            shiny::tags$strong("Add to Custom Report"), "."
+          )
+        )))
+      }
+      if (isTRUE(shared_state$explore_needs_refresh)) {
+        msgs <- c(msgs, list(edark_message(
+          "stale", "The working dataset has changed since these items were added.",
+          detail = "Their thumbnails still show the earlier data; the generated report will not."
+        )))
+      }
+      msgs
+    }), id = "custom_messages")
 
     # ── Custom Report: download handler ───────────────────────────────────────
 
@@ -833,11 +756,9 @@ report_server <- function(id, shared_state) {
             column_types     = shared_state$column_types,
             format           = input$custom_output_format,
             output_path      = file,
-            ggplot_theme     = input$custom_ggplot_theme     %||% "minimal",
-            color_palette    = input$custom_color_palette    %||% "Set2",
-            show_data_labels = isTRUE(input$custom_show_data_labels),
-            show_legend      = isTRUE(input$custom_show_legend),
-            legend_position  = input$custom_legend_position  %||% "top",
+            # No report-level aesthetics: each item carries the appearance it
+            # had on screen when it was added, so the document reproduces what
+            # the user saw rather than restyling every item at once (D7).
             progress_fn      = function(frac, detail) {
               session$sendCustomMessage("edark_report_progress", detail)
             }

@@ -17,7 +17,7 @@ This file is the **index**: where to find things, the rules that must never be b
 | [NOTE_implementation.md](NOTE_implementation.md) | §N | Pitfalls, the **statistical methods registry** (§N2), and as-built mechanics per stage |
 | [NOTE_UI-principles.md](NOTE_UI-principles.md) | — | Layout, action placement, visual hierarchy. Read before any UI work so it isn't reinvented each time |
 | [BUILD_Analysis.md](BUILD_Analysis.md) | — | Analyze build phases and acceptance criteria (incl. Phase 5b code generator, Phase 8 export, Phase S sessions) |
-| [BUILD_UI-redesign.md](BUILD_UI-redesign.md) | - | **The single UI plan** (Claude + Codex assessments merged 2026-09-22): settled decisions, assessment, and Stages 0-6 - honest locking first, component library, CSS theme, config / result / info page contract with a messages area, flatter navigation. `bslib` + R + plain CSS only. Stage status table at the top; work one stage per session |
+| [BUILD_UI-redesign.md](BUILD_UI-redesign.md) | - | **The single UI plan** (Claude + Codex assessments merged 2026-09-22; revised 2026-09-23 from user feedback, §1.3): settled decisions, assessment, and Stages 0-6 - honest locking first, component library, CSS theme, config / result / info page contract with a messages area, flatter navigation. `bslib` + R + plain CSS only. Stage status table at the top; work one stage per session. **§1.3 holds the UI principles taken from real use (button scale, placement by scope, shared settings, no redundant surfaces) - read it before any UI work, alongside `NOTE_UI-principles.md`** |
 | [Codex proofing.md](Codex%20proofing.md) | — | Briefing notes for an external proofing agent |
 | [tools/PRD_section_map.md](tools/PRD_section_map.md) | — | Old → new section numbers (migration aid), plus the scripts that generated it |
 
@@ -83,9 +83,11 @@ What each file does is in the root `CLAUDE.md`. This is the § lookup.
 | `module_row_filter.R` | §P6 |
 | `module_prepare_confirm.R` | §P7 |
 | `module_data_preview.R` | §P8 |
-| `module_explore_controls.R` | §E3, §E4, §E7 |
+| `module_explore_controls.R` | §E3, §E4 |
 | `module_trend_controls.R` | §E5 |
 | `module_explore_output.R` | §E6 |
+| `module_appearance.R` | §E7 |
+| `ui_helpers.R` | - (BUILD_UI-redesign Stages 1-2) |
 | `module_report.R` | §E10–E12 |
 | `module_analysis_main.R` | §A5.1, §N6.3 |
 | `module_analysis_setup.R` | §A5.3, §N6.4 |
@@ -118,7 +120,18 @@ What each file does is in the root `CLAUDE.md`. This is the § lookup.
 - **Analyze:** Phases 0–7 and 6b complete — Setup (incl. model purpose + train/test split), Table 1, Variable Investigation, Covariate Confirmation, Model Creation, Diagnostics, Performance, Results.
 - **Built 2026-09-19:** Phase 7b performance validation — Step 1 validation method (bootstrap / cross-validation / held-out test set, mutually exclusive), settings and Cancel-able runs in Model › Performance (§A1.4a, §A5.3).
 - **Stubs and deferrals:** Export (`module_analysis_export.R`, `service_analysis_export.R`) is a placeholder; Phase 8 fills it with export materials, items disabled until created (§A10, §A5.3). Phase 5b's R code generator (`service_analysis_codegen.R`) is deferred — the R Code Preview is a placeholder; it should consume `prepare_snapshot` + the spec (incl. `purpose_specification`).
-- **Not started:** Phase S session save / load / autosave (§M8); UI consistency Stages 1–6 ([BUILD_UI-redesign.md](BUILD_UI-redesign.md); Stage 0 quick fixes done 2026-09-22).
+- **Built 2026-09-23:** UI consistency Stage 1 - honest locking. `R/ui_helpers.R`
+  (`EDARK_LOCK_REASON`, `edark_run_button()`, `edark_run_gate()`) and
+  `inst/www/edark.css` now exist; every gated Analyze nav item explains itself in a
+  popover and every Run button is disabled with its reason visible
+  ([BUILD_UI-redesign.md](BUILD_UI-redesign.md) Stage 1).
+- **Built 2026-09-23:** UI consistency Stage 2 - component library + one home for aesthetics. `R/ui_helpers.R` gained `edark_section_label()`, `edark_button()`, `edark_action_toolbar()`, `edark_empty_state()`, `edark_message()`, `edark_info_row()`, `edark_model_header()` and `edark_aesthetics_controls()`; the four aesthetics accordions became one `R/module_appearance.R` panel (D9 as amended); Full and Custom reports now generate with the aesthetics on screen (D7)
+- **Built 2026-09-23:** UI consistency Stage 3 - the theme file. `inst/www/edark.css` now carries named tokens (status scale, four column-type colours), a calm navbar, one pill treatment per nav level with Analyze stepper states, focus rings, scroll containment and the three absorbed inline `tags$style()` blocks. Dark mode is `bslib::input_dark_mode()` flipping `data-bs-theme` instead of a `flatly <-> darkly` preset swap, so it needs no server code
+- **Built 2026-09-23:** UI consistency Stage 4 - the page contract. Every page is now `edark_page()`: config left at 340 px, messages + result in the centre, info right at 300 px (Report › Custom has no centre, D11). Prepare's dimensions and an itemised pending list moved to its info pane and its warnings to the messages slot; Setup and Covariates flipped from a right-hand mixed sidebar to config left / info right; Model › Summary and Step 6 gained both panes; the six sidebar widths collapsed to `EDARK_CONFIG_WIDTH` / `EDARK_INFO_WIDTH`
+- **Built 2026-09-23:** UI consistency Stage 5 - flatter navigation, one look per level. Prepare and Explore page tabs became pills; Step 3's nested pills and Report's Full / Custom became underline tabs; Data Preview dropped from three tab levels to one pair of toggles; Analyze's six step pills fit one row at 1280 px with shortened labels. Card tabs are now used only for views of one generated result. **Open for the user:** Report's Full / Custom went to level 3b rather than the config-pane pills D8 names, because D11 leaves Custom with no result surface - see Stage 5 in BUILD_UI-redesign.md
+- **Built 2026-09-23:** UI consistency Stage 6 - the small fixes. Explore gained an empty state and its plot toolbar is disabled until a plot exists; the variable-selection modal puts its actions above the list; the Row Filters row count moved into Prepare's info pane; copy pass ("Explore Data", "Clear", "Run Selection"); the button sweep is clean - `grep` for `"btn-` finds hits only in `R/ui_helpers.R`
+- **UI consistency plan complete:** all six stages done ([BUILD_UI-redesign.md](BUILD_UI-redesign.md)). Report's Full / Custom sits at level 3b (underline tabs) rather than the config-pane pills D8 named - ruled 2026-09-23: it is the third nested level, so it follows the level, not the original wording
+- **Not started:** Phase S session save / load / autosave (§M8).
 
 ---
 
@@ -128,7 +141,6 @@ Each needs a decision: change the code or change the doc.
 
 - **Analyze step count — §A and the build plan still say nine, code has six.** `module_analysis_main.R` has six top-level `nav_panel`s, with Diagnostics / Performance / Results nested as sub-tabs under **Step 5 Model** and Export as **Step 6**. §N was renumbered to match the code (2026-09-21); `PRD_3_Analyze.md` and `BUILD_Analysis.md` were **not** — doing so touches §A references throughout. Until they are, read §A's "Step 6/7/8" as the Model › Diagnostics / Performance / Results sub-tabs and "Step 9" as Step 6 Export.
 - **Trend "count" mode.** Old docs described a "None" trend variable giving `trend_count`, and a `trend_proportion` type. Code: the trend variable is required, and types are `trend_numeric` / `trend_factor`. §E5 documents the code. Decide whether an event-count mode is wanted.
-- **Bug — factor trend summary table.** `module_explore_output.R` (~line 179) lists trend types as `trend_count` / `trend_numeric` / `trend_proportion`, so a `trend_factor` plot summarises the timestamp column instead of the trend variable. Fix: use the real type names.
 - **Dead renderer.** `render_plot()` dispatches `trend_mean`, which no spec builder produces.
 - **Dataset signature.** §A3.2 specifies a structural signature; Step 1 stores a sha256 hash of the data (see the note in §A3.2).
 - **Type overrides without UI.** `column_type_overrides` exists in state and pipeline, but no UI sets it (§P4). Keep as a hook or remove.

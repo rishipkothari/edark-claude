@@ -1145,16 +1145,20 @@ generate_report <- function(dataset,
 #' @param output_path File path for the generated report.
 #' @param progress_fn Optional callback `function(fraction, detail)` for
 #'   progress reporting (e.g. Shiny's `setProgress`).
+#' @param ggplot_theme,color_palette,show_data_labels,show_legend,legend_position
+#'   Optional appearance overrides applied to *every* item, for programmatic
+#'   callers who want one consistent look. Leave them NULL - as the app does -
+#'   to keep the appearance each item was captured with.
 #'
 #' @return `output_path`, invisibly.
 #' @export
 generate_custom_report <- function(items, dataset, column_types, format,
                                     output_path, progress_fn = NULL,
-                                    ggplot_theme     = "minimal",
-                                    color_palette    = "Set2",
-                                    show_data_labels = FALSE,
-                                    show_legend      = TRUE,
-                                    legend_position  = "top") {
+                                    ggplot_theme     = NULL,
+                                    color_palette    = NULL,
+                                    show_data_labels = NULL,
+                                    show_legend      = NULL,
+                                    legend_position  = NULL) {
   stopifnot(is.list(items), length(items) >= 1)
   stopifnot(format %in% c("pptx", "docx", "html"))
   stopifnot(is.data.frame(dataset))
@@ -1162,13 +1166,19 @@ generate_custom_report <- function(items, dataset, column_types, format,
   if (!is.null(progress_fn)) progress_fn(0, "Building dataset summary...")
   dataset_summary_df <- .build_dataset_summary(dataset, column_types)
 
-  plot_aesthetics <- list(
+  # Each item already carries the appearance it had when it was added, so an
+  # aesthetic argument is an override for programmatic callers only. The app
+  # passes none: a report must reproduce what the user saw, not restyle every
+  # item to one look (D7 in PRD/BUILD_UI-redesign.md). Dropping the NULLs is
+  # what makes "not supplied" mean "leave each item alone" - the defaults used
+  # to be concrete values, so every item was silently restyled.
+  plot_aesthetics <- Filter(Negate(is.null), list(
     ggplot_theme     = ggplot_theme,
     color_palette    = color_palette,
     show_data_labels = show_data_labels,
     show_legend      = show_legend,
     legend_position  = legend_position
-  )
+  ))
 
   sections <- .build_custom_report_sections(items, dataset, column_types, progress_fn,
                                              plot_aesthetics = plot_aesthetics)
