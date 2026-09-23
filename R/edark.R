@@ -42,11 +42,11 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       bootswatch = "flatly",
       primary    = "#2c7be5"
     ),
-    header = shiny::tags$head(shiny::tags$style(shiny::HTML("
+    header = shiny::tagList(
+      # Required for shinyjs::disabled() / toggleState() to take effect
+      shinyjs::useShinyjs(),
+      shiny::tags$head(shiny::tags$style(shiny::HTML("
       /* ── EDARK custom properties ── change values here, nowhere else ────── */
-      :root {
-        --edark-picker-bg: #ffffff;
-      }
 
       /* sidebar nav-pill tabs */
       .sidebar .nav-pills .nav-link {
@@ -57,13 +57,13 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
         font-weight: 500;
       }
       .sidebar .nav-pills .nav-link:not(.active) {
-        background-color: #eef1f5;
-        color: #495057;
-        border: 1px solid #dee2e6;
+        background-color: var(--bs-tertiary-bg);
+        color: var(--bs-secondary-color);
+        border: 1px solid var(--bs-border-color);
       }
       .sidebar .nav-pills .nav-link:not(.active):hover {
-        background-color: #e2e6ea;
-        color: #343a40;
+        background-color: var(--bs-secondary-bg);
+        color: var(--bs-body-color);
       }
 
       /* gap below tab bar, then leading whitespace inside each tab content */
@@ -76,16 +76,27 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
 
       /* pickerInput button background */
       .bootstrap-select > .btn {
-        background-color: var(--edark-picker-bg) !important;
-        border-color: #ced4da !important;
+        background-color: var(--bs-body-bg) !important;
+        border-color: var(--bs-border-color) !important;
       }
       .bootstrap-select > .btn:hover,
       .bootstrap-select > .btn:focus,
       .bootstrap-select.show > .btn {
-        background-color: var(--edark-picker-bg) !important;
+        background-color: var(--bs-body-bg) !important;
         border-color: #86b7fe !important;
       }
-    "))),
+
+      /* theme + debug navbar buttons */
+      #theme_toggle, #debug_btn {
+        background: none;
+        border: none;
+        color: rgba(255,255,255,0.75);
+        font-size: 1.1rem;
+        padding: 0.25rem 0.5rem;
+        line-height: 1;
+      }
+      #theme_toggle:hover, #debug_btn:hover { color: #ffffff; }
+    ")))),
 
     # ── Tab 1: Prepare ───────────────────────────────────────────────────────
     bslib::nav_panel(
@@ -128,24 +139,44 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
     bslib::nav_panel(
       value = "explore",
       title = shiny::tagList(shiny::icon("magnifying-glass-chart"), " 2 \u00b7 Explore"),
-      bslib::layout_sidebar(
-        sidebar = bslib::sidebar(
-          width = 400,
-          bslib::navset_pill(
-            bslib::nav_panel("Describe",     describe_controls_ui("describe_controls")),
-            bslib::nav_panel("Correlate", relationship_controls_ui("relationship_controls")),
-            bslib::nav_panel("Trend",        trend_controls_ui("trend_controls"))
+      bslib::navset_tab(
+        id = "explore_tabs",
+        bslib::nav_panel(
+          value = "plot",
+          title = shiny::tagList(shiny::icon("chart-area"), " Plot"),
+          bslib::layout_sidebar(
+            sidebar = bslib::sidebar(
+              width = 400,
+              bslib::navset_pill(
+                bslib::nav_panel("Describe",  describe_controls_ui("describe_controls")),
+                bslib::nav_panel("Correlate", relationship_controls_ui("relationship_controls")),
+                bslib::nav_panel("Trend",     trend_controls_ui("trend_controls"))
+              )
+            ),
+            explore_output_ui("explore_output")
           )
         ),
-        explore_output_ui("explore_output")
+        bslib::nav_panel(
+          value = "report",
+          title = shiny::tagList(shiny::icon("file-export"), " Report"),
+          report_ui("report")
+        )
       )
     ),
 
-    # ── Tab 3: Report ───────────────────────────────────────────────────────
+    # ── Tab 3: Analyze ───────────────────────────────────────────────────────
     bslib::nav_panel(
-      value = "report",
-      title = shiny::tagList(shiny::icon("file-export"), " 3 \u00b7 Report"),
-      report_ui("report")
+      value = "analyze",
+      title = shiny::tagList(shiny::icon("chart-simple"), " 3 \u00b7 Analyze"),
+      analysis_main_ui("analysis_main")
+    ),
+
+    bslib::nav_spacer(),
+    bslib::nav_item(
+      shiny::actionButton("debug_btn", label = shiny::icon("bug"))
+    ),
+    bslib::nav_item(
+      shiny::actionButton("theme_toggle", label = shiny::tagList(shiny::tags$span("Theme", class = "me-2"), shiny::icon("moon")))
     )
   )
 
@@ -212,7 +243,13 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
         column_transform_specs = list(),
         row_filter_specs       = list()
       ),
-      revert_trigger = 0L               # incremented by .revert_to_last_applied(); modules observe
+      revert_trigger = 0L,              # incremented by .revert_to_last_applied(); modules observe
+
+      # Analysis module fields — initialized as NULL; written to only by the
+      # analysis modules (see PRD §3.3). Never read or modified by Prepare/Explore.
+      analysis_data   = NULL,
+      analysis_spec   = NULL,
+      analysis_result = NULL
     )
 
     # ── Prepare tab navigation guard ──────────────────────────────────────────
@@ -260,22 +297,8 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
         # Guard: warn if custom report items exist (same guard as Apply button).
         n_items <- length(shiny::isolate(shared_state$custom_report_items))
         if (n_items > 0) {
-          shiny::showModal(shiny::modalDialog(
-            title = "Custom Report May Be Affected",
-            paste0(
-              "You have ", n_items, " item(s) in your custom report. ",
-              "Dataset changes will clear custom report items. Would you like to proceed?"
-            ),
-            footer = shiny::tagList(
-              shiny::actionButton("cancel_nav_apply_btn",
-                                  "Go Back & Revert Changes",
-                                  class = "btn-outline-secondary"),
-              shiny::actionButton("confirm_nav_apply_btn",
-                                  "Apply and Clear Custom Report",
-                                  class = "btn-warning")
-            ),
-            easyClose = FALSE
-          ))
+          .custom_items_modal(n_items, "cancel_nav_apply_btn",
+                              "confirm_nav_apply_btn", "Apply Changes")
           return()  # do NOT update last_prepare_tab — stays on old tab
         }
         .do_nav_apply()
@@ -299,10 +322,108 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       bslib::nav_select("prepare_tabs", last_prepare_tab())
     }, ignoreInit = TRUE)
 
+    # ── Light / dark theme toggle ─────────────────────────────────────────────
+    is_dark_theme <- shiny::reactiveVal(FALSE)
+
+    shiny::observeEvent(input$theme_toggle, {
+      dark <- !is_dark_theme()
+      is_dark_theme(dark)
+      session$setCurrentTheme(
+        bslib::bs_theme(
+          version    = 5,
+          bootswatch = if (dark) "darkly" else "flatly",
+          primary    = "#2c7be5"
+        )
+      )
+      shiny::updateActionButton(session, "theme_toggle",
+        label = shiny::tagList(span("Theme", class = "me-2"), icon(if (dark) "sun" else "moon"))
+      )
+    }, ignoreInit = TRUE)
+
+    # ── Debug button ──────────────────────────────────────────────────────────
+     shiny::observeEvent(input$debug_btn, {
+      if (!identical(input$main_navbar, "analyze")) return(invisible(NULL))
+    
+      step <- input[["analysis_main-analysis_steps"]]
+      if (is.null(step)) step <- "step1"
+      # Step 5 (Model) has sub-tabs: key on "step5_<subtab>"
+      if (step == "step5") step <- paste0("step5_", input[["analysis_main-model_tabs"]] %||% "summary")
+    
+      .dbg <- function(label, x) {
+        cat(sprintf("  [%s]\n", label), file = stderr())
+        if (is.null(x)) cat("    <NULL>\n", file = stderr()) else str(x, max.level = 3, give.attr = FALSE, file = stderr())
+      }
+    
+      spec   <- shiny::isolate(shared_state$analysis_spec)
+      result <- shiny::isolate(shared_state$analysis_result)
+      adata  <- shiny::isolate(shared_state$analysis_data)
+    
+      cat(sprintf("\n\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 DEBUG \u00b7 %s \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n", toupper(step)), file = stderr())
+    
+      if (step == "step1") {
+        if (!is.null(adata)) {
+          cat(sprintf("  [analysis_data] %d rows \u00d7 %d cols\n", nrow(adata), ncol(adata)), file = stderr())
+          cat(sprintf("  cols: %s\n", paste(names(adata), collapse = ", ")), file = stderr())
+        } else {
+          cat("  [analysis_data] <NULL>\n", file = stderr())
+        }
+        .dbg("analysis_spec$variable_roles",                    spec$variable_roles)
+        .dbg("analysis_spec$specification_metadata$study_type", spec$specification_metadata$study_type)
+        .dbg("analysis_spec$variable_roles$reference_levels",   spec$variable_roles$reference_levels)
+    
+      } else if (step == "step2") {
+        .dbg("analysis_result$result_tables$table1_overall",     result$result_tables$table1_overall)
+        .dbg("analysis_result$result_tables$table1_by_exposure", result$result_tables$table1_by_exposure)
+        .dbg("analysis_result$result_tables$table1_by_outcome",  result$result_tables$table1_by_outcome)
+    
+      } else if (step == "step3") {
+        .dbg("analysis_result$variable_investigation",        result$variable_investigation)
+        .dbg("analysis_spec$variable_selection_specification", spec$variable_selection_specification)
+    
+      } else if (step == "step4") {
+        .dbg("analysis_spec$variable_roles$final_model_covariates", spec$variable_roles$final_model_covariates)
+        .dbg("analysis_spec$variable_roles$reference_levels",       spec$variable_roles$reference_levels)
+    
+      } else if (step %in% c("step5_summary", "step5_create")) {
+        .dbg("analysis_spec$model_design",             spec$model_design)
+        .dbg("analysis_result$fitted_models$primary",  result$fitted_models$primary_model)
+        .dbg("analysis_result$run_status",             result$run_status)
+    
+      } else if (step == "step5_diagnostics") {
+        .dbg("analysis_result$result_plots$diagnostic_plots", result$result_plots$diagnostic_plots)
+        .dbg("analysis_result$inference_summary",             result$inference_summary)
+    
+      } else if (step == "step5_performance") {
+        .dbg("analysis_spec$purpose_specification", spec$purpose_specification)
+        .dbg("analysis_spec$validation_settings",   spec$validation_settings)
+        .dbg("analysis_result$performance",         result$performance)
+
+      } else if (step == "step5_results") {
+        .dbg("analysis_result$result_tables",    result$result_tables)
+        .dbg("analysis_result$inference_summary", result$inference_summary)
+
+      } else if (step == "step6") {
+        .dbg("analysis_spec (full)", spec)
+        if (!is.null(result)) {
+          cat(sprintf("  [analysis_result keys] %s\n", paste(names(result), collapse = ", ")), file = stderr())
+        } else {
+          cat("  [analysis_result] <NULL>\n", file = stderr())
+        }
+      }
+    
+      cat("\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n\n", file = stderr())
+    }, ignoreInit = TRUE)
+
     # ── Cross-tab navigation (requested by modules via shared_state$requested_tab) ─
     shiny::observeEvent(shared_state$requested_tab, {
       req(!is.null(shared_state$requested_tab))
-      bslib::nav_select("main_navbar", shared_state$requested_tab)
+      tab <- shared_state$requested_tab
+      if (tab == "report") {
+        bslib::nav_select("main_navbar", "explore")
+        bslib::nav_select("explore_tabs", "report")
+      } else {
+        bslib::nav_select("main_navbar", tab)
+      }
       shared_state$requested_tab <- NULL
     }, ignoreNULL = TRUE, ignoreInit = TRUE)
 
@@ -324,6 +445,7 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
     trend_controls_server("trend_controls",               shared_state)
     explore_output_server("explore_output",   shared_state)
     report_server("report",                   shared_state)
+    analysis_main_server("analysis_main",     shared_state)
   }
 
   shiny::shinyApp(ui = ui, server = server)

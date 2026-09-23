@@ -5,36 +5,96 @@
 \alias{liver_tx}
 \title{Synthetic liver transplant dataset}
 \format{
-A data frame with 120 rows and 13 columns:
+A data frame with 500 rows and 36 columns:
 \describe{
 \item{patient_mrn}{Integer. 7-digit medical record number.}
-\item{case_date}{Date. Transplant date (2019-06-01 to 2023-06-01).}
-\item{preop_meld}{Integer. Pre-operative MELD score (5–40).}
-\item{preop_hb}{Numeric. Pre-operative haemoglobin in g/dL (5–15).}
-\item{liver_donor_type}{Factor. Donor category: \code{dbd}, \code{dcd}, \verb{living donor}.}
-\item{intraop_max_lactate}{Numeric. Intraoperative peak lactate in mmol/L (2–10).}
-\item{ivc_clamp_type}{Factor. IVC technique: \verb{full clamp} or \code{piggyback}.}
-\item{ead}{Logical. Early allograft dysfunction.}
-\item{postop_aki_stage}{Ordered factor (1–3). Post-operative AKI stage; \code{NA} if no AKI.}
-\item{preop_intubation}{Logical. Intubated pre-operatively.}
+\item{case_date}{Date. Transplant date (2019-06-01 to 2023-05-31).}
+\item{transplant_center}{Factor. One of 12 centers, unbalanced in size.
+Intended as the clustering variable for mixed models.}
+
+\item{recipient_age}{Numeric. Recipient age in years (18–76).}
+\item{recipient_height_cm}{Numeric. Recipient height in cm.}
+\item{recipient_weight_kg}{Numeric. Recipient weight in kg.}
+\item{recipient_bmi}{Numeric. Body mass index, derived exactly from height
+and weight.}
+
+\item{preop_meld}{Integer. Pre-operative MELD score (6–40), computed from
+bilirubin, INR and creatinine.}
+\item{preop_meld_na}{Integer. Sodium-adjusted MELD (MELD-Na), 6–40.}
+\item{preop_bilirubin}{Numeric. Pre-operative total bilirubin in mg/dL.}
+\item{preop_inr}{Numeric. Pre-operative INR. ~3\\% missing.}
+\item{preop_creatinine}{Numeric. Pre-operative creatinine in mg/dL.}
+\item{preop_sodium}{Integer. Pre-operative serum sodium in mmol/L.}
+\item{preop_albumin}{Numeric. Pre-operative albumin in g/dL. ~8\\% missing.}
+\item{preop_hb}{Numeric. Pre-operative haemoglobin in g/dL.}
+\item{preop_dialysis}{Logical. On renal replacement therapy pre-operatively.}
 \item{preop_icu}{Logical. In ICU pre-operatively.}
+\item{preop_intubation}{Logical. Intubated pre-operatively.}
+
+\item{liver_donor_type}{Factor. Donor category: \code{dbd}, \code{dcd}, \verb{living donor}.}
+\item{donor_age}{Numeric. Donor age in years. ~12\\% missing.}
+\item{cold_ischemia_time_hours}{Numeric. Cold ischemia time in hours.}
+
+\item{ivc_clamp_type}{Factor. IVC technique: \verb{full clamp} or \code{piggyback}.}
+\item{intraop_ebl_ml}{Numeric. Estimated intraoperative blood loss in mL.}
+\item{intraop_rbc_units}{Integer. Units of packed red cells transfused.}
+\item{intraop_max_lactate}{Numeric. Intraoperative peak lactate in mmol/L.
+~5\\% missing.}
+
+\item{ead}{Logical. Early allograft dysfunction (~31\\% prevalence). Primary
+binary outcome.}
+\item{postop_aki_stage}{Ordered factor (1–3). Post-operative AKI stage;
+\code{NA} if no AKI.}
 \item{postop_intubation}{Logical. Intubated post-operatively.}
-\item{postop_mechanical_ventilation_hours}{Integer. Hours on mechanical ventilation post-op; \code{0} if not intubated.}
+\item{postop_mechanical_ventilation_hours}{Integer. Hours on mechanical
+ventilation post-op; \code{0} if not intubated.}
+\item{postop_los_days}{Integer. Post-operative length of stay in days.
+Primary continuous outcome.}
+
+\item{donor_blood_type}{Factor. ABO group. No effect on any outcome.}
+\item{donor_height_cm}{Numeric. No effect on any outcome.}
+\item{or_room_number}{Factor. Operating room, \code{OR-1}–\code{OR-6}. No effect.}
+\item{surgery_start_hour}{Integer. Hour of day surgery began. No effect.}
+\item{preop_ferritin}{Numeric. No effect. ~35\\% missing, enough to trip the
+>20\\% missingness warning.}
+\item{referral_source}{Factor. \code{internal}, \code{external}, \code{transfer}. No effect.}
 }
 }
 \source{
-Synthetically generated via \code{liver_tx_sample.R}.
+Synthetically generated via \code{data-raw/liver_tx_sample.R}.
 }
 \usage{
 liver_tx
 }
 \description{
-A synthetic dataset of 120 simulated liver transplant cases, designed for
-testing and demonstrating the EDARK GUI. Clinical correlations are baked in
-(EAD risk elevated for DCD donors and high intraoperative lactate; AKI risk
-scales with MELD and EAD) so the distributions are interesting to explore.
+A synthetic dataset of 500 simulated liver transplant cases, designed for
+testing and demonstrating the EDARK GUI — including the Analyze module's
+collinearity screen and variable selection routines.
 }
 \details{
+Clinical relationships are baked in rather than random: EAD risk rises with
+DCD donors, cold ischemia time, donor age and intraoperative lactate; AKI and
+length of stay scale with MELD, EAD, blood loss and pre-operative dialysis;
+and \code{transplant_center} carries genuine random intercepts on both outcomes.
+
+Three collinearity structures are present by design:
+\itemize{
+\item \code{preop_meld_na} is the UNOS sodium adjustment applied to \code{preop_meld}
+(r ~ 0.92, VIF ~ 10) — a severe, clinically realistic pair.
+\item \code{recipient_bmi} is exactly \code{recipient_weight_kg / (recipient_height_cm/100)^2}
+(VIF 40–150 when all three enter a model).
+\item \code{intraop_rbc_units} is driven by \code{intraop_ebl_ml} (r ~ 0.92).
+\item \code{preop_meld} is the MELD formula applied to \code{preop_bilirubin},
+\code{preop_inr} and \code{preop_creatinine} — moderate collinearity (VIF ~ 5),
+since the formula is on the log scale.
+}
+
+Six columns — \code{donor_blood_type}, \code{donor_height_cm}, \code{or_room_number},
+\code{surgery_start_hour}, \code{preop_ferritin} and \code{referral_source} — have \strong{zero}
+effect on every outcome, so stepwise and LASSO selection can be checked for
+discarding them. \code{preop_sodium} is deliberately weak: it survives a liberal
+univariable screen but is dropped by BIC-based stepwise selection.
+
 \code{case_date} is stored as \code{Date} and will be auto-cast to \code{POSIXct} by
 \code{edark()} at launch.
 }

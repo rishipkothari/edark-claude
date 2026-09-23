@@ -172,7 +172,7 @@ transform_variables_server <- function(id, shared_state) {
                 ),
                 shiny::textInput(
                   ns(paste0("lbl_", .col)),
-                  label       = "Level labels (optional \u2014 defaults to numeric ranges):",
+                  label       = "Level labels (optional - defaults to numeric ranges):",
                   placeholder = "e.g. Young, Middle, Old",
                   value       = lbl_val
                 )

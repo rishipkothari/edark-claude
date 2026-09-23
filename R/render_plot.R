@@ -565,9 +565,11 @@ render_plot <- function(spec, dataset, max_factor_levels = 20, split_panels = FA
 
   # Compute Pearson r, R², p and format as a plain string.
   .cor_label <- function(x, y) {
-    ct    <- cor.test(x, y, method = "pearson")
-    r_val <- as.numeric(ct$estimate)
-    sprintf("R\u00b2 = %.2f   r = %.2f   p = %.3g", r_val^2, r_val, ct$p.value)
+    ct    <- edark_cor_test(x, y)
+    r_val <- ct$r
+    p     <- edark_format_p(ct$p.value)
+    sprintf("R\u00b2 = %.2f   r = %.2f   p %s", r_val^2, r_val,
+            if (startsWith(p, "<")) p else paste("=", p))
   }
 
   if (!is.null(stratify)) {

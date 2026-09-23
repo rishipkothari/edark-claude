@@ -139,9 +139,9 @@ if (include_dataset_summary && !is.null(params$dataset_summary_df)) {
   num_cols <- c("Min", "Max", "Mean", "SD", "Median", "IQR", "Skewness", "Kurtosis")
   df_disp  <- df
   for (col in num_cols) {
-    df_disp[[col]] <- ifelse(is.na(df_disp[[col]]), "\u2014", as.character(df_disp[[col]]))
+    df_disp[[col]] <- ifelse(is.na(df_disp[[col]]), "-", as.character(df_disp[[col]]))
   }
-  df_disp$Top_values <- ifelse(is.na(df_disp$Top_values), "\u2014", df_disp$Top_values)
+  df_disp$Top_values <- ifelse(is.na(df_disp$Top_values), "-", df_disp$Top_values)
 
   # Make Variable column a clickable link where the variable has a section anchor
   df_disp$Variable <- vapply(df_disp$Variable, function(v) {
@@ -168,7 +168,7 @@ if (include_dataset_summary && !is.null(params$dataset_summary_df)) {
     cat('<tr>')
     for (j in seq_along(col_headers)) {
       val <- df_disp[i, j]
-      cat(paste0('<td>', if (is.na(val)) "\u2014" else val, '</td>'))
+      cat(paste0('<td>', if (is.na(val)) "-" else val, '</td>'))
     }
     cat('</tr>\n')
   }

@@ -101,9 +101,9 @@
   num_cols <- c("Min", "Max", "Mean", "SD", "Median", "IQR", "Skewness", "Kurtosis")
   df_disp  <- df
   for (col in num_cols) {
-    df_disp[[col]] <- ifelse(is.na(df_disp[[col]]), "\u2014", as.character(df_disp[[col]]))
+    df_disp[[col]] <- ifelse(is.na(df_disp[[col]]), "-", as.character(df_disp[[col]]))
   }
-  df_disp$Top_values <- ifelse(is.na(df_disp$Top_values), "\u2014", df_disp$Top_values)
+  df_disp$Top_values <- ifelse(is.na(df_disp$Top_values), "-", df_disp$Top_values)
 
   right_cols <- c("N", "N_missing", "Pct_miss", "N_unique",
                   "Min", "Max", "Mean", "SD", "Median", "IQR", "Skewness", "Kurtosis")
@@ -224,18 +224,10 @@
           idx          <- !is.na(dataset[[stratify_by]]) & dataset[[stratify_by]] == strata[i]
           row[[strat_cols[i]]] <- fmt_mean_sd(x[idx])
         }
-        # Kruskal-Wallis p
-        grps <- split(x[!is.na(x)], droplevels(factor(
-          dataset[[stratify_by]][!is.na(x)],
-          levels = strata
-        )))
-        grps <- grps[lengths(grps) > 0]
+        # Kruskal-Wallis p (stats_inference.R)
         row[[p_col]] <- tryCatch({
-          if (length(grps) >= 2) {
-            kt <- kruskal.test(x ~ factor(dataset[[stratify_by]], levels = strata),
-                               data = dataset)
-            formatC(kt$p.value, format = "g", digits = 3)
-          } else NA_character_
+          gt <- edark_group_test(x, factor(dataset[[stratify_by]], levels = strata))
+          if (is.na(gt$p.value)) NA_character_ else edark_format_p(gt$p.value)
         }, error = function(e) NA_character_)
       }
       list(as.data.frame(row, stringsAsFactors = FALSE))
@@ -245,18 +237,12 @@
         sort(unique(as.character(x[!is.na(x)])))
       n_valid_overall <- sum(!is.na(x))
 
-      # Chi-square / Fisher's p
+      # Chi-square / Fisher's exact p (stats_inference.R)
       p_val <- if (has_strat) {
         tryCatch({
-          tbl    <- table(factor(x, levels = lvls),
-                          factor(dataset[[stratify_by]], levels = strata))
-          chi_ct <- suppressWarnings(chisq.test(tbl))
-          if (any(chi_ct$expected < 5)) {
-            fp <- fisher.test(tbl, simulate.p.value = TRUE, B = 2000)$p.value
-            formatC(fp, format = "g", digits = 3)
-          } else {
-            formatC(chi_ct$p.value, format = "g", digits = 3)
-          }
+          gt <- edark_group_test(factor(x, levels = lvls),
+                                 factor(dataset[[stratify_by]], levels = strata))
+          if (is.na(gt$p.value)) NA_character_ else edark_format_p(gt$p.value)
         }, error = function(e) NA_character_)
       } else NA_character_
 
@@ -443,15 +429,14 @@
 #' @noRd
 .build_bivariate_num_num_table <- function(dataset, col_a, col_b, stratify_by) {
   run_cor <- function(x, y) {
-    complete <- !is.na(x) & !is.na(y)
-    if (sum(complete) < 3) return(list(r = NA, r2 = NA, p = NA, ci_lo = NA, ci_hi = NA))
-    ct <- cor.test(x[complete], y[complete], method = "pearson")
+    ct <- edark_cor_test(x, y)
+    if (is.na(ct$r)) return(list(r = NA, r2 = NA, p = NA, ci_lo = NA, ci_hi = NA))
     list(
-      r     = round(ct$estimate, 3),
-      r2    = round(ct$estimate^2, 3),
-      p     = formatC(ct$p.value, format = "g", digits = 3),
-      ci_lo = round(ct$conf.int[1], 3),
-      ci_hi = round(ct$conf.int[2], 3)
+      r     = round(ct$r, 3),
+      r2    = round(ct$r^2, 3),
+      p     = edark_format_p(ct$p.value),
+      ci_lo = round(ct$conf.low, 3),
+      ci_hi = round(ct$conf.high, 3)
     )
   }
 
@@ -507,16 +492,13 @@
 
   # Kruskal-Wallis p appended as footer row
   mw_p <- tryCatch({
-    grps <- split(num_vec[!is.na(num_vec)], droplevels(factor(fac_vec[!is.na(num_vec)], levels = lvls)))
-    grps <- grps[lengths(grps) > 0]
-    if (length(grps) >= 2) {
-      wt <- kruskal.test(num_vec ~ factor(fac_vec, levels = lvls), data = dataset)
-      formatC(wt$p.value, format = "g", digits = 3)
-    } else NA_character_
+    gt <- edark_group_test(num_vec, factor(fac_vec, levels = lvls))
+    if (is.na(gt$p.value)) NA_character_ else edark_format_p(gt$p.value)
   }, error = function(e) NA_character_)
 
   footer <- data.frame(
-    Level  = if (!is.na(mw_p)) paste0("Kruskal-Wallis p = ", mw_p) else "Kruskal-Wallis p = NA",
+    Level  = if (!is.na(mw_p)) paste0("Kruskal-Wallis p ", if (startsWith(mw_p, "<")) mw_p else paste("=", mw_p))
+             else "Kruskal-Wallis p = NA",
     N      = NA_real_, Mean = NA_real_, Median = NA_real_, SD = NA_real_, IQR = NA_real_,
     stringsAsFactors = FALSE
   )
@@ -552,16 +534,12 @@
 
   df <- make_crosstab(a_vec, b_vec, a_lvls, b_lvls)
 
-  # Use Fisher's exact when any expected count < 5, chi-square otherwise
-  tbl    <- table(factor(a_vec, levels = a_lvls), factor(b_vec, levels = b_lvls))
-  chi_ct <- suppressWarnings(chisq.test(tbl))
+  # Chi-square, or Fisher's exact when any expected count < 5 (stats_inference.R)
   footer_label <- tryCatch({
-    if (any(chi_ct$expected < 5)) {
-      fisher_p <- fisher.test(tbl, simulate.p.value = TRUE, B = 2000)$p.value
-      paste0("Fisher's exact p = ", formatC(fisher_p, format = "g", digits = 3),
-             " (simulated; expected cell counts < 5)")
-    } else {
-      paste0("Chi-square p = ", formatC(chi_ct$p.value, format = "g", digits = 3))
+    gt <- edark_group_test(factor(a_vec, levels = a_lvls), factor(b_vec, levels = b_lvls))
+    if (is.na(gt$p.value)) "Test p = NA" else {
+      p <- edark_format_p(gt$p.value)
+      paste0(gt$method, ": p ", if (startsWith(p, "<")) p else paste("=", p))
     }
   }, error = function(e) "Test p = NA")
 
@@ -1008,7 +986,7 @@ generate_report <- function(dataset,
       stop("primary_variable must be specified for report_type = 'primary_vs_others'")
     secondary_vars <- setdiff(variables, primary_variable)
     if (length(secondary_vars) == 0)
-      stop("No secondary variables to plot — ensure variables contains columns besides primary_variable.")
+      stop("No secondary variables to plot - ensure variables contains columns besides primary_variable.")
     .build_primary_vs_others_sections(
       dataset, column_types, secondary_vars,
       primary_variable, primary_role, stratify_variable,
@@ -1017,7 +995,7 @@ generate_report <- function(dataset,
   }
 
   if (length(sections) == 0)
-    stop("No sections could be built — check that selected variables exist in the dataset.")
+    stop("No sections could be built - check that selected variables exist in the dataset.")
 
   # Build linked_var_anchors for HTML: named vector mapping variable name → anchor ID.
   # For all_vars: every section variable links to its section.

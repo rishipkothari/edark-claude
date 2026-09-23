@@ -1,0 +1,130 @@
+file,line,old_ref,target_doc,new_ref,context
+"CLAUDE.md",63,"§8.6",analysis,"§A8.6","├── service_analysis_pipeline.R     reset_analysis_pipeline(shared_state, from_step) — clears downstream state p"
+"CLAUDE.md",99,"§3.5",analysis,"§A3.5","- `shared_state$analysis_spec` — named list: full declarative analysis specification (PRD §3.5)"
+"CLAUDE.md",100,"§3.6",analysis,"§A3.6","- `shared_state$analysis_result` — named list: fitted objects, result tables, plots, summaries (PRD §3.6)"
+"CLAUDE.md",254,"§4.2",analysis,"§A4.2","**Every p-value and CI in the app is computed in `R/stats_inference.R`. Never call `confint()`, `confint.default()`, `br"
+"PRD/Codex proofing.md",5,"§4.2",analysis,"§A4.2","PRD §4.2: the same rules written as the spec."
+"PRD/EDARK_Analysis_Build_Plan.md",15,"Global Mandates",analysis,"§A0","1. Add all packages from the PRD Global Mandates table to the DESCRIPTION file under `Imports:`"
+"PRD/EDARK_Analysis_Build_Plan.md",16,"§12.1",analysis,"§A12.1","2. Create all file stubs listed in §12.1 — empty module shells (`ui` + `server` functions that return placeholder UI)"
+"PRD/EDARK_Analysis_Build_Plan.md",26,"§8.6",analysis,"§A8.6","- `reset_analysis_pipeline(shared_state, from_step)` — clears downstream fields per §8.6"
+"PRD/EDARK_Analysis_Build_Plan.md",28,"§8.2",analysis,"§A8.2","- `validate_analysis(spec, data, tier = ""full"", verbose = FALSE)` — implements all checks from §8.2, both tiers"
+"PRD/EDARK_Analysis_Build_Plan.md",44,"§3.3",analysis,"§A3.3","- §3.3 (shared_state fields), §3.5 (analysis_spec structure), §3.6 (analysis_result structure)"
+"PRD/EDARK_Analysis_Build_Plan.md",44,"§3.5",analysis,"§A3.5","- §3.3 (shared_state fields), §3.5 (analysis_spec structure), §3.6 (analysis_result structure)"
+"PRD/EDARK_Analysis_Build_Plan.md",44,"§3.6",analysis,"§A3.6","- §3.3 (shared_state fields), §3.5 (analysis_spec structure), §3.6 (analysis_result structure)"
+"PRD/EDARK_Analysis_Build_Plan.md",45,"§5.1",analysis,"§A5.1","- §5.1 (layout overview), §12.1 (file structure)"
+"PRD/EDARK_Analysis_Build_Plan.md",45,"§12.1",analysis,"§A12.1","- §5.1 (layout overview), §12.1 (file structure)"
+"PRD/EDARK_Analysis_Build_Plan.md",46,"§7.1",analysis,"§A7.1","- §7.1 (formula assembly, reference levels, complete cases)"
+"PRD/EDARK_Analysis_Build_Plan.md",47,"§8.1–8.2",analysis,"§A8.1–A8.2","- §8.1–8.2 (validator architecture and checks)"
+"PRD/EDARK_Analysis_Build_Plan.md",48,"§8.6",analysis,"§A8.6","- §8.6 (reset_analysis_pipeline)"
+"PRD/EDARK_Analysis_Build_Plan.md",49,"Global Mandates",analysis,"§A0","- Global Mandates (DESCRIPTION Imports)"
+"PRD/EDARK_Analysis_Build_Plan.md",56,"§5.3",analysis,"§A5.3","- `module_analysis_setup.R` — full implementation per §5.3 Step 1 and §6.3"
+"PRD/EDARK_Analysis_Build_Plan.md",56,"§6.3",analysis,"§A6.3","- `module_analysis_setup.R` — full implementation per §5.3 Step 1 and §6.3"
+"PRD/EDARK_Analysis_Build_Plan.md",71,"§5.3",analysis,"§A5.3","- All role columns work: outcome, exposure (single-select), candidate, cluster (multi-select). *(Subject ID and time rol"
+"PRD/EDARK_Analysis_Build_Plan.md",76,"§1.4",analysis,"§A1.4","- Study type badge derives correctly from all four combinations (§1.4)"
+"PRD/EDARK_Analysis_Build_Plan.md",81,"§1.4",analysis,"§A1.4","- §1.4 (study type), §3.4 (freeze behavior), §3.5 (spec structure)"
+"PRD/EDARK_Analysis_Build_Plan.md",81,"§3.4",analysis,"§A3.4","- §1.4 (study type), §3.4 (freeze behavior), §3.5 (spec structure)"
+"PRD/EDARK_Analysis_Build_Plan.md",81,"§3.5",analysis,"§A3.5","- §1.4 (study type), §3.4 (freeze behavior), §3.5 (spec structure)"
+"PRD/EDARK_Analysis_Build_Plan.md",82,"§5.3",analysis,"§A5.3","- §5.3 Step 1, §6.3"
+"PRD/EDARK_Analysis_Build_Plan.md",82,"§6.3",analysis,"§A6.3","- §5.3 Step 1, §6.3"
+"PRD/EDARK_Analysis_Build_Plan.md",89,"§5.3",analysis,"§A5.3","- `module_analysis_table1.R` — full implementation per §5.3 Step 2 and §6.4"
+"PRD/EDARK_Analysis_Build_Plan.md",89,"§6.4",analysis,"§A6.4","- `module_analysis_table1.R` — full implementation per §5.3 Step 2 and §6.4"
+"PRD/EDARK_Analysis_Build_Plan.md",91,"§3.7",analysis,"§A3.7","- Stratification checkboxes (By Exposure, By Outcome) with defaults per §3.7"
+"PRD/EDARK_Analysis_Build_Plan.md",111,"§3.7",analysis,"§A3.7","- §3.7 (Table 1 behavior by study type), §5.3 Step 2, §6.4"
+"PRD/EDARK_Analysis_Build_Plan.md",111,"§5.3",analysis,"§A5.3","- §3.7 (Table 1 behavior by study type), §5.3 Step 2, §6.4"
+"PRD/EDARK_Analysis_Build_Plan.md",111,"§6.4",analysis,"§A6.4","- §3.7 (Table 1 behavior by study type), §5.3 Step 2, §6.4"
+"PRD/EDARK_Analysis_Build_Plan.md",118,"§5.3",analysis,"§A5.3","- `module_analysis_varinvestigation.R` — full implementation per §5.3 Step 3 and §6.5"
+"PRD/EDARK_Analysis_Build_Plan.md",118,"§6.5",analysis,"§A6.5","- `module_analysis_varinvestigation.R` — full implementation per §5.3 Step 3 and §6.5"
+"PRD/EDARK_Analysis_Build_Plan.md",119,"§7.6–7.8",analysis,"§A7.6–A7.8","- `service_analysis_variable_selection.R` — all three methods per §7.6–7.8 and §9.4"
+"PRD/EDARK_Analysis_Build_Plan.md",119,"§9.4",analysis,"§A9.4","- `service_analysis_variable_selection.R` — all three methods per §7.6–7.8 and §9.4"
+"PRD/EDARK_Analysis_Build_Plan.md",144,"§5.3",analysis,"§A5.3","- §5.3 Step 3, §6.5, §7.6–7.8, §9.1–9.6, §8.5"
+"PRD/EDARK_Analysis_Build_Plan.md",144,"§6.5",analysis,"§A6.5","- §5.3 Step 3, §6.5, §7.6–7.8, §9.1–9.6, §8.5"
+"PRD/EDARK_Analysis_Build_Plan.md",144,"§7.6–7.8",analysis,"§A7.6–A7.8","- §5.3 Step 3, §6.5, §7.6–7.8, §9.1–9.6, §8.5"
+"PRD/EDARK_Analysis_Build_Plan.md",144,"§9.1–9.6",analysis,"§A9.1–A9.6","- §5.3 Step 3, §6.5, §7.6–7.8, §9.1–9.6, §8.5"
+"PRD/EDARK_Analysis_Build_Plan.md",144,"§8.5",analysis,"§A8.5","- §5.3 Step 3, §6.5, §7.6–7.8, §9.1–9.6, §8.5"
+"PRD/EDARK_Analysis_Build_Plan.md",156,"§5.3",analysis,"§A5.3","- `module_analysis_covariate_confirm.R` per §5.3 Step 4, §6.6, §9.7–9.8"
+"PRD/EDARK_Analysis_Build_Plan.md",156,"§6.6",analysis,"§A6.6","- `module_analysis_covariate_confirm.R` per §5.3 Step 4, §6.6, §9.7–9.8"
+"PRD/EDARK_Analysis_Build_Plan.md",156,"§9.7–9.8",analysis,"§A9.7–A9.8","- `module_analysis_covariate_confirm.R` per §5.3 Step 4, §6.6, §9.7–9.8"
+"PRD/EDARK_Analysis_Build_Plan.md",172,"§5.3",analysis,"§A5.3","- §5.3 Step 4, §6.6, §9.7–9.8"
+"PRD/EDARK_Analysis_Build_Plan.md",172,"§6.6",analysis,"§A6.6","- §5.3 Step 4, §6.6, §9.7–9.8"
+"PRD/EDARK_Analysis_Build_Plan.md",172,"§9.7–9.8",analysis,"§A9.7–A9.8","- §5.3 Step 4, §6.6, §9.7–9.8"
+"PRD/EDARK_Analysis_Build_Plan.md",185,"§5.3",analysis,"§A5.3","- `module_analysis_modelspec.R` per §5.3 Step 5, §6.7, §8.4"
+"PRD/EDARK_Analysis_Build_Plan.md",185,"§6.7",analysis,"§A6.7","- `module_analysis_modelspec.R` per §5.3 Step 5, §6.7, §8.4"
+"PRD/EDARK_Analysis_Build_Plan.md",185,"§8.4",analysis,"§A8.4","- `module_analysis_modelspec.R` per §5.3 Step 5, §6.7, §8.4"
+"PRD/EDARK_Analysis_Build_Plan.md",204,"§5.3",analysis,"§A5.3","- §5.3 Step 5, §6.7, §7.1–7.5, §8.1–8.4"
+"PRD/EDARK_Analysis_Build_Plan.md",204,"§6.7",analysis,"§A6.7","- §5.3 Step 5, §6.7, §7.1–7.5, §8.1–8.4"
+"PRD/EDARK_Analysis_Build_Plan.md",204,"§7.1–7.5",analysis,"§A7.1–A7.5","- §5.3 Step 5, §6.7, §7.1–7.5, §8.1–8.4"
+"PRD/EDARK_Analysis_Build_Plan.md",204,"§8.1–8.4",analysis,"§A8.1–A8.4","- §5.3 Step 5, §6.7, §7.1–7.5, §8.1–8.4"
+"PRD/EDARK_Analysis_Build_Plan.md",211,"§7.9",analysis,"§A7.9","- `service_analysis_codegen.R` — R script generator per §7.9, cached in `analysis_result$generated_r_script`"
+"PRD/EDARK_Analysis_Build_Plan.md",225,"§7.9",analysis,"§A7.9","- §7.9"
+"PRD/EDARK_Analysis_Build_Plan.md",249,"§5.3",analysis,"§A5.3","- `module_analysis_diagnostics.R` — full implementation per §5.3 Step 6 and §6.8"
+"PRD/EDARK_Analysis_Build_Plan.md",249,"§6.8",analysis,"§A6.8","- `module_analysis_diagnostics.R` — full implementation per §5.3 Step 6 and §6.8"
+"PRD/EDARK_Analysis_Build_Plan.md",250,"§7.2–7.5",analysis,"§A7.2–A7.5","- `service_analysis_diagnostics.R` — all diagnostic computations per §7.2–7.5"
+"PRD/EDARK_Analysis_Build_Plan.md",278,"§5.3",analysis,"§A5.3","- §5.3 Step 6, §6.8, §7.2–7.5 (diagnostics sections)"
+"PRD/EDARK_Analysis_Build_Plan.md",278,"§6.8",analysis,"§A6.8","- §5.3 Step 6, §6.8, §7.2–7.5 (diagnostics sections)"
+"PRD/EDARK_Analysis_Build_Plan.md",278,"§7.2–7.5",analysis,"§A7.2–A7.5","- §5.3 Step 6, §6.8, §7.2–7.5 (diagnostics sections)"
+"PRD/EDARK_Analysis_Build_Plan.md",284,"§5.3",analysis,"§A5.3","Built per the decisions below (PRD §5.3 Step 7 and §6.9 updated to match). Deviation from the"
+"PRD/EDARK_Analysis_Build_Plan.md",284,"§6.9",analysis,"§A6.9","Built per the decisions below (PRD §5.3 Step 7 and §6.9 updated to match). Deviation from the"
+"PRD/EDARK_Analysis_Build_Plan.md",299,"§4.2",analysis,"§A4.2","- ✅ **Done ahead of Phase 7 — one statistics layer app-wide** (`R/stats_inference.R`, PRD §4.2, CLAUDE.md ""Statist"
+"PRD/EDARK_Analysis_Build_Plan.md",310,"§4.2",analysis,"§A4.2","- Footnote text lives in PRD §4.2 (the Step 7 cross-reference pointed at itself)."
+"PRD/EDARK_Analysis_Build_Plan.md",315,"§5.3",analysis,"§A5.3","- `module_analysis_results.R` — full implementation per §5.3 Step 7 and §6.9"
+"PRD/EDARK_Analysis_Build_Plan.md",315,"§6.9",analysis,"§A6.9","- `module_analysis_results.R` — full implementation per §5.3 Step 7 and §6.9"
+"PRD/EDARK_Analysis_Build_Plan.md",343,"§5.3",analysis,"§A5.3","- §5.3 Step 7, §6.9, §7.2–7.5 (fit statistics), §7.6 (combined table)"
+"PRD/EDARK_Analysis_Build_Plan.md",343,"§6.9",analysis,"§A6.9","- §5.3 Step 7, §6.9, §7.2–7.5 (fit statistics), §7.6 (combined table)"
+"PRD/EDARK_Analysis_Build_Plan.md",343,"§7.2–7.5",analysis,"§A7.2–A7.5","- §5.3 Step 7, §6.9, §7.2–7.5 (fit statistics), §7.6 (combined table)"
+"PRD/EDARK_Analysis_Build_Plan.md",343,"§7.6",analysis,"§A7.6","- §5.3 Step 7, §6.9, §7.2–7.5 (fit statistics), §7.6 (combined table)"
+"PRD/EDARK_Analysis_Build_Plan.md",350,"§5.3",analysis,"§A5.3","- `module_analysis_export.R` — full implementation per §5.3 Step 8 and §6.10"
+"PRD/EDARK_Analysis_Build_Plan.md",350,"§6.10",analysis,"§A6.10","- `module_analysis_export.R` — full implementation per §5.3 Step 8 and §6.10"
+"PRD/EDARK_Analysis_Build_Plan.md",351,"§10.3–10.12",analysis,"§A10.3–A10.12","- `service_analysis_export.R` — complete export assembly pipeline per §10.3–10.12"
+"PRD/EDARK_Analysis_Build_Plan.md",354,"§10.7",analysis,"§A10.7","- Report generation via `officer` (Word) and `rmarkdown` (HTML) per §10.7"
+"PRD/EDARK_Analysis_Build_Plan.md",378,"§10.2",analysis,"§A10.2","- Export folder structure matches §10.2 exactly"
+"PRD/EDARK_Analysis_Build_Plan.md",382,"§5.3",analysis,"§A5.3","- §5.3 Step 8, §6.10, §10.1–10.12"
+"PRD/EDARK_Analysis_Build_Plan.md",382,"§6.10",analysis,"§A6.10","- §5.3 Step 8, §6.10, §10.1–10.12"
+"PRD/EDARK_Analysis_Build_Plan.md",382,"§10.1–10.12",analysis,"§A10.1–A10.12","- §5.3 Step 8, §6.10, §10.1–10.12"
+"PRD/EDARK_Analysis_Build_Plan.md",393,"§13.6",analysis,"§M8.6","- `service_session.R`: `dataset_definition()`, `build_session()`, `read_session()`, `.SESSION_SCHEMA_VERSION`, the migra"
+"PRD/EDARK_Analysis_Build_Plan.md",394,"§13.6",analysis,"§M8.6","- `testthat` unit tests: save → read gives an identical session; each §13.6 row, including new and missing factor lev"
+"PRD/EDARK_Analysis_Build_Plan.md",400,"§13.7",analysis,"§M8.7","- Load modal, confirm modal, and steps 1–3 of §13.7"
+"PRD/EDARK_Analysis_Build_Plan.md",410,"§13.8",analysis,"§M8.8","- `edark(session = )` per §13.8"
+"PRD/EDARK_Analysis_Build_Plan.md",411,"§13.9",analysis,"§M8.9","- Autosave writer, file limit, and resume modal per §13.9"
+"PRD/EDARK_Analysis_Build_Plan.md",421,"§13.6",analysis,"§M8.6","- Loading onto `liver_tx[1:300, ]` succeeds; filters and reference levels adjust per §13.6"
+"PRD/EDARK_Analysis_Build_Plan.md",431,"§13.1–13.10",analysis,"§M8.1–M8.10","- §13.1–13.10, §5.3 Step 8 (materials vs session)"
+"PRD/EDARK_Analysis_Build_Plan.md",431,"§5.3",analysis,"§A5.3","- §13.1–13.10, §5.3 Step 8 (materials vs session)"
+"PRD/EDARK_Analysis_Build_Plan.md",439,"§5.4",analysis,"§A5.4","2. Implement stale state propagation per §5.4 — step status indicators update correctly"
+"PRD/EDARK_Analysis_Build_Plan.md",479,"§5.4",analysis,"§A5.4","- §5.4 (stale propagation), §8.6 (reset pipeline)"
+"PRD/EDARK_Analysis_Build_Plan.md",479,"§8.6",analysis,"§A8.6","- §5.4 (stale propagation), §8.6 (reset pipeline)"
+"PRD/EDARK_Analysis_Build_Plan.md",480,"Global Mandates",analysis,"§A0","- Global Mandates (withProgress refactor reminder)"
+"R/analysis_utils.R",22,"§3.5",analysis,"§A3.5","#'   (see PRD §3.5)."
+"R/build_plot_spec.R",76,"§4.3",v02,"§E4","# Axis assignment from PRD §4.3:"
+"R/edark.R",249,"§3.3",analysis,"§A3.3","# analysis modules (see PRD §3.3). Never read or modified by Prepare/Explore."
+"R/module_analysis_covariate_confirm.R",4,"§5.3",analysis,"§A5.3","#' selection and reference levels. Full implementation per PRD §5.3 Step 4,"
+"R/module_analysis_covariate_confirm.R",5,"§6.6",analysis,"§A6.6","#' §6.6, §9.7–9.8. All candidates start unchecked; ""Add"" only adds checks and"
+"R/module_analysis_covariate_confirm.R",5,"§9.7–9.8",analysis,"§A9.7–A9.8","#' §6.6, §9.7–9.8. All candidates start unchecked; ""Add"" only adds checks and"
+"R/module_analysis_export.R",5,"§10.2",analysis,"§A10.2","#' analysis folder (see PRD §10.2 for folder layout)."
+"R/module_analysis_setup.R",5,"§5.3",analysis,"§A5.3","#' Full implementation per PRD §5.3 Step 1, §6.3, §1.4, §3.4, §3.5."
+"R/module_analysis_setup.R",5,"§6.3",analysis,"§A6.3","#' Full implementation per PRD §5.3 Step 1, §6.3, §1.4, §3.4, §3.5."
+"R/module_analysis_setup.R",5,"§1.4",analysis,"§A1.4","#' Full implementation per PRD §5.3 Step 1, §6.3, §1.4, §3.4, §3.5."
+"R/module_analysis_setup.R",5,"§3.4",analysis,"§A3.4","#' Full implementation per PRD §5.3 Step 1, §6.3, §1.4, §3.4, §3.5."
+"R/module_analysis_setup.R",5,"§3.5",analysis,"§A3.5","#' Full implementation per PRD §5.3 Step 1, §6.3, §1.4, §3.4, §3.5."
+"R/module_analysis_table1.R",5,"§5.3",analysis,"§A5.3","#' Full implementation per PRD §5.3 Step 2, §6.4, §3.7."
+"R/module_analysis_table1.R",5,"§6.4",analysis,"§A6.4","#' Full implementation per PRD §5.3 Step 2, §6.4, §3.7."
+"R/module_analysis_table1.R",5,"§3.7",analysis,"§A3.7","#' Full implementation per PRD §5.3 Step 2, §6.4, §3.7."
+"R/module_analysis_varinvestigation.R",5,"§5.3",analysis,"§A5.3","#' Full implementation per PRD §5.3 Step 3, §6.5, §7.6–7.8, §8.5, §9."
+"R/module_analysis_varinvestigation.R",5,"§6.5",analysis,"§A6.5","#' Full implementation per PRD §5.3 Step 3, §6.5, §7.6–7.8, §8.5, §9."
+"R/module_analysis_varinvestigation.R",5,"§7.6–7.8",analysis,"§A7.6–A7.8","#' Full implementation per PRD §5.3 Step 3, §6.5, §7.6–7.8, §8.5, §9."
+"R/module_analysis_varinvestigation.R",5,"§8.5",analysis,"§A8.5","#' Full implementation per PRD §5.3 Step 3, §6.5, §7.6–7.8, §8.5, §9."
+"R/module_analysis_varinvestigation.R",5,"§9",analysis,"§A9","#' Full implementation per PRD §5.3 Step 3, §6.5, §7.6–7.8, §8.5, §9."
+"R/module_prepare_confirm.R",7,"§4.5",v02,"§P7.2","#' The pipeline order (from PRD §4.5):"
+"R/service_analysis_codegen.R",9,"§7.9",analysis,"§A7.9","#' \code{pacman::p_load()} and \code{\%>\%} throughout. See PRD §7.9."
+"R/service_analysis_diagnostics.R",3,"§7.2\enc{–}{-}7.5",analysis,"§A7.2\enc{–}{-}A7.5","#' Post-fit diagnostics for the Step 5 model (PRD §7.2\enc{–}{-}7.5). Pure"
+"R/service_analysis_diagnostics.R",29,"§4.5",analysis,"§A4.5","# VIF nudges (PRD §4.5) and the conventional Cook's distance cut-off (4 / n)"
+"R/service_analysis_export.R",5,"§10.2",analysis,"§A10.2","#' Produces the folder structure defined in PRD §10.2: methods/, results/,"
+"R/service_analysis_export.R",9,"§10",analysis,"§A10","#' \code{.xlsx}. See PRD §10."
+"R/service_analysis_models.R",7,"§4.4",analysis,"§A4.4","#' Pure functions — no Shiny. See PRD §4.4 and §7.1\enc{–}{-}7.5."
+"R/service_analysis_models.R",7,"§7.1\enc{–}{-}7.5",analysis,"§A7.1\enc{–}{-}A7.5","#' Pure functions — no Shiny. See PRD §4.4 and §7.1\enc{–}{-}7.5."
+"R/service_analysis_models.R",351,"§7.2–7.5",analysis,"§A7.2–A7.5","# Fit statistics per model type (PRD §7.2–7.5) as a long table so the UI and"
+"R/service_analysis_pipeline.R",5,"§8.6",analysis,"§A8.6","#' invalidates previously computed results. See PRD §8.6 for the authoritative"
+"R/service_analysis_pipeline.R",94,"§3.5",analysis,"§A3.5","# Fresh model_design block for analysis_spec (PRD §3.5). Random intercepts"
+"R/service_analysis_validation.R",5,"§8.2",analysis,"§A8.2","#' analysis operation. Implements all Tier 1 and Tier 2 checks from PRD §8.2."
+"R/service_analysis_validation.R",57,"§3.5",analysis,"§A3.5","#'   (see PRD §3.5). May be \code{NULL} — treated as missing outcome."
+"R/service_analysis_variable_selection.R",7,"§7.6–7.8",analysis,"§A7.6–A7.8","#' See PRD §7.6–7.8 and §9."
+"R/service_analysis_variable_selection.R",7,"§9",analysis,"§A9","#' See PRD §7.6–7.8 and §9."
+"R/stats_inference.R",6,"§4.2",analysis,"§A4.2","#' PRD §4.2. Do not compute p-values or CIs anywhere else — call these."

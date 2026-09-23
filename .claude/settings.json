@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" -e \"setwd\\('c:/Users/rishi/Documents/coding/R/edark-claude'\\); devtools::document\\(\\)\")"
+    ]
+  }
+}

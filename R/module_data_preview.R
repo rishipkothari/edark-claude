@@ -201,9 +201,9 @@ data_preview_server <- function(id, shared_state) {
   num_cols <- c("Min", "Max", "Mean", "SD", "Median", "IQR", "Skewness", "Kurtosis")
   disp     <- summary_df
   for (col in num_cols) {
-    disp[[col]] <- ifelse(is.na(disp[[col]]), "\u2014", as.character(disp[[col]]))
+    disp[[col]] <- ifelse(is.na(disp[[col]]), "-", as.character(disp[[col]]))
   }
-  disp$Top_values <- ifelse(is.na(disp$Top_values), "\u2014", disp$Top_values)
+  disp$Top_values <- ifelse(is.na(disp$Top_values), "-", disp$Top_values)
 
   reactable::reactable(
     disp,
