@@ -17,7 +17,7 @@
 |---|---|---|---|
 | 0 | Quick fixes that do not wait for the redesign | S | done 2026-09-22 (2 of 3, see §4) |
 | 1 | Honest locking and one precondition affordance | S-M | done 2026-09-23 |
-| 2 | Component library (`R/ui_helpers.R`) + Explore report aesthetics | M | not started |
+| 2 | Component library (`R/ui_helpers.R`) + Explore report aesthetics | M | done 2026-09-23 |
 | 3 | Theme file, dark mode, nav polish (navbar, pills, stepper, font) | S-M | not started |
 | 4 | Page contract: config / result / info panes + messages area | M-L | not started |
 | 5 | Flatten navigation + one nav vocabulary (§1.2) | M | not started |
@@ -49,7 +49,7 @@ Settled 2026-09-22. Do not reopen without the user.
 | D6 | **Sidebars on every page, same default width.** Including Model › Summary and Step 6 Export. Left config sidebar: 340 px. Right info pane: 300 px. Both are constants in `R/ui_helpers.R`. |
 | D7 | **Explore's report uses the aesthetics on screen.** Report must not have its own aesthetics controls. See Stage 2 and D9. |
 | D8 | **One navigation vocabulary for the whole app** (decided 2026-09-23): each nav level has one look everywhere. **Amended 2026-09-23 (user feedback, §1.3):** level 3 is no longer a single look. Modes that share one result surface stay **pills at the top of the left config pane** (Explore's Describe / Correlate / Trend - the user likes these and wants them kept; Explore › Report's Full / Custom joins them). Sub-steps that own their own config *and* their own result keep **underline tabs across the top of the page** (Analyze Step 3 and Step 5). See §1.2. |
-| D9 | **One aesthetics control set, in one place, opened as a dialog** (2026-09-23). Aesthetics are shared by every Explore mode and by both report modes, so there is exactly one copy of the controls and one set of stored values (`shared_state$ggplot_theme`, `color_palette`, `show_legend`, `legend_position`, `show_data_labels`). It opens from an "Appearance…" button in the plot toolbar, not from an accordion inside a config pane. Rationale: it is not a mode of the analysis and it is not staged - it applies live to everything on screen and to both report flows, so putting it in the sidebar both duplicates it per mode and re-creates the staged-vs-live collision (§2.6). |
+| D9 | **One aesthetics control set, in one place** (2026-09-23). Aesthetics are shared by every Explore mode and by both report modes, so there is exactly one copy of the controls and one set of stored values (`shared_state$ggplot_theme`, `color_palette`, `show_legend`, `legend_position`, `show_data_labels`). It is not a mode of the analysis and it is not staged - it applies live to everything on screen and to both report flows, so stacking it inside a mode's config stack both duplicates it per mode and re-creates the staged-vs-live collision (§2.6). **Amended 2026-09-23** (user choice, on the "tab or a dialog" option in §1.3h): the controls live in **their own panel of the Explore config pane**, not in a dialog. A dialog would cover the plot the controls change; a panel leaves it visible. It is the fourth panel in the same pill row as Describe / Correlate / Trend rather than a tab level above them, because a level of its own would nest tabs inside pills - the depth problem in §2.3. Appearance is therefore *in* the mode row without *being* a mode: the three modes stage their pickers until their button is clicked, and the Appearance panel applies live. See "Built 2026-09-23" under Stage 2. |
 | D10 | **One button scale, and placement follows the action's scope** (2026-09-23). Scale: a config-pane action is full width at default size (primary filled, secondary outline); an action on an already-produced artefact is `btn-sm btn-outline-*` in a right-aligned toolbar above that artefact; dialog actions are default size. No `w-75`, no unclassed `input_task_button`. Placement: actions that change the configuration live in the config pane; actions that act on the produced artefact (Save Plot, Copy to Clipboard, Add to Custom Report, Appearance…) live with the artefact; the info pane never holds an action. |
 | D11 | **A page whose only deliverable is a file has no centre pane** (2026-09-23). Explore › Report › Custom drops its main-panel "Preview" card entirely - it restated the item list and showed nothing the item list did not. The page is config (left: the item list itself, then format, then Generate) plus info (right: what the generated file will contain). Deliberate exception to Stage 4's three-place contract; see Stage 4. |
 
@@ -394,7 +394,7 @@ servers. Names indicative:
 | `edark_message(level, text, detail)` | alerts, badges and bordered cards used as status. Levels: `ok`, `info`, `warn`, `error`, `pending`, `stale`, `locked` - mapped to Bootstrap utility classes |
 | `edark_info_row(label, value)` | the hand-built label/value rows in the Setup, Covariates and Prepare summaries |
 | `edark_model_header(result, fields)` | the four model header cards; union of fields, show what applies |
-| `edark_aesthetics_controls(ns)` | the four aesthetics accordions - now rendered once, inside the Appearance dialog (D9) |
+| `edark_aesthetics_controls(ns)` | the four aesthetics accordions - now rendered once, in the Appearance panel (D9 as amended) |
 | `edark_button(id, label, variant, size, ...)` | every hand-typed button class string; enforces F1 / D10 |
 | `edark_action_toolbar(...)` | the right-aligned `btn-sm` row above a result (`module_explore_output.R:28-46`) |
 | `edark_run_button()` | (from Stage 1) - a thin wrapper over `edark_button()` that adds the disabled reason |
@@ -425,25 +425,48 @@ into the item's spec (`module_explore_output.R:230-256`), and have the app call
 did on screen. `edark_report()` / `generate_custom_report()` keep their aesthetic arguments
 for programmatic use.
 
-**The Appearance dialog (D9).** The remaining copy of the controls also leaves the sidebar.
-`edark_aesthetics_controls(ns)` renders inside one `modalDialog` titled "Plot appearance",
-opened by an "Appearance…" `toolbar` button in `edark_action_toolbar()` above the plot, and
-closed with "Done" (no Cancel - the controls apply live, as they do today, so there is nothing
-to commit or discard). The three Explore mode panels each lose their aesthetics accordion
-(`module_explore_controls.R:16-54`, `module_trend_controls.R:55-91`), which also removes the
-staged-vs-live collision in the Explore sidebar (§2.6): after this change everything in the
-Explore config pane is staged until the mode's button is clicked, and everything that applies
-live is behind the Appearance button. The dialog writes straight to the `shared_state`
-aesthetic fields - one set of values read by the plot, by Full Report and by each Custom
-Report item at Add time.
+**The Appearance panel (D9 as amended).** The remaining copy of the controls also leaves the
+mode panels. `edark_aesthetics_controls(ns)` renders once, inside a small module of its own
+(`R/module_appearance.R`), as the fourth panel of the Explore config pane's pill row. The three
+Explore mode panels each lose their aesthetics accordion (`module_explore_controls.R:16-54`,
+`module_trend_controls.R:55-91`), which removes the staged-vs-live collision in the Explore
+sidebar (§2.6): after this change every mode panel is staged until that mode's button is
+clicked, and everything that applies live is in the Appearance panel. The module writes
+straight to the `shared_state` aesthetic fields - one set of values read by the plot, by Full
+Report and by each Custom Report item at Add time - and is their only writer.
 
 Update §E (PRD_2_Explore.md) in the same change: aesthetics are a single app-level setting,
 not a per-mode and not a per-report one.
 
 **Done when:** `grep` for `"text-uppercase fw-semibold"`, `\.hdr <- `, `"btn-` and the
 aesthetics accordion body each return one hit, in `R/ui_helpers.R`; the aesthetics controls
-exist once, in the Appearance dialog; Explore's three mode buttons are the same size; a report
-generated from Explore matches the on-screen plot styling. App otherwise looks unchanged.
+exist once, in the Appearance panel; Explore's three mode buttons are the same size; a report
+generated from Explore matches the on-screen plot styling.
+
+**Built 2026-09-23.** Verified by driving the app with `chromote` and by `testServer`:
+
+- **Appearance is a panel, not a dialog** (D9 amended - see the decision table for why).
+- **`edark_button()` needed two things the plan did not anticipate.** An explicit `outline`
+  argument, because D10's "primary filled, secondary outline" is a property orthogonal to
+  scale and encoding it implicitly per variant would have been invisible magic; and an
+  explicit `class` argument, because passing a utility class such as `p-1` or `ms-2` through
+  `...` emits a *second* `class` attribute on the tag rather than appending. `class` now
+  rejects any `btn-*` string, so the helper cannot be routed around.
+- **`generate_custom_report()`'s aesthetic defaults had to become NULL.** With concrete
+  defaults, "call it without aesthetics" still restyled every item, so D7 could not be
+  satisfied by dropping the arguments at the call site alone. NULLs are filtered out, so
+  supplying none now means "leave each item as captured", while an explicit value still
+  overrides every item for programmatic callers (`edark_report()`).
+- **Three spacings collapsed to two.** Hand-typed labels used `mt-0`, `mt-2` and `mt-3`;
+  `edark_section_label()` offers only `first` (`mt-0`) and the default (`mt-2`), so a few
+  Analyze panes are marginally tighter than before. That is the consolidation, not a
+  regression.
+- **`shared_state$legend_position` initialised to `"right"` while every control shipped
+  `"top"`** (`edark.R:239`), so the stored default was dead - the control's observer
+  overwrote it on the first flush. Now `"top"` in both places.
+- Not yet wired to call sites: `edark_message()` and `edark_info_row()`. Both exist and are
+  tested, but the app has no messages area or info pane to put them in until Stage 4, which is
+  where they land.
 
 ### Stage 3 - Theme file
 

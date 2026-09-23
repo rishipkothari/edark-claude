@@ -211,8 +211,7 @@ analysis_table1_server <- function(id, shared_state) {
       )
 
       shiny::tagList(
-        shiny::tags$p("Stratification",
-          class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+        edark_section_label("Stratification"),
         exp_block,
         out_block,
         shiny::tags$small(class = "text-muted",

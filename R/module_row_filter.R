@@ -24,11 +24,8 @@ row_filter_ui <- function(id) {
       shiny::column(8, shiny::uiOutput(ns("column_picker"))),
       shiny::column(4,
         shiny::br(),
-        shiny::actionButton(
-          ns("add_filter"), "Add filter",
-          icon  = shiny::icon("plus"),
-          class = "btn-sm btn-outline-primary w-100"
-        )
+        edark_button(ns, "add_filter", "Add filter", icon = "plus",
+                     outline = TRUE)
       )
     ),
 

@@ -53,15 +53,14 @@ NULL
 #' @export
 analysis_performance_ui <- function(id) {
   ns <- shiny::NS(id)
-  .hdr <- function(x) shiny::tags$p(x, class = "text-muted small text-uppercase fw-semibold mt-2 mb-1")
 
   bslib::layout_sidebar(
     sidebar = bslib::sidebar(
       position = "left",
       width    = 340,
-      .hdr("Measures"),
+      edark_section_label("Measures"),
       shiny::uiOutput(ns("checks_ui")),
-      .hdr("Validation"),
+      edark_section_label("Validation"),
       shiny::uiOutput(ns("validation_ui")),
       shiny::tags$hr(class = "my-2"),
       edark_run_button(ns, "btn_run", "Run Performance"),
@@ -279,8 +278,8 @@ analysis_performance_server <- function(id, shared_state) {
             n_fits, .PERF_MIXED_FIT_WARN)),
           shiny::tags$small(class = "text-muted", "You can cancel while it runs; nothing is lost."),
           footer = shiny::tagList(
-            shiny::actionButton(ns("heavy_cancel"),  "Back",    class = "btn-secondary"),
-            shiny::actionButton(ns("heavy_confirm"), "Proceed", class = "btn-warning")
+            edark_button(ns, "heavy_cancel", "Back", variant = "secondary", size = "dialog"),
+            edark_button(ns, "heavy_confirm", "Proceed", variant = "warning", size = "dialog")
           ),
           easyClose = FALSE
         ))
@@ -368,26 +367,20 @@ analysis_performance_server <- function(id, shared_state) {
       if (is.null(mt)) return(.ms_placeholder(edark_lock_reason("fit_model")))
       purpose <- shared_state$analysis_spec$purpose_specification$model_purpose %||% "association"
       pf <- perf()
-      bslib::card(
-        bslib::card_body(
-          class = "py-2",
-          shiny::div(class = "fw-semibold", .ANALYSIS_MODEL_LABELS[[mt]]),
-          shiny::div(class = "small mt-1",
-                     shiny::span(class = "text-muted", "Model purpose: "),
-                     if (identical(purpose, "prediction")) "Prediction" else "Association",
-                     shiny::span(class = "text-muted ms-3", "Validation: "),
-                     .PERF_METHOD_LABELS[[method()]]),
-          if (!identical(purpose, "prediction")) {
-            shiny::div(class = "small text-muted mt-1",
-                       "An association model is judged by its estimates, not its predictions.",
-                       "Apparent discrimination and calibration are shown as a description of fit;",
-                       "they are not evidence about the exposure effect, and are not validated.")
-          },
-          if (!is.null(pf)) {
-            shiny::div(class = "small text-muted mt-1",
-                       sprintf("Evaluated %s - %s", format(pf$run_at, "%H:%M:%S"),
-                               .pm_validation_text(pf$validation)))
-          }
+      edark_model_header(
+        title  = .ANALYSIS_MODEL_LABELS[[mt]],
+        fields = list(
+          `Model purpose` = if (identical(purpose, "prediction")) "Prediction" else "Association",
+          Validation      = .PERF_METHOD_LABELS[[method()]]
+        ),
+        notes  = c(
+          if (!identical(purpose, "prediction"))
+            paste("An association model is judged by its estimates, not its predictions.",
+                  "Apparent discrimination and calibration are shown as a description of fit;",
+                  "they are not evidence about the exposure effect, and are not validated."),
+          if (!is.null(pf))
+            sprintf("Evaluated %s - %s", format(pf$run_at, "%H:%M:%S"),
+                    .pm_validation_text(pf$validation))
         )
       )
     })

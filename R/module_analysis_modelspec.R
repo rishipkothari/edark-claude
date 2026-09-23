@@ -89,16 +89,15 @@ analysis_modelspec_summary_ui <- function(id) {
 #' @export
 analysis_modelspec_create_ui <- function(id) {
   ns <- shiny::NS(id)
-  .hdr <- function(x) shiny::tags$p(x, class = "text-muted small text-uppercase fw-semibold mt-2 mb-1")
 
   bslib::layout_sidebar(
     sidebar = bslib::sidebar(
       position = "left",
       width    = 340,
-      .hdr("Model"),
+      edark_section_label("Model"),
       shiny::uiOutput(ns("model_select_ui")),
       shiny::uiOutput(ns("advanced_ui")),
-      .hdr("Preflight"),
+      edark_section_label("Preflight"),
       shiny::div(id = ns("preflight_box"), class = "p-1",
                  shiny::uiOutput(ns("preflight_ui"))),
       shiny::div(
@@ -255,8 +254,8 @@ analysis_modelspec_server <- function(id, shared_state) {
         shiny::tags$small(class = "text-muted",
                           "Cancel keeps the current optimizer and results."),
         footer = shiny::tagList(
-          shiny::actionButton(ns("cancel_optimizer"),  "Cancel",           class = "btn-secondary"),
-          shiny::actionButton(ns("confirm_optimizer"), "Clear & Continue", class = "btn-warning")
+          edark_button(ns, "cancel_optimizer", "Cancel", variant = "secondary", size = "dialog"),
+          edark_button(ns, "confirm_optimizer", "Clear & Continue", variant = "warning", size = "dialog")
         ),
         easyClose = FALSE
       ))
@@ -358,28 +357,17 @@ analysis_modelspec_server <- function(id, shared_state) {
       fmla <- if (!is.null(mt)) paste(deparse(build_analysis_formula(spec), width.cutoff = 500L), collapse = " ")
       sr   <- analysis_split_rows(spec, adata)
 
-      bslib::card(
-        bslib::card_body(
-          class = "py-2",
-          shiny::div(class = "fw-semibold",
-                     if (is.null(mt)) "No model available" else .ANALYSIS_MODEL_LABELS[[mt]]),
-          if (!is.null(ev)) {
-            shiny::div(class = "small",
-                       shiny::span(class = "text-muted", "Modelling: "),
-                       shiny::tags$strong(sprintf("%s = %s", ev$variable, ev$event)),
-                       sprintf(" (vs %s)", ev$reference))
-          },
-          if (!is.null(sr)) {
-            shiny::div(class = "small",
-                       shiny::span(class = "text-muted", "Fitted on: "),
-                       sprintf("training set, %s = %s (%d rows); %d test rows held out for Performance",
-                               sr$variable, sr$training_level, sum(sr$training), sum(sr$test)))
-          },
-          if (!is.null(fmla)) {
-            shiny::div(class = "small mt-1",
-                       shiny::span(class = "text-muted", "Formula: "),
-                       shiny::tags$code(fmla))
-          }
+      edark_model_header(
+        title  = if (is.null(mt)) "No model available" else .ANALYSIS_MODEL_LABELS[[mt]],
+        fields = list(
+          Modelling = if (!is.null(ev)) shiny::tagList(
+            shiny::tags$strong(sprintf("%s = %s", ev$variable, ev$event)),
+            sprintf(" (vs %s)", ev$reference)
+          ),
+          `Fitted on` = if (!is.null(sr))
+            sprintf("training set, %s = %s (%d rows); %d test rows held out for Performance",
+                    sr$variable, sr$training_level, sum(sr$training), sum(sr$test)),
+          Formula = if (!is.null(fmla)) shiny::tags$code(fmla)
         )
       )
     })

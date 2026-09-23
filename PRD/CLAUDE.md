@@ -83,9 +83,11 @@ What each file does is in the root `CLAUDE.md`. This is the § lookup.
 | `module_row_filter.R` | §P6 |
 | `module_prepare_confirm.R` | §P7 |
 | `module_data_preview.R` | §P8 |
-| `module_explore_controls.R` | §E3, §E4, §E7 |
+| `module_explore_controls.R` | §E3, §E4 |
 | `module_trend_controls.R` | §E5 |
 | `module_explore_output.R` | §E6 |
+| `module_appearance.R` | §E7 |
+| `ui_helpers.R` | - (BUILD_UI-redesign Stages 1-2) |
 | `module_report.R` | §E10–E12 |
 | `module_analysis_main.R` | §A5.1, §N6.3 |
 | `module_analysis_setup.R` | §A5.3, §N6.4 |
@@ -123,7 +125,8 @@ What each file does is in the root `CLAUDE.md`. This is the § lookup.
   `inst/www/edark.css` now exist; every gated Analyze nav item explains itself in a
   popover and every Run button is disabled with its reason visible
   ([BUILD_UI-redesign.md](BUILD_UI-redesign.md) Stage 1).
-- **Not started:** Phase S session save / load / autosave (§M8); UI consistency Stages 2–6 ([BUILD_UI-redesign.md](BUILD_UI-redesign.md)).
+- **Built 2026-09-23:** UI consistency Stage 2 - component library + one home for aesthetics. `R/ui_helpers.R` gained `edark_section_label()`, `edark_button()`, `edark_action_toolbar()`, `edark_empty_state()`, `edark_message()`, `edark_info_row()`, `edark_model_header()` and `edark_aesthetics_controls()`; the four aesthetics accordions became one `R/module_appearance.R` panel (D9 as amended); Full and Custom reports now generate with the aesthetics on screen (D7)
+- **Not started:** Phase S session save / load / autosave (§M8); UI consistency Stages 3–6 ([BUILD_UI-redesign.md](BUILD_UI-redesign.md)).
 
 ---
 

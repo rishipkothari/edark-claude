@@ -50,7 +50,10 @@ R/
 ├── module_explore_controls.R   Explore › Describe + Relationship tab sidebars — describe_controls_ui/server + relationship_controls_ui/server
 ├── module_trend_controls.R     Explore › Trend tab sidebar — timestamp/resolution/variable/stat pickers
 ├── module_explore_output.R     Explore main panel — plot output + summary reactable + "Add to Custom Report" / "View Report" buttons
+├── module_appearance.R        Explore › Appearance panel — the app's only plot-aesthetics controls; sole writer of the five aesthetic shared_state fields
 ├── module_report.R             Report tab — Full Report pill (type selector, variable modal, download) + Custom Report pill (gallery, reorder, download)
+│
+├── ui_helpers.R                Shared UI component library — lock reasons, buttons, section labels, empty states, messages, info rows, model header, aesthetics controls
 │
 ├── module_analysis_main.R          Analyze tab — orchestrator; 6-step navset_pill (Step 5 nests Model sub-tabs) + JS progress handler + step/sub-tab gating
 ├── module_analysis_setup.R         Analyze › Step 1: Setup — dataset freeze, role assignment (outcome/exposure/candidates/clusters), study type, model purpose + train/test split, reset modal with undo (Phases 1, 6b)
@@ -157,7 +160,7 @@ Phases 0–7 and 6b complete; Step 6 (Export, Phase 8) is a placeholder stub. Ph
 ### Other
 
 #### High magnitude
-- **UI consistency** (Stages 0 and 1 done; Stages 2-6 not started): honest step-locking first, then a shared component library (`R/ui_helpers.R`), one plain-CSS theme file, a config (left) / result / info (right) page contract with a dedicated messages area, and flatter navigation. Report stays inside Explore. Scoped to `bslib` + R + CSS - no SCSS, no new JS, no shell rewrite. Decisions, assessment and stage status table: `PRD/BUILD_UI-redesign.md`. Revised 2026-09-23 from user feedback (§1.3 - principles plus per-page details): Explore's mode pills stay in the left pane and Report's Full / Custom pills join them, while Analyze's sub-steps keep underline tabs across the page (D8 amended); one aesthetics control set, in a dialog (D9); one button scale, placement by scope (D10); Report › Custom loses its preview pane (D11). Work one stage per session and tick off its status table.
+- **UI consistency** (Stages 0, 1 and 2 done; Stages 3-6 not started): honest step-locking first, then a shared component library (`R/ui_helpers.R`), one plain-CSS theme file, a config (left) / result / info (right) page contract with a dedicated messages area, and flatter navigation. Report stays inside Explore. Scoped to `bslib` + R + CSS - no SCSS, no new JS, no shell rewrite. Decisions, assessment and stage status table: `PRD/BUILD_UI-redesign.md`. Revised 2026-09-23 from user feedback (§1.3 - principles plus per-page details): Explore's mode pills stay in the left pane and Report's Full / Custom pills join them, while Analyze's sub-steps keep underline tabs across the page (D8 amended); one aesthetics control set, in its own Appearance panel (D9, amended 2026-09-23 from dialog to panel); one button scale, placement by scope (D10); Report › Custom loses its preview pane (D11). Work one stage per session and tick off its status table.
 - investigate reset pipeline and what it looks like
     - also with UI refresh, might be able to eliminate some of the click to lock in steps, should evaluate
     - **Nine step pills wrap to two rows** at ~1500 px. Consider shorter labels (e.g. "Variables", "Covariates") or a vertical rail.

@@ -711,8 +711,8 @@ analysis_covariate_confirm_server <- function(id, shared_state) {
         shiny::tags$small(class = "text-muted",
                           "Cancel undoes your change and keeps everything as it was."),
         footer = shiny::tagList(
-          shiny::actionButton(ns("cancel_change"),  "Cancel",           class = "btn-secondary"),
-          shiny::actionButton(ns("confirm_change"), "Clear & Continue", class = "btn-warning")
+          edark_button(ns, "cancel_change", "Cancel", variant = "secondary", size = "dialog"),
+          edark_button(ns, "confirm_change", "Clear & Continue", variant = "warning", size = "dialog")
         ),
         easyClose = FALSE
       ))
@@ -800,7 +800,7 @@ analysis_covariate_confirm_server <- function(id, shared_state) {
             body,
             footer = shiny::tagList(
               shiny::modalButton("Cancel"),
-              shiny::actionButton(ns("confirm_replace"), "Replace", class = "btn-warning")
+              edark_button(ns, "confirm_replace", "Replace", variant = "warning", size = "dialog")
             ),
             easyClose = TRUE
           ))
@@ -836,12 +836,10 @@ analysis_covariate_confirm_server <- function(id, shared_state) {
       n_cov <- length(intersect(staged()$covariates, r$candidates))
 
       shiny::tagList(
-        shiny::tags$p("Model",
-          class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+        edark_section_label("Model"),
         .row("Covariates selected", n_cov),
         .row("Parameters", si$n_params),
-        shiny::tags$p("Sample",
-          class = "text-muted small text-uppercase fw-semibold mt-3 mb-1"),
+        edark_section_label("Sample"),
         .row("Total rows", n),
         .row(base_lbl, .pct(si$n_base)),
         .row("With selected covariates", .pct(si$n_fixed)),
@@ -878,8 +876,7 @@ analysis_covariate_confirm_server <- function(id, shared_state) {
       }
 
       shiny::tagList(
-        shiny::tags$p("Checks",
-          class = "text-muted small text-uppercase fw-semibold mt-3 mb-1"),
+        edark_section_label("Checks"),
         if (nrow(iss) == 0L) {
           shiny::div(class = "small text-success",
                      shiny::icon("circle-check"), " No issues found.")

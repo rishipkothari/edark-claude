@@ -24,24 +24,14 @@ explore_output_ui <- function(id) {
     # Stale-data notice (hidden until needed)
     shiny::uiOutput(ns("refresh_notice")),
 
-    # Action button row (right-justified, above plot card)
-    shiny::div(
-      class = "d-flex justify-content-end align-items-center gap-2 mb-2",
-      shiny::downloadButton(
-        ns("save_plot_btn"), "Save Plot",
-        icon  = shiny::icon("download"),
-        class = "btn-sm btn-outline-primary"
-      ),
-      shiny::actionButton(
-        ns("copy_plot_btn"), "Copy to Clipboard",
-        icon  = shiny::icon("copy"),
-        class = "btn-sm btn-outline-primary"
-      ),
-      shiny::actionButton(
-        ns("add_to_custom_btn"), "Add to Custom Report",
-        icon  = shiny::icon("plus"),
-        class = "btn-sm btn-outline-primary"
-      ),
+    # Actions on the produced plot live with the plot, not in a pane (F2 / D10)
+    edark_action_toolbar(
+      edark_button(ns, "save_plot_btn", "Save Plot", icon = "download",
+                   size = "toolbar", type = "download"),
+      edark_button(ns, "copy_plot_btn", "Copy to Clipboard", icon = "copy",
+                   size = "toolbar"),
+      edark_button(ns, "add_to_custom_btn", "Add to Custom Report", icon = "plus",
+                   size = "toolbar"),
       shiny::uiOutput(ns("view_report_btn_ui"))
     ),
 
@@ -219,11 +209,8 @@ explore_output_server <- function(id, shared_state) {
         shiny::tagList("View Report",
                        shiny::tags$span(class = "badge bg-primary ms-1", n))
       else "View Report"
-      shiny::actionButton(
-        ns("view_report_btn"), label = label,
-        icon  = shiny::icon("file-export"),
-        class = "btn-sm btn-outline-primary"
-      )
+      edark_button(ns, "view_report_btn", label, icon = "file-export",
+                   size = "toolbar")
     })
 
     # Add current plot to the custom report
@@ -246,6 +233,12 @@ explore_output_server <- function(id, shared_state) {
       if (!is.null(spec$column_b))    title <- paste0(title, " \u00d7 ", spec$column_b)
       if (!is.null(spec$stratify_by) && nzchar(spec$stratify_by))
         title <- paste0(title, " \u00b7 by ", spec$stratify_by)
+
+      # Freeze the appearance in force into the item's own spec. The spec in
+      # shared_state may predate aesthetic changes made after the plot was
+      # drawn, so without this the exported item can differ from the thumbnail
+      # beside it and from what was on screen when it was added (D7).
+      spec <- utils::modifyList(spec, edark_current_aesthetics(shared_state))
 
       new_item <- list(
         id         = paste0("item_", as.numeric(Sys.time()), "_", sample.int(1e6, 1)),

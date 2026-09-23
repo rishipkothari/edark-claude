@@ -101,7 +101,8 @@ NULL
     # steps (see module_analysis_performance.R) — a single long call blocks
     # Shiny from seeing the click.
     footer    = if (!is.null(cancel_id)) {
-      shiny::actionButton(cancel_id, "Cancel", class = "btn-outline-secondary btn-sm")
+      edark_button(NULL, cancel_id, "Cancel", variant = "secondary",
+                   size = "toolbar")
     },
     easyClose = FALSE
   )
@@ -125,8 +126,7 @@ analysis_varinvestigation_ui <- function(id) {
         sidebar = bslib::sidebar(
           position = "left",
           width    = 360,
-          shiny::tags$p("P-value Threshold",
-            class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+          edark_section_label("P-value Threshold"),
           shiny::numericInput(
             ns("univ_threshold"), label = NULL,
             value = 0.2, min = 0.01, max = 1, step = 0.05, width = "120px"
@@ -176,8 +176,7 @@ analysis_varinvestigation_ui <- function(id) {
         sidebar = bslib::sidebar(
           position = "left",
           width    = 390,
-          shiny::tags$p("Method",
-            class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+          edark_section_label("Method"),
           shinyWidgets::radioGroupButtons(
             ns("sl_method"),
             label    = NULL,
@@ -639,15 +638,13 @@ analysis_varinvestigation_server <- function(id, shared_state) {
 
       if (method == "Stepwise") {
         shiny::tagList(
-          shiny::tags$p("Direction",
-            class = "text-muted small text-uppercase fw-semibold mt-3 mb-1"),
+          edark_section_label("Direction"),
           shiny::selectInput(
             ns("sw_direction"), label = NULL,
             choices  = c("Backward" = "backward", "Forward" = "forward"),
             selected = "backward"
           ),
-          shiny::tags$p("Criterion",
-            class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+          edark_section_label("Criterion"),
           shiny::selectInput(
             ns("sw_criterion"), label = NULL,
             choices  = c("BIC", "AIC"),
@@ -659,8 +656,7 @@ analysis_varinvestigation_server <- function(id, shared_state) {
         spec <- shiny::isolate(shared_state$analysis_spec)
         vsel <- spec$variable_selection_specification
         shiny::tagList(
-          shiny::tags$p("Lambda Selection",
-            class = "text-muted small text-uppercase fw-semibold mt-3 mb-1"),
+          edark_section_label("Lambda Selection"),
           shiny::selectInput(
             ns("lasso_lambda"), label = NULL,
             choices  = c(
@@ -669,8 +665,7 @@ analysis_varinvestigation_server <- function(id, shared_state) {
             ),
             selected = vsel$lasso_lambda %||% "lambda.1se"
           ),
-          shiny::tags$p("Random Seed",
-            class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+          edark_section_label("Random Seed"),
           shiny::numericInput(
             ns("lasso_seed"), label = NULL,
             value = lasso_seed(spec), min = 1, max = .Machine$integer.max, step = 1

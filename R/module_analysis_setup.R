@@ -303,7 +303,7 @@ analysis_setup_server <- function(id, shared_state) {
         shiny::p("This will clear all analysis results and re-freeze the current working dataset."),
         footer = shiny::tagList(
           shiny::modalButton("Cancel"),
-          shiny::actionButton(ns("confirm_restart"), "Restart", class = "btn-danger")
+          edark_button(ns, "confirm_restart", "Restart", variant = "danger", size = "dialog")
         ),
         easyClose = TRUE
       ))
@@ -334,8 +334,8 @@ analysis_setup_server <- function(id, shared_state) {
             "Cancel undoes your change and keeps everything as it was."
           ),
           footer = shiny::tagList(
-            shiny::actionButton(ns("cancel_role_change"),  "Cancel",         class = "btn-secondary"),
-            shiny::actionButton(ns("confirm_role_change"), "Clear & Continue", class = "btn-warning")
+            edark_button(ns, "cancel_role_change", "Cancel", variant = "secondary", size = "dialog"),
+            edark_button(ns, "confirm_role_change", "Clear & Continue", variant = "warning", size = "dialog")
           ),
           easyClose = FALSE
         ))
@@ -741,17 +741,15 @@ analysis_setup_server <- function(id, shared_state) {
       mismatch <- sig_mismatch()
 
       if (is.null(adata)) {
-        shiny::actionButton(
-          ns("btn_start_analysis"),
-          label = shiny::tagList(shiny::icon("play"), " Start Analysis"),
-          class = "btn-primary w-100"
-        )
+        edark_button(ns, "btn_start_analysis", "Start Analysis", icon = "play")
       } else {
         shiny::tagList(
-          shiny::actionButton(
-            ns("btn_restart_analysis"),
-            label = shiny::tagList(shiny::icon("rotate"), " Restart Analysis"),
-            class = if (mismatch) "btn-warning w-100" else "btn-outline-secondary w-100"
+          # Warning-filled while the frozen dataset no longer matches what
+          # Prepare holds; otherwise a de-emphasised secondary.
+          edark_button(
+            ns, "btn_restart_analysis", "Restart Analysis", icon = "rotate",
+            variant = if (mismatch) "warning" else "secondary",
+            outline = !mismatch
           )
         )
       }
@@ -781,8 +779,7 @@ analysis_setup_server <- function(id, shared_state) {
       } else NULL
 
       shiny::tagList(
-        shiny::tags$p("Study Type",
-          class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+        edark_section_label("Study Type"),
         shiny::tags$span(
           class = paste0("badge text-bg-", cfg$cls, " w-100 d-block py-2"),
           style = "font-size:0.8rem; white-space:normal;",
@@ -824,8 +821,7 @@ analysis_setup_server <- function(id, shared_state) {
       cands <- .split_candidates(spec, adata)
       sv    <- ps$split_variable
       shiny::tagList(
-        shiny::tags$p("Model Purpose",
-          class = "text-muted small text-uppercase fw-semibold mt-3 mb-1"),
+        edark_section_label("Model Purpose"),
         shiny::radioButtons(
           ns("model_purpose"), label = NULL, inline = TRUE,
           choices  = c(Association = "association", Prediction = "prediction"),
@@ -839,8 +835,7 @@ analysis_setup_server <- function(id, shared_state) {
         ),
         shiny::conditionalPanel(
           condition = "input.model_purpose == 'prediction'", ns = ns,
-          shiny::tags$p("Validation",
-            class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+          edark_section_label("Validation"),
           shiny::radioButtons(
             ns("validation_method"), label = NULL, width = "100%",
             choiceNames = list(
@@ -950,8 +945,8 @@ analysis_setup_server <- function(id, shared_state) {
           shiny::tags$small(class = "text-muted",
                             "Cancel undoes your change and keeps everything as it was."),
           footer = shiny::tagList(
-            shiny::actionButton(ns("cancel_purpose"),  "Cancel",           class = "btn-secondary"),
-            shiny::actionButton(ns("confirm_purpose"), "Clear & Continue", class = "btn-warning")
+            edark_button(ns, "cancel_purpose", "Cancel", variant = "secondary", size = "dialog"),
+            edark_button(ns, "confirm_purpose", "Clear & Continue", variant = "warning", size = "dialog")
           ),
           easyClose = FALSE
         ))
@@ -993,8 +988,7 @@ analysis_setup_server <- function(id, shared_state) {
       }
 
       shiny::tagList(
-        shiny::tags$p("Role Summary",
-          class = "text-muted small text-uppercase fw-semibold mt-3 mb-1"),
+        edark_section_label("Role Summary"),
         .row("Outcome",    if (length(outcome) == 0)
                              shiny::span("-", class = "text-muted fw-normal")
                            else outcome[1]),
@@ -1028,8 +1022,7 @@ analysis_setup_server <- function(id, shared_state) {
       }
 
       shiny::tagList(
-        shiny::tags$p("Incoming Dataset Snapshot",
-          class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+        edark_section_label("Incoming Dataset Snapshot"),
         .row("Rows",           n_rows),
         .row("Variables",      n_cols),
         .row("Complete cases", sprintf("%d (%d%%)", n_cc,
@@ -1056,8 +1049,7 @@ analysis_setup_server <- function(id, shared_state) {
       if (length(selected_vars) == 0) {
         return(shiny::tagList(
           shiny::tags$hr(class = "my-2"),
-          shiny::tags$p("Selected Dataset Snapshot",
-            class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+          edark_section_label("Selected Dataset Snapshot"),
           shiny::tags$small(class = "text-muted", "No variables assigned yet.")
         ))
       }
@@ -1074,8 +1066,7 @@ analysis_setup_server <- function(id, shared_state) {
 
       shiny::tagList(
         shiny::tags$hr(class = "my-2"),
-        shiny::tags$p("Selected Dataset Snapshot",
-          class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+        edark_section_label("Selected Dataset Snapshot"),
         .row("Rows",           n_rows),
         .row("Variables",      length(selected_vars)),
         .row("Complete cases", sprintf("%d (%d%%)", n_cc,

@@ -57,14 +57,11 @@ report_ui <- function(id) {
           width = 380,
 
           # ── Generate ──────────────────────────────────────────────────────
-          shiny::downloadButton(
-            ns("download_btn"),
-            label = "Generate & Download",
-            class = "btn-primary w-75"
-          ),
+          edark_button(ns, "download_btn", "Generate & Download",
+                       icon = "download", type = "download"),
 
           # ── Output format ──────────────────────────────────────────────────
-          shiny::tags$p("Output Format", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+          edark_section_label("Output Format"),
           shinyWidgets::radioGroupButtons(
             ns("output_format"),
             label    = NULL,
@@ -77,7 +74,7 @@ report_ui <- function(id) {
           ),
 
           # ── Report type ────────────────────────────────────────────────────
-          shiny::tags$p("Report Type", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+          edark_section_label("Report Type"),
           shinyWidgets::radioGroupButtons(
             ns("report_type"),
             label    = NULL,
@@ -91,7 +88,7 @@ report_ui <- function(id) {
           # ── Primary variable (Correlation only) ────────────────────────────
           shiny::conditionalPanel(
             condition = paste0("input['", ns("report_type"), "'] == 'primary_vs_others'"),
-            shiny::tags$p("Primary Variable", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+            edark_section_label("Primary Variable"),
             shiny::uiOutput(ns("primary_var_picker")),
             shinyWidgets::radioGroupButtons(
               ns("primary_role"),
@@ -105,66 +102,24 @@ report_ui <- function(id) {
           ),
 
           # ── Variable selection ─────────────────────────────────────────────
-          shiny::tags$p("Variables", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+          edark_section_label("Variables"),
           shiny::uiOutput(ns("var_selection_summary")),
-          shiny::actionButton(
-            ns("open_var_modal"),
-            label = "Select Variables\u2026",
-            icon  = shiny::icon("sliders"),
-            class = "btn-outline-secondary w-100 mt-1"
-          ),
+          edark_button(ns, "open_var_modal", "Select Variables\u2026",
+                       icon = "sliders", variant = "secondary", outline = TRUE,
+                       class = "mt-1"),
           
           # ── Options ────────────────────────────────────────────────────
-          shiny::tags$p("Options", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+          edark_section_label("Options"),
           shiny::uiOutput(ns("stratify_picker")),
 
           # ── Report contents ────────────────────────────────────────────────
-          shiny::tags$p("Report Contents", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+          edark_section_label("Report Contents"),
           shiny::checkboxInput(ns("include_dataset_summary"),
                                "Dataset Summary", value = TRUE),
           shiny::conditionalPanel(
             condition = paste0("input['", ns("report_type"), "'] == 'all_vars'"),
             shiny::checkboxInput(ns("include_tableone"),
                                  "Table One", value = FALSE)
-          ),
-
-          # ── Plot aesthetics ────────────────────────────────────────────────
-          bslib::accordion(
-            open = FALSE,
-            bslib::accordion_panel(
-              "Plot Aesthetics",
-              icon = shiny::icon("palette"),
-              shinyWidgets::pickerInput(
-                ns("ggplot_theme"),
-                label    = "Plot theme:",
-                choices  = c(
-                  "Minimal"         = "minimal",
-                  "Publication"     = "publication",
-                  "Cowplot"         = "cowplot",
-                  "Economist"       = "economist",
-                  "FiveThirtyEight" = "fivethirtyeight",
-                  "Tufte"           = "tufte",
-                  "Modern"          = "modern"
-                ),
-                selected = "minimal"
-              ),
-              shinyWidgets::pickerInput(
-                ns("color_palette"),
-                label    = "Colour palette:",
-                choices  = c("Set2", "Set1", "Dark2", "Paired", "Accent",
-                             "Blues", "Greens", "Reds", "Purples"),
-                selected = "Set2"
-              ),
-              shiny::checkboxInput(ns("show_data_labels"), "Show data labels", value = FALSE),
-              shiny::checkboxInput(ns("show_legend"),      "Show legend",      value = TRUE),
-              shinyWidgets::radioGroupButtons(
-                ns("legend_position"),
-                label    = "Legend position:",
-                choices  = c("right", "left", "top", "bottom"),
-                selected = "top",
-                size     = "sm"
-              )
-            )
           ),
 
         ),
@@ -198,46 +153,6 @@ report_ui <- function(id) {
           ),
 
           shiny::br(),
-
-          # ── Plot aesthetics ────────────────────────────────────────────────
-          bslib::accordion(
-            open = FALSE,
-            bslib::accordion_panel(
-              "Plot Aesthetics",
-              icon = shiny::icon("palette"),
-              shinyWidgets::pickerInput(
-                ns("custom_ggplot_theme"),
-                label    = "Plot theme:",
-                choices  = c(
-                  "Minimal"         = "minimal",
-                  "Publication"     = "publication",
-                  "Cowplot"         = "cowplot",
-                  "Economist"       = "economist",
-                  "FiveThirtyEight" = "fivethirtyeight",
-                  "Tufte"           = "tufte",
-                  "Modern"          = "modern"
-                ),
-                selected = "minimal"
-              ),
-              shinyWidgets::pickerInput(
-                ns("custom_color_palette"),
-                label    = "Colour palette:",
-                choices  = c("Set2", "Set1", "Dark2", "Paired", "Accent",
-                             "Blues", "Greens", "Reds", "Purples"),
-                selected = "Set2"
-              ),
-              shiny::checkboxInput(ns("custom_show_data_labels"), "Show data labels", value = FALSE),
-              shiny::checkboxInput(ns("custom_show_legend"),      "Show legend",      value = TRUE),
-              shinyWidgets::radioGroupButtons(
-                ns("custom_legend_position"),
-                label    = "Legend position:",
-                choices  = c("right", "left", "top", "bottom"),
-                selected = "top",
-                size     = "sm"
-              )
-            )
-          ),
-
           # ── Output format ──────────────────────────────────────────────────
           bslib::card(
             bslib::card_header(shiny::icon("download"), " Output Format"),
@@ -256,11 +171,8 @@ report_ui <- function(id) {
           ),
 
           # ── Generate ──────────────────────────────────────────────────────
-          shiny::downloadButton(
-            ns("custom_download_btn"),
-            label = "Generate & Download",
-            class = "btn-primary w-100"
-          )
+          edark_button(ns, "custom_download_btn", "Generate & Download",
+                       icon = "download", type = "download")
         ),
 
         # Main panel — preview of items
@@ -391,13 +303,13 @@ report_server <- function(id, shared_state) {
           selected = currently
         ),
         footer = shiny::tagList(
-          shiny::actionButton(ns("modal_select_all"),   "Select All",
-                              class = "btn-sm btn-outline-secondary"),
-          shiny::actionButton(ns("modal_deselect_all"), "Deselect All",
-                              class = "btn-sm btn-outline-secondary ms-2"),
+          edark_button(ns, "modal_select_all", "Select All",
+                       variant = "secondary", size = "dialog", outline = TRUE),
+          edark_button(ns, "modal_deselect_all", "Deselect All",
+                       variant = "secondary", size = "dialog", outline = TRUE,
+                       class = "ms-2"),
           shiny::tags$span(class = "flex-grow-1"),
-          shiny::actionButton(ns("modal_done"), "Done",
-                              class = "btn-primary"),
+          edark_button(ns, "modal_done", "Done", size = "dialog"),
           shiny::modalButton("Cancel")
         ),
         easyClose = FALSE,
@@ -576,6 +488,8 @@ report_server <- function(id, shared_state) {
         ))
         on.exit(shiny::removeModal(), add = TRUE)
 
+        aes_now <- edark_current_aesthetics(shared_state)
+
         tryCatch({
           generate_report(
             dataset                 = shared_state$dataset_working,
@@ -594,11 +508,14 @@ report_server <- function(id, shared_state) {
             include_dataset_summary = isTRUE(input$include_dataset_summary),
             include_tableone        = isTRUE(input$include_tableone) &&
                                         input$report_type == "all_vars",
-            ggplot_theme            = input$ggplot_theme      %||% "minimal",
-            color_palette           = input$color_palette     %||% "Set2",
-            show_data_labels        = isTRUE(input$show_data_labels),
-            show_legend             = isTRUE(input$show_legend),
-            legend_position         = input$legend_position   %||% "top",
+            # The aesthetics on screen, not a second set owned by Report, so
+            # the generated document matches the plot the user has been
+            # looking at (D7 / D9).
+            ggplot_theme            = aes_now$ggplot_theme,
+            color_palette           = aes_now$color_palette,
+            show_data_labels        = aes_now$show_data_labels,
+            show_legend             = aes_now$show_legend,
+            legend_position         = aes_now$legend_position,
             progress_fn             = function(frac, detail) {
               session$sendCustomMessage("edark_report_progress", list(frac = frac, detail = detail))
             }
@@ -651,22 +568,13 @@ report_server <- function(id, shared_state) {
             shiny::div(
               class = "d-flex flex-column gap-1",
               if (i > 1)
-                shiny::actionButton(
-                  ns(paste0("up_", item$id)),
-                  label = NULL, icon = shiny::icon("angle-up"),
-                  class = "btn-sm btn-outline-secondary p-1"
-                ),
+                edark_button(ns, paste0("up_", item$id), NULL, icon = "angle-up",
+                             variant = "secondary", size = "toolbar", class = "p-1"),
               if (i < n)
-                shiny::actionButton(
-                  ns(paste0("down_", item$id)),
-                  label = NULL, icon = shiny::icon("angle-down"),
-                  class = "btn-sm btn-outline-secondary p-1"
-                ),
-              shiny::actionButton(
-                ns(paste0("remove_", item$id)),
-                label = NULL, icon = shiny::icon("trash"),
-                class = "btn-sm btn-outline-danger p-1"
-              )
+                edark_button(ns, paste0("down_", item$id), NULL, icon = "angle-down",
+                             variant = "secondary", size = "toolbar", class = "p-1"),
+              edark_button(ns, paste0("remove_", item$id), NULL, icon = "trash",
+                           variant = "danger", size = "toolbar", class = "p-1")
             )
           )
         })
@@ -833,11 +741,9 @@ report_server <- function(id, shared_state) {
             column_types     = shared_state$column_types,
             format           = input$custom_output_format,
             output_path      = file,
-            ggplot_theme     = input$custom_ggplot_theme     %||% "minimal",
-            color_palette    = input$custom_color_palette    %||% "Set2",
-            show_data_labels = isTRUE(input$custom_show_data_labels),
-            show_legend      = isTRUE(input$custom_show_legend),
-            legend_position  = input$custom_legend_position  %||% "top",
+            # No report-level aesthetics: each item carries the appearance it
+            # had on screen when it was added, so the document reproduces what
+            # the user saw rather than restyling every item at once (D7).
             progress_fn      = function(frac, detail) {
               session$sendCustomMessage("edark_report_progress", detail)
             }

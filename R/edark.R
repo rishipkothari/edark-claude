@@ -157,10 +157,20 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
           bslib::layout_sidebar(
             sidebar = bslib::sidebar(
               width = 400,
+              # Describe / Correlate / Trend are modes: each stages its own
+              # pickers and they all feed the one plot panel (level 3a, D8).
+              # Appearance is not a mode - it is the app's single set of live
+              # aesthetics (D9) - but it sits in the same row rather than
+              # under a tab level of its own, which would nest pills inside
+              # pills (§BUILD_UI-redesign 2.3).
               bslib::navset_pill(
                 bslib::nav_panel("Describe",  describe_controls_ui("describe_controls")),
                 bslib::nav_panel("Correlate", relationship_controls_ui("relationship_controls")),
-                bslib::nav_panel("Trend",     trend_controls_ui("trend_controls"))
+                bslib::nav_panel("Trend",     trend_controls_ui("trend_controls")),
+                bslib::nav_panel(
+                  title = shiny::tagList(shiny::icon("palette"), " Appearance"),
+                  appearance_controls_ui("appearance_controls")
+                )
               )
             ),
             explore_output_ui("explore_output")
@@ -236,7 +246,7 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       color_palette           = "Set2",
       show_data_labels        = FALSE,
       show_legend             = TRUE,
-      legend_position         = "right",
+      legend_position         = "top",
 
       # Plot options (captured on plot button click, not reactive)
       bar_display             = "count",
@@ -453,6 +463,7 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
     describe_controls_server("describe_controls",         shared_state)
     relationship_controls_server("relationship_controls", shared_state)
     trend_controls_server("trend_controls",               shared_state)
+    appearance_controls_server("appearance_controls",     shared_state)
     explore_output_server("explore_output",   shared_state)
     report_server("report",                   shared_state)
     analysis_main_server("analysis_main",     shared_state)

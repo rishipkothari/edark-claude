@@ -46,7 +46,6 @@ NULL
 #' @export
 analysis_diagnostics_ui <- function(id) {
   ns <- shiny::NS(id)
-  .hdr <- function(x) shiny::tags$p(x, class = "text-muted small text-uppercase fw-semibold mt-2 mb-1")
   .links <- function(all_id, none_id) {
     shiny::div(class = "small mb-1",
                shiny::actionLink(ns(all_id), "Select all"), " \u00b7 ",
@@ -57,7 +56,7 @@ analysis_diagnostics_ui <- function(id) {
     sidebar = bslib::sidebar(
       position = "left",
       width    = 340,
-      .hdr("Model assumptions"),
+      edark_section_label("Model assumptions"),
       .links("assump_all", "assump_none"),
       shiny::uiOutput(ns("assump_ui")),
       shiny::tags$hr(class = "my-2"),
@@ -179,18 +178,14 @@ analysis_diagnostics_server <- function(id, shared_state) {
       if (is.null(mt)) return(.ms_placeholder(edark_lock_reason("fit_model")))
       rs  <- res$run_status
       dg  <- diag()
-      bslib::card(
-        bslib::card_body(
-          class = "py-2",
-          shiny::div(class = "fw-semibold", .ANALYSIS_MODEL_LABELS[[mt]]),
-          shiny::div(class = "small mt-1",
-                     shiny::span(class = "text-muted", "Formula: "),
-                     shiny::tags$code(paste(deparse(rs$formula, width.cutoff = 500L), collapse = " "))),
-          if (!is.null(dg)) {
-            shiny::div(class = "small text-muted mt-1",
-                       sprintf("Diagnostics run %s", format(dg$run_at, "%H:%M:%S")))
-          }
-        )
+      edark_model_header(
+        title  = .ANALYSIS_MODEL_LABELS[[mt]],
+        fields = list(
+          Formula = shiny::tags$code(
+            paste(deparse(rs$formula, width.cutoff = 500L), collapse = " "))
+        ),
+        notes  = if (!is.null(dg))
+          sprintf("Diagnostics run %s", format(dg$run_at, "%H:%M:%S"))
       )
     })
 

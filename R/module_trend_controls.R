@@ -22,11 +22,11 @@ trend_controls_ui <- function(id) {
   shiny::tagList(
 
     # ── Timestamp ─────────────────────────────────────────────────────────────
-    shiny::tags$p("Timestamp", class = "text-muted small text-uppercase fw-semibold mt-0 mb-1"),
+    edark_section_label("Timestamp", first = TRUE),
     shiny::uiOutput(ns("timestamp_picker")),
 
     # ── Resolution ────────────────────────────────────────────────────────────
-    shiny::tags$p("Resolution", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+    edark_section_label("Resolution"),
     shinyWidgets::pickerInput(
       ns("trend_resolution"),
       label    = NULL,
@@ -35,59 +35,20 @@ trend_controls_ui <- function(id) {
     ),
 
     # ── Trend variable + stat picker ──────────────────────────────────────────
-    shiny::tags$p("Trend Variable", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+    edark_section_label("Trend Variable"),
     shiny::uiOutput(ns("trend_var_picker")),
     shiny::uiOutput(ns("bar_display_ui")),
     shiny::uiOutput(ns("stat_picker_ui")),
 
     # ── Options ───────────────────────────────────────────────────────────────
-    shiny::tags$p("Options", class = "text-muted small text-uppercase fw-semibold mt-2 mb-1"),
+    edark_section_label("Options"),
     shiny::uiOutput(ns("stratify_picker")),
     shiny::uiOutput(ns("zero_baseline_ui")),
 
     # ── Plot button ───────────────────────────────────────────────────────────
     shiny::tags$div(class = "mt-3",
-      bslib::input_task_button(ns("plot_trend"), "Plot Trend",
-                               icon = shiny::icon("chart-line"))
-    ),
-
-    # ── Aesthetics ───────────────────────────────────────────────────────────
-    bslib::accordion(
-      open = FALSE,
-      bslib::accordion_panel(
-        "Plot Aesthetics",
-        icon = shiny::icon("palette"),
-        shinyWidgets::pickerInput(
-          ns("ggplot_theme"),
-          label    = "Plot theme:",
-          choices  = c(
-            "Minimal"          = "minimal",
-            "Publication"      = "publication",
-            "Cowplot"          = "cowplot",
-            "Economist"        = "economist",
-            "FiveThirtyEight"  = "fivethirtyeight",
-            "Tufte"            = "tufte",
-            "Modern"           = "modern"
-          ),
-          selected = "minimal"
-        ),
-        shinyWidgets::pickerInput(
-          ns("color_palette"),
-          label    = "Colour palette:",
-          choices  = c("Set2", "Set1", "Dark2", "Paired", "Accent",
-                       "Blues", "Greens", "Reds", "Purples"),
-          selected = "Set2"
-        ),
-        shiny::checkboxInput(ns("show_data_labels"), "Show data labels", value = FALSE),
-        shiny::checkboxInput(ns("show_legend"),      "Show legend",      value = TRUE),
-        shinyWidgets::radioGroupButtons(
-          ns("legend_position"),
-          label    = "Legend position:",
-          choices  = c("right", "left", "top", "bottom"),
-          selected = "top",
-          size     = "sm"
-        )
-      )
+      edark_button(ns, "plot_trend", "Plot Trend", icon = "chart-line",
+                   type = "task")
     )
   )
 }
@@ -248,36 +209,6 @@ trend_controls_server <- function(id, shared_state) {
         shared_state$trend_stratify_variable <- val
     })
 
-    # Aesthetics — shared with Analyse tab (same shared_state fields)
-    shiny::observeEvent(input$ggplot_theme, {
-      val <- input$ggplot_theme
-      if (!is.null(val) && !identical(shared_state$ggplot_theme, val))
-        shared_state$ggplot_theme <- val
-    })
-
-    shiny::observeEvent(input$color_palette, {
-      val <- input$color_palette
-      if (!is.null(val) && !identical(shared_state$color_palette, val))
-        shared_state$color_palette <- val
-    })
-
-    shiny::observeEvent(input$show_data_labels, {
-      val <- isTRUE(input$show_data_labels)
-      if (!identical(shared_state$show_data_labels, val))
-        shared_state$show_data_labels <- val
-    })
-
-    shiny::observeEvent(input$show_legend, {
-      val <- isTRUE(input$show_legend)
-      if (!identical(shared_state$show_legend, val))
-        shared_state$show_legend <- val
-    })
-
-    shiny::observeEvent(input$legend_position, {
-      val <- input$legend_position
-      if (!is.null(val) && !identical(shared_state$legend_position, val))
-        shared_state$legend_position <- val
-    })
 
 
     # ── Plot Trend button ─────────────────────────────────────────────────────

@@ -149,3 +149,334 @@ edark_run_gate <- function(output, id, enabled, reason) {
 
   invisible(NULL)
 }
+
+
+# ── Section labels ────────────────────────────────────────────────────────────
+
+#' The uppercase label that heads a group of controls
+#'
+#' The one place the label's classes are written. Before Stage 2 this string
+#' was re-typed ~30 times across 11 modules, plus four private `.hdr()` copies
+#' and one `.sidebar_label()`, and had already drifted into a second spelling
+#' in Prepare (§BUILD_UI-redesign 2.5).
+#'
+#' @param text Character. The label, in sentence case - the CSS uppercases it.
+#' @param first Logical. TRUE for the first label in a pane, which drops the
+#'   top margin so the pane does not start with a gap.
+#'
+#' @return A `shiny::tags$p`.
+#' @keywords internal
+#' @noRd
+edark_section_label <- function(text, first = FALSE) {
+  shiny::tags$p(
+    text,
+    class = paste0(
+      "edark-section-label text-muted small text-uppercase fw-semibold ",
+      if (isTRUE(first)) "mt-0" else "mt-2", " mb-1"
+    )
+  )
+}
+
+
+# ── Buttons ───────────────────────────────────────────────────────────────────
+
+#' Button classes, by the action's scope
+#'
+#' Two scales only (F1 / D10): an action that changes the configuration is
+#' full width at default size in the config pane; an action on an
+#' already-produced artefact is small and outlined, in an
+#' [edark_action_toolbar()]. Dialog actions are default size and shrink to
+#' their label.
+#'
+#' @keywords internal
+#' @noRd
+.edark_btn_class <- function(variant, size, outline = FALSE) {
+  base <- if (isTRUE(outline)) sprintf("btn-outline-%s", variant)
+          else                 sprintf("btn-%s", variant)
+  switch(
+    size,
+    config  = paste(base, "w-100"),
+    toolbar = paste("btn-sm", base),
+    dialog  = base,
+    stop("Unknown button size: ", size, call. = FALSE)
+  )
+}
+
+
+#' The only place a Bootstrap button class is written
+#'
+#' Every button in the app goes through here, so the scale cannot drift the
+#' way it had by Stage 2: `btn-primary w-100`, `w-75`, `btn-sm
+#' btn-outline-primary` and an unclassed `input_task_button` were all in use,
+#' two of them inside one pane (§BUILD_UI-redesign 2.5, 1.3a).
+#'
+#' @param ns The module's namespace function, or NULL outside a module.
+#' @param id Character. The button's bare id.
+#' @param label Character or tag.
+#' @param icon Character or NULL. Font Awesome name.
+#' @param variant Character. Bootstrap variant without the `btn-` prefix.
+#' @param size One of `"config"`, `"toolbar"`, `"dialog"`.
+#' @param outline Logical. Outlined rather than filled - the de-emphasised
+#'   form. Defaults to TRUE for toolbar buttons, which are always outlined
+#'   (D10), and FALSE elsewhere.
+#' @param type One of `"action"`, `"download"`, `"task"`. `"task"` is
+#'   `bslib::input_task_button()`, which keeps its busy state but is given the
+#'   same scale as every other button rather than being an exception at the
+#'   call site.
+#' @param class Character or NULL. Extra utility classes (spacing, padding)
+#'   appended to the scale classes. Never a `btn-*` class - those come from
+#'   `variant`, `size` and `outline`, which is the point of the helper. Taken
+#'   as a named argument rather than through `...` so it is appended rather
+#'   than emitted as a second `class` attribute.
+#' @param ... Passed to the underlying button function.
+#'
+#' @return A button tag.
+#' @keywords internal
+#' @noRd
+edark_button <- function(ns, id, label, icon = NULL, variant = "primary",
+                         size = "config", type = "action",
+                         outline = identical(size, "toolbar"),
+                         class = NULL, ...) {
+  nsf <- if (is.null(ns)) identity else ns
+  ico <- if (is.null(icon)) NULL else shiny::icon(icon)
+
+  if (any(grepl("^btn-", strsplit(paste(class, collapse = " "), "\\s+")[[1]]))) {
+    stop("edark_button(class=) must not carry a btn-* class; ",
+         "use variant / size / outline instead.", call. = FALSE)
+  }
+
+  if (identical(type, "task")) {
+    # input_task_button carries its own variant via `type`; only the layout
+    # class is ours, or the two fight over btn-*.
+    return(bslib::input_task_button(
+      nsf(id), label = label, icon = ico, type = variant,
+      class = paste(c(switch(size, config = "w-100", toolbar = "btn-sm", dialog = NULL),
+                      class), collapse = " "),
+      ...
+    ))
+  }
+
+  cls <- paste(c(.edark_btn_class(variant, size, outline), class), collapse = " ")
+  switch(
+    type,
+    action   = shiny::actionButton(nsf(id), label = label, icon = ico, class = cls, ...),
+    download = shiny::downloadButton(nsf(id), label = label, icon = ico, class = cls, ...),
+    stop("Unknown button type: ", type, call. = FALSE)
+  )
+}
+
+
+#' The right-aligned row of actions that sits above a produced artefact
+#'
+#' Actions *on* a result (Save, Copy, Add to Custom Report, Appearance) live
+#' with the result, never in a pane (F2 / D10).
+#'
+#' @param ... Buttons, built with `edark_button(size = "toolbar")`.
+#'
+#' @return A `shiny::div`.
+#' @keywords internal
+#' @noRd
+edark_action_toolbar <- function(...) {
+  shiny::div(
+    class = "edark-action-toolbar d-flex justify-content-end align-items-center gap-2 mb-2",
+    ...
+  )
+}
+
+
+# ── Empty states ──────────────────────────────────────────────────────────────
+
+#' What a panel shows before it has anything to show
+#'
+#' Replaces the six empty-state grammars counted in §BUILD_UI-redesign 2.5.
+#'
+#' @param title Character. What is missing, or what to do next.
+#' @param body Character or tag. Optional second line.
+#' @param icon Character or NULL. Font Awesome name.
+#'
+#' @return A `shiny::div`.
+#' @keywords internal
+#' @noRd
+edark_empty_state <- function(title, body = NULL, icon = "circle-info") {
+  shiny::div(
+    class = "edark-empty-state text-center text-muted py-5",
+    if (!is.null(icon))
+      shiny::div(class = "edark-empty-state-icon mb-2", shiny::icon(icon)),
+    shiny::tags$p(class = "fw-semibold mb-1", title),
+    if (!is.null(body)) shiny::tags$p(class = "small mb-0", body)
+  )
+}
+
+
+# ── Status messages ───────────────────────────────────────────────────────────
+
+#' The severity scale, named once
+#'
+#' Before Stage 2 the app used four vocabularies for one scale: `alert-*`
+#' blocks, `badge bg-*`, `card(class = "border-warning")` and transient
+#' toasts (§BUILD_UI-redesign 2.4). Stage 4 gives these a dedicated messages
+#' area; this is the tag they render as.
+#'
+#' @keywords internal
+#' @noRd
+.EDARK_MESSAGE_LEVELS <- list(
+  ok      = list(class = "alert-success",   icon = "circle-check"),
+  info    = list(class = "alert-info",      icon = "circle-info"),
+  warn    = list(class = "alert-warning",   icon = "triangle-exclamation"),
+  error   = list(class = "alert-danger",    icon = "circle-exclamation"),
+  pending = list(class = "alert-secondary", icon = "clock"),
+  stale   = list(class = "alert-warning",   icon = "rotate"),
+  locked  = list(class = "alert-secondary", icon = "lock")
+)
+
+
+#' One warning, error, blocker or stale notice
+#'
+#' @param level One of the names of [.EDARK_MESSAGE_LEVELS].
+#' @param text Character or tag. The message itself, one sentence.
+#' @param detail Character or tag. Optional smaller second line.
+#'
+#' @return A `shiny::div`.
+#' @keywords internal
+#' @noRd
+edark_message <- function(level, text, detail = NULL) {
+  spec <- .EDARK_MESSAGE_LEVELS[[level]]
+  if (is.null(spec)) {
+    stop("Unknown message level: ", level,
+         ". Add it to .EDARK_MESSAGE_LEVELS in R/ui_helpers.R.", call. = FALSE)
+  }
+  shiny::div(
+    class = paste("edark-message alert py-2 px-3 mb-2", spec$class),
+    shiny::div(
+      class = "d-flex align-items-baseline gap-2",
+      shiny::icon(spec$icon),
+      shiny::div(
+        shiny::div(text),
+        if (!is.null(detail)) shiny::div(class = "small mt-1 opacity-75", detail)
+      )
+    )
+  )
+}
+
+
+# ── Info pane rows ────────────────────────────────────────────────────────────
+
+#' One label / value line in an info pane
+#'
+#' The info pane is neutral and factual: what the current settings produce
+#' (D2). It never holds an input or an action.
+#'
+#' @param label Character. What the number is.
+#' @param value Character or tag. The number.
+#'
+#' @return A `shiny::div`.
+#' @keywords internal
+#' @noRd
+edark_info_row <- function(label, value) {
+  shiny::div(
+    class = "edark-info-row d-flex justify-content-between align-items-baseline gap-2",
+    shiny::tags$span(class = "text-muted small", label),
+    shiny::tags$span(class = "small fw-semibold text-end", value)
+  )
+}
+
+
+# ── Model header ──────────────────────────────────────────────────────────────
+
+#' The card that names the fitted model, above a Model sub-tab's output
+#'
+#' Replaces four near-duplicates that carried different fields
+#' (§BUILD_UI-redesign 2.5). Each caller passes the fields that apply to it;
+#' one line per field.
+#'
+#' @param title Character. The model type label.
+#' @param fields Named list. Label -> value, one `small` line each. NULL
+#'   entries are dropped, so a caller may pass a field it might not have.
+#' @param notes Character vector or list of tags. Footnote lines, rendered
+#'   muted beneath the fields.
+#'
+#' @return A `bslib::card`.
+#' @keywords internal
+#' @noRd
+edark_model_header <- function(title, fields = list(), notes = NULL) {
+  fields <- fields[!vapply(fields, is.null, logical(1))]
+
+  bslib::card(
+    bslib::card_body(
+      class = "py-2",
+      shiny::div(class = "fw-semibold", title),
+      lapply(names(fields), function(nm) {
+        shiny::div(class = "small mt-1",
+                   shiny::span(class = "text-muted", paste0(nm, ": ")),
+                   fields[[nm]])
+      }),
+      lapply(notes, function(x) shiny::div(class = "small text-muted mt-1", x))
+    )
+  )
+}
+
+
+# ── Plot aesthetics ───────────────────────────────────────────────────────────
+
+#' The app's only copy of the plot aesthetics controls
+#'
+#' Aesthetics are one app-level setting, not a per-mode and not a per-report
+#' one (D9, F4). Before Stage 2 there were four copies of these controls -
+#' Describe, Trend, Full Report and Custom Report - and the two Report copies
+#' used `custom_*` ids applied at generation time, so an exported report did
+#' not match the plot the user had been looking at (D7).
+#'
+#' The controls apply live. They are rendered in the Explore config pane's
+#' own Appearance panel rather than stacked under a mode's staged pickers, so
+#' that everything in a mode panel is staged until that mode's button is
+#' clicked and everything live sits in one place (§BUILD_UI-redesign 2.6).
+#'
+#' Ids are bare; the owning module writes them into `shared_state`.
+#'
+#' @param ns The owning module's namespace function.
+#'
+#' @return A `shiny::tagList`.
+#' @keywords internal
+#' @noRd
+edark_aesthetics_controls <- function(ns) {
+  shiny::tagList(
+    edark_section_label("Theme", first = TRUE),
+    shinyWidgets::pickerInput(
+      ns("ggplot_theme"),
+      label    = NULL,
+      choices  = c(
+        "Minimal"         = "minimal",
+        "Publication"     = "publication",
+        "Cowplot"         = "cowplot",
+        "Economist"       = "economist",
+        "FiveThirtyEight" = "fivethirtyeight",
+        "Tufte"           = "tufte",
+        "Modern"          = "modern"
+      ),
+      selected = "minimal"
+    ),
+
+    edark_section_label("Colour palette"),
+    shinyWidgets::pickerInput(
+      ns("color_palette"),
+      label    = NULL,
+      choices  = c("Set2", "Set1", "Dark2", "Paired", "Accent",
+                   "Blues", "Greens", "Reds", "Purples"),
+      selected = "Set2"
+    ),
+
+    edark_section_label("Legend"),
+    shiny::checkboxInput(ns("show_legend"), "Show legend", value = TRUE),
+    shinyWidgets::radioGroupButtons(
+      ns("legend_position"),
+      label    = NULL,
+      choices  = c("right", "left", "top", "bottom"),
+      selected = "top",
+      size     = "sm",
+      width    = "100%"
+    ),
+
+    edark_section_label("Labels"),
+    shiny::checkboxInput(ns("show_data_labels"), "Show data labels", value = FALSE)
+  )
+}

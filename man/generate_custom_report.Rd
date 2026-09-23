@@ -11,11 +11,11 @@ generate_custom_report(
   format,
   output_path,
   progress_fn = NULL,
-  ggplot_theme = "minimal",
-  color_palette = "Set2",
-  show_data_labels = FALSE,
-  show_legend = TRUE,
-  legend_position = "top"
+  ggplot_theme = NULL,
+  color_palette = NULL,
+  show_data_labels = NULL,
+  show_legend = NULL,
+  legend_position = NULL
 )
 }
 \arguments{
@@ -35,6 +35,10 @@ building summary tables.}
 
 \item{progress_fn}{Optional callback \verb{function(fraction, detail)} for
 progress reporting (e.g. Shiny's \code{setProgress}).}
+
+\item{ggplot_theme, color_palette, show_data_labels, show_legend, legend_position}{Optional appearance overrides applied to \emph{every} item, for programmatic
+callers who want one consistent look. Leave them NULL - as the app does -
+to keep the appearance each item was captured with.}
 }
 \value{
 \code{output_path}, invisibly.

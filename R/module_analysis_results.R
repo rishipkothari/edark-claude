@@ -41,7 +41,6 @@ NULL
 #' @export
 analysis_results_ui <- function(id) {
   ns <- shiny::NS(id)
-  .hdr <- function(x) shiny::tags$p(x, class = "text-muted small text-uppercase fw-semibold mt-2 mb-1")
   .choice <- function(o) {
     shiny::checkboxInput(
       ns(paste0("out_", o$id)), value = TRUE, width = "100%",
@@ -53,7 +52,7 @@ analysis_results_ui <- function(id) {
     sidebar = bslib::sidebar(
       position = "left",
       width    = 340,
-      .hdr("Outputs"),
+      edark_section_label("Outputs"),
       .choice(.RESULTS_OUTPUTS[[1]]),
       shiny::conditionalPanel(
         condition = "input.out_results_table", ns = ns,
@@ -169,17 +168,14 @@ analysis_results_server <- function(id, shared_state) {
       snap <- res$specification_snapshot
       mt   <- snap$model_design$model_type
       gen  <- res$results_generation
-      bslib::card(
-        bslib::card_body(
-          class = "py-2",
-          shiny::div(class = "fw-semibold", .ANALYSIS_MODEL_LABELS[[mt]]),
-          shiny::div(class = "small mt-1",
-                     shiny::span(class = "text-muted", "Formula: "),
-                     shiny::tags$code(paste(deparse(res$run_status$formula, width.cutoff = 500L), collapse = " "))),
-          shiny::div(class = "small text-muted mt-1",
-                     if (is.null(gen)) "Outputs not generated yet."
-                     else sprintf("Outputs generated %s", format(gen$generated_at, "%H:%M:%S")))
-        )
+      edark_model_header(
+        title  = .ANALYSIS_MODEL_LABELS[[mt]],
+        fields = list(
+          Formula = shiny::tags$code(
+            paste(deparse(res$run_status$formula, width.cutoff = 500L), collapse = " "))
+        ),
+        notes  = if (is.null(gen)) "Outputs not generated yet."
+                 else sprintf("Outputs generated %s", format(gen$generated_at, "%H:%M:%S"))
       )
     })
 

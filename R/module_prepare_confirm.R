@@ -39,20 +39,11 @@ prepare_confirm_ui <- function(id) {
     shiny::uiOutput(ns("pending_badge")),
 
     # 3. Apply button
-    shiny::actionButton(
-      ns("apply_btn"),
-      label = "Apply Changes",
-      icon  = shiny::icon("circle-check"),
-      class = "btn-primary w-100"
-    ),
+    edark_button(ns, "apply_btn", "Apply Changes", icon = "circle-check"),
 
     # 4. Reset button
-    shiny::actionButton(
-      ns("reset_btn"),
-      label = "Reset to Original",
-      icon  = shiny::icon("rotate-left"),
-      class = "btn-outline-secondary w-100"
-    )
+    edark_button(ns, "reset_btn", "Reset to Original", icon = "rotate-left",
+                 variant = "secondary", outline = TRUE)
   )
 }
 
@@ -549,9 +540,10 @@ apply_prepare_pipeline <- function(shared_state) {
       "Their thumbnails still show the current data. Would you like to proceed?"
     ),
     footer = shiny::tagList(
-      shiny::actionButton(cancel_id, "Go Back & Revert Changes",
-                          class = "btn-outline-secondary"),
-      shiny::actionButton(confirm_id, confirm_label, class = "btn-warning")
+      edark_button(NULL, cancel_id, "Go Back & Revert Changes",
+                   variant = "secondary", size = "dialog", outline = TRUE),
+      edark_button(NULL, confirm_id, confirm_label, variant = "warning",
+                   size = "dialog")
     ),
     easyClose = FALSE
   ))
