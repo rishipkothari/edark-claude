@@ -618,7 +618,7 @@ apply_prepare_pipeline <- function(shared_state) {
   switch(
     method,
     cutpoints = {
-      n_bins <- length(spec$breaks %||% numeric(0)) + 1L
+      n_bins <- length(spec$breakpoints %||% numeric(0)) + 1L
       sprintf("%s -> %d bands", col, n_bins)
     },
     log       = sprintf("%s(%s)", spec$log_base %||% "ln", col),

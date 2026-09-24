@@ -48,22 +48,26 @@ data_preview_ui <- function(id) {
     shiny::conditionalPanel(
       condition = "input.which_dataset == 'original' && input.which_view == 'data'",
       ns = ns,
-      reactable::reactableOutput(ns("original_table"))
+      shiny::div(class = "edark-scroll-table",
+                 reactable::reactableOutput(ns("original_table")))
     ),
     shiny::conditionalPanel(
       condition = "input.which_dataset == 'original' && input.which_view == 'summary'",
       ns = ns,
-      reactable::reactableOutput(ns("original_summary"))
+      shiny::div(class = "edark-scroll-table",
+                 reactable::reactableOutput(ns("original_summary")))
     ),
     shiny::conditionalPanel(
       condition = "input.which_dataset == 'working' && input.which_view == 'data'",
       ns = ns,
-      reactable::reactableOutput(ns("working_table"))
+      shiny::div(class = "edark-scroll-table",
+                 reactable::reactableOutput(ns("working_table")))
     ),
     shiny::conditionalPanel(
       condition = "input.which_dataset == 'working' && input.which_view == 'summary'",
       ns = ns,
-      reactable::reactableOutput(ns("working_summary"))
+      shiny::div(class = "edark-scroll-table",
+                 reactable::reactableOutput(ns("working_summary")))
     )
   )
 }

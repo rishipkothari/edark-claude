@@ -122,13 +122,8 @@ inst/
 - transform → row filter → transform does not show a warning on stage.
 - Warnings section in the Apply pane — mimic the "Stratify by" section header in Report › Full Report.
 - varaible labels - in Prepare phase, column in master table that has a textbox for custom column labels. Buttons to apply some function (str to title, capitalize first only, variable name) to change all labels quickly for basic presentation purposes.
-- transform cutpoint presents; median, median+IQR 
 
 #### Low magnitude
-- data preview conatiner sizing - horizontal scroll bar is at bottom of page which requires scrolling down; maybe some way to containerize the table to end at the bottom of screen so no scrolling?
-- transforms - multiple cutpoints, info panel says 1 band
-- gray out apply changes before an additional chagne is made, then, make it available again
-- add complete case count to RHS pane
 
 
 ### Explore
@@ -190,7 +185,16 @@ Phases 0–7 and 6b complete; Step 6 (Export, Phase 8) is a placeholder stub. Ph
     - also with UI refresh, might be able to eliminate some of the click to lock in steps, should evaluate
     - ~~Nine step pills wrap to two rows~~ - closed 2026-09-23: there are six steps, and with
       "3 · Variables" / "4 · Covariates" they fit one row at 1280 px (Stage 5).
-- noticing that the RHS pane is kind of tied to the main pane, where the LHS pane is independent (e.g. doesn't scroll). I was imaginging three independent panes
+- ~~RHS pane is tied to the main pane, where the LHS pane is independent; I wanted three
+  independent panes~~ - closed 2026-09-23. Root cause was not the pane structure: bslib
+  ships `.bslib-card .card-body { max-height: var(--bslib-card-body-max-height, none) }`,
+  two classes to `.edark-scroll-table`'s one, so any scroll cap put directly on a
+  `card_body` lost on specificity and the content grew without limit. That blew out the
+  CSS grid row the centre and info panes share, stretching the info pane to match (1660 px
+  on Prepare › Columns) and forcing the whole document to scroll. Capping the content -
+  never on the card_body itself - fixes all three panes at once. Convention and the three
+  containment mechanisms are in the header comment on `.edark-scroll-table`
+  (`inst/www/edark.css`) and `EDARK_RESULT_HEIGHT` (`R/ui_helpers.R`).
 
 #### Mid magnitude
 - Export (§P9): working dataset, prepare/analyze spec, model ouptuts/results (including diagnostics). Formats for results would be individual files vs single document/report (select output type word, pdf, HTML). Zip all files. Share a writer with Step 9 and sessions (§M7).

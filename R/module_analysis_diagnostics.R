@@ -235,7 +235,8 @@ analysis_diagnostics_server <- function(id, shared_state) {
         std_resid = reactable::colDef(name = "Std. residual", format = reactable::colFormat(digits = 2))
       )
       reactable::reactable(top, columns = cols, compact = TRUE, pagination = FALSE,
-                           highlight = TRUE, defaultColDef = reactable::colDef(minWidth = 110))
+                           highlight = TRUE, height = EDARK_RESULT_HEIGHT,
+                           defaultColDef = reactable::colDef(minWidth = 110))
     })
 
     output$vif_table <- reactable::renderReactable({
@@ -243,6 +244,7 @@ analysis_diagnostics_server <- function(id, shared_state) {
       shiny::req(is.data.frame(v))
       reactable::reactable(
         v, compact = TRUE, pagination = FALSE, highlight = TRUE,
+        height = EDARK_RESULT_HEIGHT,
         columns = list(
           term = reactable::colDef(name = "Predictor", minWidth = 200),
           vif  = reactable::colDef(name = "VIF", align = "right",
@@ -264,6 +266,7 @@ analysis_diagnostics_server <- function(id, shared_state) {
       shiny::req(!is.null(comp))
       reactable::reactable(
         comp, compact = TRUE, pagination = FALSE,
+        height = EDARK_RESULT_HEIGHT,
         columns = list(
           group       = reactable::colDef(name = "Cluster variable", minWidth = 160),
           variance    = reactable::colDef(name = "Variance", format = reactable::colFormat(digits = 3)),

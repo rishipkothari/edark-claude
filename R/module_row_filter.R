@@ -34,8 +34,12 @@ row_filter_ui <- function(id) {
     # filters accumulated (§BUILD_UI-redesign 2.6).
     shiny::hr(),
 
-    # Active filter cards
-    shiny::uiOutput(ns("active_filters"))
+    # Active filter cards - the stack grows one card per filter, so it scrolls
+    # itself rather than the page.
+    shiny::div(
+      class = "edark-scroll-table",
+      shiny::uiOutput(ns("active_filters"))
+    )
   )
 }
 

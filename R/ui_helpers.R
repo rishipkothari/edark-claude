@@ -527,6 +527,18 @@ EDARK_CONFIG_WIDTH <- 340
 #' @noRd
 EDARK_INFO_WIDTH <- 300
 
+#' Viewport-relative height cap for a result-pane table
+#'
+#' Passed to `reactable::reactable(height=)`, which writes it as an inline
+#' style and so beats bslib's own `.bslib-card .card-body` rule. Non-reactable
+#' content uses the `.edark-scroll-table` class instead - keep that rule's
+#' `max-height` in `inst/www/edark.css` in step with this value by hand, since
+#' CSS cannot read it.
+#'
+#' @keywords internal
+#' @noRd
+EDARK_RESULT_HEIGHT <- "calc(100vh - 320px)"
+
 
 #' Lay a page out as config / messages / result / info
 #'

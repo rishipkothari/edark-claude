@@ -420,7 +420,7 @@ analysis_varinvestigation_server <- function(id, shared_state) {
           if (sig[index]) list(background = "rgba(25, 135, 84, 0.18)")
         },
         pagination = FALSE,
-        height     = "calc(100vh - 260px)",
+        height     = EDARK_RESULT_HEIGHT,
         highlight  = TRUE,
         compact    = TRUE
       )
@@ -598,6 +598,7 @@ analysis_varinvestigation_server <- function(id, shared_state) {
 
       reactable::reactable(
         fp,
+        height = EDARK_RESULT_HEIGHT,
         columns = list(
           var1  = reactable::colDef(name = "Variable 1"),
           var2  = reactable::colDef(name = "Variable 2"),
@@ -819,7 +820,8 @@ analysis_varinvestigation_server <- function(id, shared_state) {
                   dplyr::select(Term = term, Estimate = estimate),
                 compact    = TRUE,
                 pagination = FALSE,
-                highlight  = TRUE
+                highlight  = TRUE,
+                height     = EDARK_RESULT_HEIGHT
               )
             )
           )
@@ -854,7 +856,8 @@ analysis_varinvestigation_server <- function(id, shared_state) {
                 trace_df,
                 compact    = TRUE,
                 pagination = FALSE,
-                highlight  = TRUE
+                highlight  = TRUE,
+                height     = EDARK_RESULT_HEIGHT
               )
             )
           )

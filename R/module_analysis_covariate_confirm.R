@@ -558,6 +558,7 @@ analysis_covariate_confirm_server <- function(id, shared_state) {
 
       reactable::reactable(
         df,
+        height     = EDARK_RESULT_HEIGHT,
         searchable = TRUE,
         pagination = FALSE,
         highlight  = TRUE,

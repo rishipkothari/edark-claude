@@ -22,10 +22,15 @@ column_manager_ui <- function(id) {
       shiny::actionLink(ns("deselect_all"), "Clear", class = "ms-2 small")
     ),
     bslib::card_body(
+      class = "p-0",
       # Scroll the rows, not the page, so "Select all" and the header stay put
-      # however many columns the dataset has (§BUILD_UI-redesign 2.6).
-      class = "p-0 edark-scroll-table",
-      shiny::uiOutput(ns("column_table"))
+      # however many columns the dataset has (§BUILD_UI-redesign 2.6). The cap
+      # goes on this inner div, never on the card_body - see .edark-scroll-table
+      # in inst/www/edark.css for why.
+      shiny::div(
+        class = "edark-scroll-table",
+        shiny::uiOutput(ns("column_table"))
+      )
     )
   )
 }

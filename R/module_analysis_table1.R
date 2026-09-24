@@ -370,19 +370,23 @@ analysis_table1_server <- function(id, shared_state) {
         ))
       }
 
+      # Table 1 runs one row per variable, so each tab's table is its own scroll
+      # container. The class goes on this div, never on the navset's card_body.
+      scroll <- function(x) shiny::div(class = "edark-scroll-table", x)
+
       tabs <- list(
-        bslib::nav_panel("Overall", gt::gt_output(ns("tbl_overall")))
+        bslib::nav_panel("Overall", scroll(gt::gt_output(ns("tbl_overall"))))
       )
       if (has_exposure) {
         tabs[[length(tabs) + 1]] <- bslib::nav_panel(
           paste0("By ", spec$variable_roles$exposure_variable),
-          gt::gt_output(ns("tbl_by_exposure"))
+          scroll(gt::gt_output(ns("tbl_by_exposure")))
         )
       }
       if (has_outcome) {
         tabs[[length(tabs) + 1]] <- bslib::nav_panel(
           paste0("By ", spec$variable_roles$outcome_variable),
-          gt::gt_output(ns("tbl_by_outcome"))
+          scroll(gt::gt_output(ns("tbl_by_outcome")))
         )
       }
 

@@ -410,9 +410,14 @@ report_server <- function(id, shared_state) {
       bslib::card(
         bslib::card_header(shiny::icon("list-ol"), " Sections in this report"),
         bslib::card_body(
-          shiny::tags$ol(
-            class = "mb-0",
-            lapply(secs, function(v) shiny::tags$li(v))
+          # One item per section, so the list scrolls itself rather than the
+          # page. The cap goes on this inner div, never on the card_body.
+          shiny::div(
+            class = "edark-scroll-table",
+            shiny::tags$ol(
+              class = "mb-0",
+              lapply(secs, function(v) shiny::tags$li(v))
+            )
           )
         )
       )

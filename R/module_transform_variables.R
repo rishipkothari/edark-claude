@@ -129,13 +129,18 @@ transform_variables_server <- function(id, shared_state) {
 
       bslib::card(
         bslib::card_body(
+          class = "p-0",
           # One row per numeric column, so the header scrolls away without
-          # containment (§BUILD_UI-redesign 2.6).
-          class = "p-0 edark-scroll-table",
-          shiny::tags$table(
-            class = "table table-sm table-hover align-middle mb-0",
-            header,
-            shiny::tags$tbody(rows)
+          # containment (§BUILD_UI-redesign 2.6). The cap goes on this inner
+          # div, never on the card_body - see .edark-scroll-table in
+          # inst/www/edark.css for why.
+          shiny::div(
+            class = "edark-scroll-table",
+            shiny::tags$table(
+              class = "table table-sm table-hover align-middle mb-0",
+              header,
+              shiny::tags$tbody(rows)
+            )
           )
         )
       )
@@ -171,6 +176,16 @@ transform_variables_server <- function(id, shared_state) {
                   label       = "Breakpoints (comma-separated):",
                   placeholder = "e.g. 18, 40, 65",
                   value       = bp_val
+                ),
+                shiny::div(
+                  class = "mb-2",
+                  shiny::actionLink(
+                    ns(paste0("preset_median_", .col)), "Median",
+                    class = "small me-3"
+                  ),
+                  shiny::actionLink(
+                    ns(paste0("preset_iqr_", .col)), "Median + IQR"
+                  )
                 ),
                 shiny::textInput(
                   ns(paste0("lbl_", .col)),
@@ -271,6 +286,24 @@ transform_variables_server <- function(id, shared_state) {
               shared_state$has_pending_changes     <- TRUE
             }
           }, ignoreNULL = TRUE, ignoreInit = TRUE)
+
+
+          # Median preset — fills breakpoints with the column's median
+          shiny::observeEvent(input[[paste0("preset_median_", .col)]], {
+            x   <- shared_state$dataset_original[[.col]]
+            med <- stats::median(x, na.rm = TRUE)
+            shiny::updateTextInput(session, paste0("bp_", .col),
+              value = format(signif(med, 4)))
+          }, ignoreInit = TRUE)
+
+
+          # Median + IQR preset — fills breakpoints with the 25th/50th/75th percentiles
+          shiny::observeEvent(input[[paste0("preset_iqr_", .col)]], {
+            x   <- shared_state$dataset_original[[.col]]
+            qs  <- stats::quantile(x, probs = c(0.25, 0.5, 0.75), na.rm = TRUE, names = FALSE)
+            shiny::updateTextInput(session, paste0("bp_", .col),
+              value = paste(signif(qs, 4), collapse = ", "))
+          }, ignoreInit = TRUE)
 
 
           # Labels observer

@@ -596,6 +596,7 @@ analysis_modelspec_server <- function(id, shared_state) {
     bslib::card_body(
       reactable::reactable(
         df, compact = TRUE, pagination = FALSE, highlight = TRUE,
+        height = EDARK_RESULT_HEIGHT,
         columns = list(
           Term     = reactable::colDef(minWidth = 220),
           Estimate = reactable::colDef(name = measure, align = "right"),

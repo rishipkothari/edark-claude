@@ -187,7 +187,7 @@ analysis_results_server <- function(id, shared_state) {
       tabs <- list(bslib::nav_panel("Summary", .rs_summary(res)))
       if (!is.null(res$result_tables$main_results)) {
         tabs <- c(tabs, list(bslib::nav_panel("Results table",
-          shiny::div(class = "pt-2", gt::gt_output(ns("results_gt"))))))
+          shiny::div(class = "pt-2 edark-scroll-table", gt::gt_output(ns("results_gt"))))))
       }
       if (!is.null(res$result_tables$fit_statistics)) {
         tabs <- c(tabs, list(bslib::nav_panel("Fit statistics",
@@ -195,8 +195,13 @@ analysis_results_server <- function(id, shared_state) {
       }
       if (!is.null(res$result_plots$coefficient_plot)) {
         n <- attr(res$result_plots$coefficient_plot, "n_rows") %||% 10L
+        # The plot's own height scales with the number of terms, so a large
+        # model would run past the viewport; the wrapper scrolls it instead.
         tabs <- c(tabs, list(bslib::nav_panel("Forest plot",
-          shiny::plotOutput(ns("forest"), height = sprintf("%dpx", 34L * n + 90L)))))
+          shiny::div(
+            class = "edark-scroll-table",
+            shiny::plotOutput(ns("forest"), height = sprintf("%dpx", 34L * n + 90L))
+          ))))
       }
       if (!is.null(res$methods_paragraph)) {
         tabs <- c(tabs, list(bslib::nav_panel("Methods", .rs_methods(res$methods_paragraph, ns("methods_text")))))
