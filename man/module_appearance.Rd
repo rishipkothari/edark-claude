@@ -37,9 +37,11 @@ control row next to three staged ones and spent 340 px on settings that are
 changed rarely and then left alone.
 
 The page has no config pane: its whole content \emph{is} configuration, so the
-controls sit in the main area, grouped one card per heading
-(\code{\link[=edark_aesthetics_groups]{edark_aesthetics_groups()}}). It is the D6 exception the page contract
-allows for a page that produces nothing.
+controls sit in the main area as one plain list, each group under an
+\code{\link[=edark_section_label]{edark_section_label()}} (\code{\link[=edark_aesthetics_groups]{edark_aesthetics_groups()}}). There are five
+single-value settings in total - a card apiece framed them as four separate
+artefacts and spent most of the page on chrome. It is the D6 exception the
+page contract allows for a page that produces nothing.
 
 \code{appearance_controls_ui()} is the narrow stacked form, kept for any pane
 that needs it. Only one of the two may be in the document at a time - both

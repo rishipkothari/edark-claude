@@ -80,7 +80,11 @@ prepare_confirm_server <- function(id, shared_state) {
       shared_state$included_columns       # dependency: col include/exclude
       shared_state$row_filter_specs       # dependency: row filters
       shared_state$column_transform_specs # dependency: transforms
-      tryCatch(apply_prepare_pipeline(shared_state), error = function(e) NULL)
+      # Warnings are suppressed here, not ignored: this is a speculative render of
+      # a staged state, and anything worth telling the user about it is already in
+      # the messages pane below. The real Apply runs unsuppressed.
+      tryCatch(suppressWarnings(apply_prepare_pipeline(shared_state)),
+               error = function(e) NULL)
     })
 
 
@@ -351,6 +355,20 @@ apply_prepare_pipeline <- function(shared_state) {
   for (col in names(filters)) {
     if (!col %in% names(dataset)) next
     spec <- filters[[col]]
+
+    # A spec is built against the column as it was when the filter was added, so a
+    # transform staged or removed afterwards can leave the two out of step - a
+    # categorical spec holding band labels over a column that is numeric again, say.
+    # Matching those labels keeps no rows at all, which surfaced as an empty dataset
+    # with nothing to explain it. .prune_conflicting_filter_specs() should have
+    # dropped such a filter before we get here; skipping it loudly is the backstop
+    # for any route that does not.
+    if (identical(spec$type, "numeric") != is.numeric(dataset[[col]])) {
+      warning("Row filter on '", col, "' no longer matches that column's type ",
+              "and was skipped. Re-add the filter after applying your transforms.")
+      next
+    }
+
     if (spec$type == "numeric") {
       keep <- !is.na(dataset[[col]]) &
               dataset[[col]] >= spec$min &
@@ -444,19 +462,27 @@ apply_prepare_pipeline <- function(shared_state) {
 .build_prepare_warnings <- function(specs, filters, included, last_applied, dataset) {
   groups <- list()
 
-  # Group 1: columns with PENDING (changed-since-last-apply) transforms that also
-  # have active row filters. A transform that was already applied and whose filter
-  # was added afterward is not a conflict — only flag changes to the transform spec.
-  if (length(specs) > 0 && length(filters) > 0) {
+  # Group 1: columns whose transform has CHANGED since the last Apply and that
+  # also have an active row filter. A transform that was already applied and whose
+  # filter was added afterward is not a conflict - only flag changes to the spec.
+  #
+  # "Changed" includes a transform that has been REMOVED, which is why the column
+  # set below is the union of the staged and last-applied names rather than the
+  # staged names alone: a removed transform is absent from `specs`, so iterating
+  # `specs` skipped the very case that leaves a banded filter pointing at a column
+  # that is numeric again - zero rows on Apply, with no warning first. For the same
+  # reason the gate is on `filters` alone; removing the only transform empties
+  # `specs` but must still warn.
+  if (length(filters) > 0) {
     last_tx <- if (!is.null(last_applied$column_transform_specs))
                  last_applied$column_transform_specs else list()
     pending_tx_cols <- Filter(function(col) {
       !identical(specs[[col]], last_tx[[col]])
-    }, names(specs))
+    }, union(names(specs), names(last_tx)))
     conflict_cols <- intersect(pending_tx_cols, names(filters))
     if (length(conflict_cols) > 0) {
       groups <- c(groups, list(list(
-        title = "Transform staged on column(s) with active row filter - filter will be removed on Apply:",
+        title = "Transform changed or removed on column(s) with an active row filter - filter will be removed on Apply:",
         items = as.list(conflict_cols)
       )))
     }
@@ -500,8 +526,9 @@ apply_prepare_pipeline <- function(shared_state) {
 # Remove row filter specs that would be invalidated before running the pipeline.
 # Called at the top of do_apply() and .do_nav_apply().
 #   - Pending transforms: only transforms that differ from last_applied_specs
-#     (i.e., changed since the last Apply). A filter added on an already-applied
-#     transform's output is valid and must not be removed.
+#     (i.e., changed since the last Apply), including transforms that have been
+#     REMOVED - hence the union of staged and last-applied names. A filter added
+#     on an already-applied transform's output is valid and must not be removed.
 #   - Excluded columns: column won't be in the working dataset.
 .prune_conflicting_filter_specs <- function(shared_state) {
   specs        <- shiny::isolate(shared_state$column_transform_specs)
@@ -515,7 +542,7 @@ apply_prepare_pipeline <- function(shared_state) {
                last_applied$column_transform_specs else list()
   pending_tx_cols <- Filter(function(col) {
     !identical(specs[[col]], last_tx[[col]])
-  }, names(specs))
+  }, union(names(specs), names(last_tx)))
 
   to_remove <- union(
     intersect(pending_tx_cols, names(filters)),  # pending-transform conflicts

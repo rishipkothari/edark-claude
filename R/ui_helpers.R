@@ -566,10 +566,11 @@ EDARK_RESULT_HEIGHT <- "calc(100vh - 320px)"
 #' }
 #'
 #' @param config Tag list for the left sidebar.
-#' @param result Tag list for the centre. `NULL` drops the centre column
-#'   entirely - the D11 exception, for a page whose only deliverable is a file
-#'   and whose "result" would merely restate its own controls. The info content
-#'   then becomes the main area. Nothing but Report › Custom may use this.
+#' @param result Tag list for the centre. Required: every page has one. The
+#'   D11 exception that let this be `NULL` and dropped the centre column is
+#'   gone - Report › Custom was its only user, and it now puts its item list
+#'   in the centre like every other page. A page with no obvious artefact has
+#'   one it has not identified yet, not grounds for two panes.
 #' @param info Tag list for the right pane. Every page owes it real content
 #'   (F7); a page with nothing factual to say is missing information the user
 #'   wants, not a candidate for dropping the pane.
@@ -581,7 +582,7 @@ EDARK_RESULT_HEIGHT <- "calc(100vh - 320px)"
 #' @return A `bslib::layout_sidebar`.
 #' @keywords internal
 #' @noRd
-edark_page <- function(config, result = NULL, info = NULL, messages = NULL,
+edark_page <- function(config, result, info = NULL, messages = NULL,
                        info_open = TRUE, info_title = NULL) {
 
   info_body <- if (is.null(info)) NULL else shiny::tagList(
@@ -589,11 +590,12 @@ edark_page <- function(config, result = NULL, info = NULL, messages = NULL,
     info
   )
 
-  centre <- if (is.null(result)) {
-    # D11: no centre. Messages sit at the top of the info column, which is now
-    # the main area.
-    shiny::tagList(messages, info_body)
-  } else if (is.null(info)) {
+  if (missing(result) || is.null(result)) {
+    stop("edark_page(result=) is required: every page shows its artefact in ",
+         "the centre. See the note on the `result` argument.", call. = FALSE)
+  }
+
+  centre <- if (is.null(info)) {
     shiny::tagList(messages, result)
   } else {
     bslib::layout_sidebar(
@@ -658,5 +660,12 @@ edark_messages_server <- function(output, items, id = "messages") {
     if (length(msgs) == 0) return(NULL)
     shiny::tagList(msgs)
   })
+
+  # The slot takes no space when empty, which `.edark-messages:empty` in
+  # edark.css does with `display: none`. Shiny suspends a hidden output, so an
+  # empty slot would never recompute and could never stop being empty - the
+  # rule that keeps it out of the way also kept every message in the app from
+  # ever appearing. Opting this one output out of suspension breaks the loop.
+  shiny::outputOptions(output, id, suspendWhenHidden = FALSE)
   invisible(NULL)
 }

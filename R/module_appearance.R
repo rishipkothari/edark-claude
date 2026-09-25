@@ -17,9 +17,11 @@
 #' changed rarely and then left alone.
 #'
 #' The page has no config pane: its whole content *is* configuration, so the
-#' controls sit in the main area, grouped one card per heading
-#' ([edark_aesthetics_groups()]). It is the D6 exception the page contract
-#' allows for a page that produces nothing.
+#' controls sit in the main area as one plain list, each group under an
+#' [edark_section_label()] ([edark_aesthetics_groups()]). There are five
+#' single-value settings in total - a card apiece framed them as four separate
+#' artefacts and spent most of the page on chrome. It is the D6 exception the
+#' page contract allows for a page that produces nothing.
 #'
 #' `appearance_controls_ui()` is the narrow stacked form, kept for any pane
 #' that needs it. Only one of the two may be in the document at a time - both
@@ -50,20 +52,10 @@ appearance_controls_ui <- function(id) {
 #' @rdname module_appearance
 #' @export
 appearance_page_ui <- function(id) {
-  ns     <- shiny::NS(id)
-  groups <- edark_aesthetics_groups(ns)
+  ns <- shiny::NS(id)
 
-  # One card per group, two across on a wide window and stacked below 992 px.
-  # Capped at 960 px and centred: a picker stretched to 1900 px is harder to
-  # read than one at a comfortable measure, and these are single-value
-  # settings, not a table.
-  card <- function(heading) {
-    bslib::card(
-      bslib::card_header(heading),
-      bslib::card_body(groups[[heading]])
-    )
-  }
-
+  # The same stacked list a narrow pane gets, capped and centred: a picker
+  # stretched to 1900 px is harder to read than one at a comfortable measure.
   shiny::div(
     class = "edark-settings-page mx-auto",
     shiny::tags$p(
@@ -72,13 +64,7 @@ appearance_page_ui <- function(id) {
       "report generated from it. They are the app's only plot-appearance ",
       "controls."
     ),
-    bslib::layout_columns(
-      col_widths = c(6, 6),
-      card("Theme"),
-      card("Colour palette"),
-      card("Legend"),
-      card("Labels")
-    )
+    edark_aesthetics_controls(ns)
   )
 }
 

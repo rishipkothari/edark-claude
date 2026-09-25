@@ -90,7 +90,10 @@ data-raw/
 inst/
 ├── report_template.Rmd         Bundled Rmd template for HTML report output
 └── templates/
-    └── ppt_16x9_blank_template.pptx   Bundled slide template for PPT output
+    ├── ppt_16x9_blank_template.pptx   Bundled slide template for PPT output
+    └── word_docx_blank_template.docx  Bundled Word template for DOCX output - Title,
+                                       Subtitle and heading 1-9 styles; the TOC and the
+                                       section furniture are built in .assemble_docx()
 ```
 
 ---
@@ -109,6 +112,7 @@ inst/
 
 ## Coding philosophy
 - do not use /u2014 dashes, use hyphens or other simple ASCII characters where appropriate
+- remind me to push after commits
 
 ---
 
@@ -119,7 +123,16 @@ inst/
 #### High magnitude
 
 #### Mid magnitude
-- transform → row filter → transform does not show a warning on stage.
+- ~~transform → row filter → transform does not show a warning on stage~~ - closed
+  2026-09-24. Root cause was one line shared by `.build_prepare_warnings()` and
+  `.prune_conflicting_filter_specs()`: both derived the changed-transform set from
+  `names(specs)`, the *currently staged* transforms, so a transform that had been
+  REMOVED since the last Apply was never tested. Worst case was cutpoints -> filter on
+  the bands -> remove the cutpoints: the categorical filter survived onto a column that
+  was numeric again, matched no rows, and Apply produced an empty dataset with no
+  warning. Both now use `union(names(specs), names(last_tx))`, and
+  `.apply_row_filters()` skips a filter whose `type` disagrees with the column as a
+  backstop.
 - Warnings section in the Apply pane — mimic the "Stratify by" section header in Report › Full Report.
 - varaible labels - in Prepare phase, column in master table that has a textbox for custom column labels. Buttons to apply some function (str to title, capitalize first only, variable name) to change all labels quickly for basic presentation purposes.
 
@@ -131,16 +144,26 @@ inst/
 #### High magnitude
 - Alternative plot types per variable combination (heat map, balloon plot, etc.)
 - report -> full report main panel - should this contain a viewer for the file that is generated? and then a save button to export the report to a desired location? solves the "main panel sucks" issue
-- report -> custom report; LHS panel contains the previews of the custom report items; i just want to move this into the main panel, thats what the main panel should house - currently added custom report items. ideally this might become a drag and drop situation. we could even take the item previews and display them in the RHS pane on select. the entries in the table or however we present it in the main pane could be selectable, and would be descriptions (essentially plot titles Var A vs Var b stratified by Var c), fit more on the screen for drag and drop functionality, have other options in line like delete, etc.
 
 #### Mid magnitude
-- Word report: reference `.docx` template with defined heading styles
+- ~~Word report: reference `.docx` template with defined heading styles~~ - closed
+  2026-09-24. `inst/templates/word_docx_blank_template.docx` now supplies the
+  Title / Subtitle / heading 1-9 styles, and `.assemble_docx()` builds a real
+  document on top of them: title page, a Word TOC field that populates from the
+  headings (heading 1 = Table 1 / Dataset Summary / the section group, heading 2 =
+  each variable), a running header naming the document, a page number bottom-right,
+  and four page sections so the dataset summary is landscape and everything else
+  portrait. Per-variable summary tables are laid out at 18pt. Two things worth
+  knowing: Word's NUMPAGES field counts *within a section*, so the footer is
+  "Page N" and not "Page N of M"; and Word's own table autofit wrecks a table
+  wider than the page, so `.docx_fit_ft()` computes the widths in R and
+  `.docx_shrink_widths()` takes the overflow out of the widest columns only.
 - Statistical tests in the Explore › Relationship summary panel (num × fac → Kruskal-Wallis; fac × fac → chi-square / Fisher's). Reports already have these via the table helpers; the Explore summary does not.
 - Async report generation (synchronous now; cancel needs `future` / `promises`).
 - when changing LHS pills in explore data from describe to corelate and then clicking plot relationship button, secondary variable chosen for plot is the secondary variable in the correlate LHS pane; primary and stratify by are still left over from the last selection in the describe pill.
 - when going from correlate back to describe, it uses the primary and stratify by variables in correlate; i think we need to reassign the state variables on pill change/click
-- custom report LHS pane when the thumbnails box is moved to main pane can contain "report contents" like the full report has dataset summary and table 1. i guess this could be a common component between the two so that if we add more report items we can share the same box? or add it in two places? 
-- generate custom report modal/spinner does not increment with the custom report items like it does for the full report items
+- Custom Report's config pane now holds only Output Format + Generate, so it has room for a "Report Contents" box like Full Report's (Dataset Summary, Table One). Probably a shared component between the two rather than two copies.
+- **Drag-and-drop reordering of Custom Report items.** The list is in the centre and reorders via the toolbar's Move Up / Move Down, which needs no JS. Drag would need `sortable` (a SortableJS wrapper) attached to the row container - `sortable_js()`, not `rank_list()`, which is text-labels-only. The fiddly part is not the drag: it is that the drop rewrites the DOM while `renderUI` re-renders from `shared_state$custom_report_items`, so the input -> server reorder -> re-render round trip has to land on the same order or the row snaps back. Needs `chromote` to verify.
 - generate full report spinner counts to 7 twice for word and powerpoint report format but not HTML: once with "variable #" then with "section #"
 
 #### Low magnitude

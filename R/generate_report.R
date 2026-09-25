@@ -191,10 +191,13 @@
     sum(!is.na(dataset[[stratify_by]]) & dataset[[stratify_by]] == s, na.rm = TRUE),
     integer(1)) else integer(0)
 
-  # Build dynamic column names
-  overall_col <- paste0("Overall (N=", n_overall, ")")
+  # Build dynamic column names. These reach the reader as the table's column
+  # headers, so every as.data.frame() below passes check.names = FALSE:
+  # R's default sanitising turned "Overall (n=500)" into "Overall..n.500."
+  # and "p-value" into "p.value", and flextable printed exactly that.
+  overall_col <- paste0("Overall (n=", n_overall, ")")
   strat_cols  <- if (has_strat)
-    paste0(strata, " (N=", n_strata, ")") else character(0)
+    paste0(strata, " (n=", n_strata, ")") else character(0)
   p_col       <- "p-value"
 
   # Helper: format mean (SD)
@@ -230,7 +233,7 @@
           if (is.na(gt$p.value)) NA_character_ else edark_format_p(gt$p.value)
         }, error = function(e) NA_character_)
       }
-      list(as.data.frame(row, stringsAsFactors = FALSE))
+      list(as.data.frame(row, stringsAsFactors = FALSE, check.names = FALSE))
 
     } else if (vtype == "factor") {
       lvls <- if (is.factor(x)) levels(x) else
@@ -249,11 +252,11 @@
       # Header row (variable name + N overall + N per stratum + p)
       hdr <- setNames(as.list(rep(NA_character_, length(all_cols))), all_cols)
       hdr[["Variable"]]  <- var
-      hdr[[overall_col]] <- paste0("N=", n_valid_overall)
+      hdr[[overall_col]] <- paste0("n=", n_valid_overall)
       if (has_strat) {
         for (i in seq_along(strata)) {
           idx <- !is.na(dataset[[stratify_by]]) & dataset[[stratify_by]] == strata[i]
-          hdr[[strat_cols[i]]] <- paste0("N=", sum(!is.na(x[idx])))
+          hdr[[strat_cols[i]]] <- paste0("n=", sum(!is.na(x[idx])))
         }
         hdr[[p_col]] <- p_val
       }
@@ -276,10 +279,10 @@
           }
           row[[p_col]] <- NA_character_
         }
-        as.data.frame(row, stringsAsFactors = FALSE)
+        as.data.frame(row, stringsAsFactors = FALSE, check.names = FALSE)
       })
 
-      c(list(as.data.frame(hdr, stringsAsFactors = FALSE)), level_rows)
+      c(list(as.data.frame(hdr, stringsAsFactors = FALSE, check.names = FALSE)), level_rows)
     } else {
       NULL
     }
@@ -819,57 +822,391 @@
 }
 
 
+# ---------------------------------------------------------------------------
+# DOCX assembler
+# ---------------------------------------------------------------------------
+# The Word report is a real document, not a stack of captioned pages: a title
+# page, a field-driven table of contents, Word heading styles so that TOC
+# populates itself, a running header describing the document and a page number
+# in the bottom-right footer. Everything is built on the bundled template in
+# inst/templates/, so the heading / Title / Subtitle styles come from one place.
+
+# Page geometry. Portrait is US Letter with 1" margins, giving 6.5" of text
+# width - exactly the width the section plots are rendered at. The dataset
+# summary is the one landscape page, with tighter margins because that table is
+# the widest thing in the report.
+.DOCX_PORTRAIT_WIDTH   <- 6.5
+.DOCX_LANDSCAPE_MARGIN <- 0.6
+.DOCX_LANDSCAPE_WIDTH  <- 11 - 2 * .DOCX_LANDSCAPE_MARGIN
+
+# Heading 1 as the bundled template defines it (20pt, accent1 shade). Used for
+# the one heading that must look like a heading without being one - the title
+# of the contents page, which would otherwise list itself.
+.DOCX_H1_COLOR <- "#0F4761"
+
+# Font size for the per-variable summary tables. Deliberately large: these are
+# read from a projector, so the tables are laid out to fit 18pt.
+.DOCX_SECTION_FONT <- 18
+
+
+#' Running header block for the body sections of the Word report
+#' @noRd
+.docx_header_block <- function(meta) {
+  officer::block_list(
+    officer::fpar(
+      officer::ftext(
+        paste0(meta$title, " \u00b7 ", meta$subtitle),
+        officer::fp_text(font.size = 9, color = "#595959", font.family = "Arial")
+      ),
+      fp_p = officer::fp_par(
+        text.align     = "left",
+        padding.bottom = 3,
+        border.bottom  = officer::fp_border(color = "#BFBFBF", width = 0.75)
+      )
+    )
+  )
+}
+
+#' Running footer block: page number, bottom right
+#'
+#' PAGE only, no "of N": Word's NUMPAGES field counts pages within the current
+#' section in a document with several sections, so "Page 4 of 5" appeared on
+#' page 4 of 19.
+#' @noRd
+.docx_footer_block <- function() {
+  small <- officer::fp_text(font.size = 9, color = "#595959", font.family = "Arial")
+  officer::block_list(
+    officer::fpar(
+      officer::ftext("Page ", small),
+      officer::run_word_field("PAGE", prop = small),
+      fp_p = officer::fp_par(text.align = "right", padding.top = 3)
+    )
+  )
+}
+
+#' Section properties for one run of Word pages
+#'
+#' @param orient "portrait" or "landscape".
+#' @param meta Document metadata list; when NULL the section gets no running
+#'   header or footer. Only the title page uses that, and only because it is
+#'   the first section - a later section with no header reference would inherit
+#'   the previous one instead.
+#' @noRd
+.docx_section_props <- function(orient = "portrait", meta = NULL) {
+  margin <- if (identical(orient, "landscape")) .DOCX_LANDSCAPE_MARGIN else 1
+  officer::prop_section(
+    page_size    = officer::page_size(width = 8.5, height = 11, orient = orient),
+    page_margins = officer::page_mar(
+      top = margin, bottom = margin, left = margin, right = margin,
+      header = 0.5, footer = 0.5, gutter = 0
+    ),
+    type           = "nextPage",
+    header_default = if (is.null(meta)) NULL else .docx_header_block(meta),
+    footer_default = if (is.null(meta)) NULL else .docx_footer_block()
+  )
+}
+
+# Close the current section, so everything added since the previous break sits
+# on pages with that orientation and furniture.
+.docx_end_section <- function(doc, orient = "portrait", meta = NULL) {
+  officer::body_end_block_section(
+    doc,
+    officer::block_section(.docx_section_props(orient, meta))
+  )
+}
+
+
+#' Fit a flextable to the text width of its page
+#'
+#' The column widths the styling helpers set were chosen for a 13.3" slide, so
+#' they overflow both the portrait and the landscape page. Word's own autofit
+#' is not the answer - handed a table wider than the page it shrinks every
+#' column towards equal and wraps "numeric" to "numeri / c". Instead the widths
+#' are computed here (from cell content when \code{autofit = TRUE}, otherwise
+#' the ones already on the table) and scaled down - never up - to the page,
+#' with a fixed layout so Word honours them.
+#'
+#' This is also what makes the 18pt section tables work: \code{autofit()}
+#' measures at the size the text will actually print at, so each column is
+#' given the room that font needs.
+#'
+#' @param avail_width Text width of the page, in inches.
+#' @noRd
+.docx_fit_ft <- function(ft, avail_width = .DOCX_PORTRAIT_WIDTH,
+                         body_size = NULL, header_size = NULL,
+                         padding_x = NULL, autofit = TRUE) {
+  if (is.null(ft)) return(NULL)
+  if (!is.null(body_size))   ft <- flextable::fontsize(ft, size = body_size,   part = "body")
+  if (!is.null(header_size)) ft <- flextable::fontsize(ft, size = header_size, part = "header")
+  ft <- flextable::padding(ft, padding.top = 2, padding.bottom = 2, part = "all")
+  if (!is.null(padding_x))
+    ft <- flextable::padding(ft, padding.left = padding_x,
+                             padding.right = padding_x, part = "all")
+
+  if (isTRUE(autofit)) ft <- tryCatch(flextable::autofit(ft), error = function(e) ft)
+  widths <- dim(ft)$widths
+  if (length(widths) && all(is.finite(widths)) && sum(widths) > avail_width) {
+    # Measured widths are capped (the slack is in the widest columns);
+    # hand-tuned widths are scaled, because their proportions are the design.
+    widths <- if (isTRUE(autofit))
+      .docx_shrink_widths(widths, avail_width)
+    else
+      widths * (avail_width / sum(widths))
+    ft <- flextable::width(ft, width = widths)
+  }
+
+  flextable::set_table_properties(ft, layout = "fixed", align = "center")
+}
+
+
+#' Shrink a set of column widths onto a page
+#'
+#' Takes the overflow out of the widest columns first rather than scaling every
+#' column by the same factor. A label column ("transplant_center") measures
+#' much wider than the data columns beside it, and scaling proportionally
+#' starved those data columns until "13 (18.6%)" broke over three lines while
+#' the label column still had slack. Capping every column at one ceiling - the
+#' largest ceiling whose total still fits - only touches the columns that can
+#' afford it.
+#'
+#' @param widths Numeric column widths in inches.
+#' @param avail Page text width in inches.
+#' @noRd
+.docx_shrink_widths <- function(widths, avail) {
+  if (sum(widths) <= avail) return(widths)
+  lo <- 0
+  hi <- max(widths)
+  for (i in seq_len(60)) {
+    mid <- (lo + hi) / 2
+    if (sum(pmin(widths, mid)) > avail) hi <- mid else lo <- mid
+  }
+  pmin(widths, lo)
+}
+
+
+# A non-heading label above a table or a continuation figure: it identifies the
+# page without adding a second TOC entry for the same section.
+.docx_add_caption <- function(doc, text) {
+  officer::body_add_fpar(
+    doc,
+    officer::fpar(
+      officer::ftext(text, officer::fp_text(font.size = 11, bold = TRUE,
+                                            font.family = "Arial")),
+      fp_p = officer::fp_par(padding.bottom = 6, keep_with_next = TRUE)
+    )
+  )
+}
+
+
+#' Title-page metadata for the Word report
+#'
+#' Pure: derived entirely from the arguments, so \code{edark_report()} and the
+#' Shiny download handler produce the same front matter.
+#' @noRd
+.docx_meta <- function(dataset, report_type = "all_vars", n_sections = 0,
+                       primary_variable = NULL, primary_role = "exposure",
+                       stratify_variable = NULL) {
+  strat <- if (!is.null(stratify_variable) && nzchar(stratify_variable))
+    stratify_variable else NULL
+  plural <- function(n, one, many) paste0(n, " ", if (n == 1) one else many)
+
+  subtitle <- switch(report_type,
+    all_vars          = paste("Descriptive summary of",
+                              plural(n_sections, "variable", "variables")),
+    primary_vs_others = paste0(primary_variable, " (", primary_role, ") versus ",
+                               plural(n_sections, "variable", "variables")),
+    custom            = paste("Curated selection of",
+                              plural(n_sections, "figure", "figures")),
+    "Exploratory data analysis"
+  )
+
+  group_heading <- switch(report_type,
+    all_vars          = "Variable Summaries",
+    primary_vs_others = paste("Relationships with", primary_variable),
+    custom            = "Selected Figures",
+    "Sections"
+  )
+
+  facts <- c(
+    Dataset  = paste0(format(nrow(dataset), big.mark = ","), " rows \u00d7 ",
+                      ncol(dataset), " columns"),
+    Sections = as.character(n_sections)
+  )
+  if (!is.null(strat)) facts[["Stratified by"]] <- strat
+  facts[["Generated"]] <- format(Sys.Date(), "%d %B %Y")
+
+  list(
+    title         = "Exploratory Data Analysis Report",
+    subtitle      = subtitle,
+    group_heading = group_heading,
+    facts         = facts
+  )
+}
+
+
+#' Add the title page
+#'
+#' No heading style is used, so none of this reaches the table of contents.
+#' @noRd
+.docx_add_title_page <- function(doc, meta) {
+  for (i in 1:3) doc <- officer::body_add_par(doc, "", style = "Normal")
+  doc <- officer::body_add_par(doc, meta$title,    style = "Title")
+  doc <- officer::body_add_par(doc, meta$subtitle, style = "Subtitle")
+  doc <- officer::body_add_par(doc, "", style = "Normal")
+
+  label_fmt <- officer::fp_text(font.size = 11, bold = TRUE, font.family = "Arial")
+  value_fmt <- officer::fp_text(font.size = 11, font.family = "Arial")
+  for (nm in names(meta$facts)) {
+    doc <- officer::body_add_fpar(
+      doc,
+      officer::fpar(
+        officer::ftext(paste0(nm, ": "), label_fmt),
+        officer::ftext(meta$facts[[nm]], value_fmt),
+        fp_p = officer::fp_par(padding.bottom = 2)
+      )
+    )
+  }
+  doc
+}
+
+
+#' Add the table-of-contents page
+#'
+#' \code{body_add_toc()} writes a Word TOC field, so Word generates the entries
+#' from the heading styles rather than us baking them in. Word offers to update
+#' fields when the document opens; Ctrl+A then F9 refreshes it by hand.
+#'
+#' The page title is hand-formatted to match heading 1 rather than being one:
+#' a real heading here puts "Table of Contents" in its own table of contents.
+#' @noRd
+.docx_add_toc_page <- function(doc) {
+  doc <- officer::body_add_fpar(
+    doc,
+    officer::fpar(
+      officer::ftext("Table of Contents",
+                     officer::fp_text(font.size = 20, color = .DOCX_H1_COLOR)),
+      fp_p = officer::fp_par(padding.bottom = 4, keep_with_next = TRUE)
+    )
+  )
+  officer::body_add_toc(doc, level = 2)
+}
+
+
 .assemble_docx <- function(sections, dataset_summary_df, output_path,
                              progress_fn = NULL,
                              include_dataset_summary = TRUE,
-                             tableone_ft = NULL) {
-  doc <- officer::read_docx()
+                             tableone_ft = NULL,
+                             meta = NULL) {
+  if (is.null(meta))
+    meta <- list(
+      title         = "Exploratory Data Analysis Report",
+      subtitle      = "Exploratory data analysis",
+      group_heading = "Sections",
+      facts         = c(Sections  = as.character(length(sections)),
+                        Generated = format(Sys.Date(), "%d %B %Y"))
+    )
 
-  # ── Optional: Table One page ─────────────────────────────────────────────
+  doc <- officer::read_docx(
+    system.file("templates/word_docx_blank_template.docx", package = "edark")
+  )
+  # The template ships one empty paragraph; drop it so the title block starts
+  # where the styles expect it to.
+  doc <- tryCatch(
+    officer::body_remove(officer::cursor_begin(doc)),
+    error = function(e) doc
+  )
+
+  # -- Title page. Its own section, and the first one, so it inherits no
+  #    running header or footer and shows no page number.
+  doc <- .docx_add_title_page(doc, meta)
+  doc <- .docx_end_section(doc, "portrait", meta = NULL)
+
+  # -- Front matter: contents, then Table 1 when requested. Portrait.
+  doc <- .docx_add_toc_page(doc)
   if (!is.null(tableone_ft)) {
-    doc <- officer::body_add_par(doc, "Table 1", style = "heading 1")
-    doc <- flextable::body_add_flextable(doc, tableone_ft)
     doc <- officer::body_add_break(doc)
+    doc <- officer::body_add_par(doc, "Table 1", style = "heading 1")
+    doc <- flextable::body_add_flextable(doc, .docx_fit_ft(tableone_ft))
   }
 
-  # ── Optional: Dataset summary page ──────────────────────────────────────
+  # -- Dataset summary: the one landscape page, so it needs a section break on
+  #    both sides of it.
   if (isTRUE(include_dataset_summary)) {
+    doc <- .docx_end_section(doc, "portrait", meta)
     doc <- officer::body_add_par(doc, "Dataset Summary", style = "heading 1")
-    ds_ft <- .style_dataset_summary_ft(dataset_summary_df)
-    doc   <- flextable::body_add_flextable(doc, ds_ft)
-    doc   <- officer::body_add_break(doc)
+    # The hand-tuned column widths in .style_dataset_summary_ft() are kept
+    # (autofit = FALSE) and only scaled to the landscape page: they encode
+    # which of the fifteen columns deserve the room, which measuring the
+    # content does not.
+    # The hand-tuned widths in .style_dataset_summary_ft() are kept
+    # (autofit = FALSE) and only scaled: they encode which of the fifteen
+    # columns deserve the room, and measuring the content instead gives
+    # "Top Values" and the variable names too little and wraps them onto a
+    # second page. What the scaling costs is recovered from the cell padding
+    # and a header at body size - fifteen columns at 8pt bold wrap "Skewness",
+    # and a two-line header row reads worse than a small one.
+    ds_ft <- .docx_fit_ft(.style_dataset_summary_ft(dataset_summary_df),
+                          avail_width = .DOCX_LANDSCAPE_WIDTH,
+                          header_size = 7,
+                          padding_x   = 2,
+                          autofit     = FALSE)
+    doc <- flextable::body_add_flextable(doc, ds_ft)
+    doc <- .docx_end_section(doc, "landscape", meta)
+  } else {
+    doc <- .docx_end_section(doc, "portrait", meta)
   }
 
-  # ── Per-section: plot page + table page ──────────────────────────────────
+  # -- Per-section content: one heading 2 per section (its TOC entry), its plot
+  #    page(s), then its summary table page.
+  doc <- officer::body_add_par(doc, meta$group_heading, style = "heading 1")
+
   n <- length(sections)
   for (i in seq_along(sections)) {
     if (!is.null(progress_fn)) progress_fn(i / n, paste0("Section ", i, " of ", n))
     sec <- sections[[i]]
+    if (i > 1) doc <- officer::body_add_break(doc)
 
-    # Plot page(s) — split_panels may give a list of two ggplots
-    plots <- if (is.list(sec$plot_obj) && !inherits(sec$plot_obj, "ggplot")) sec$plot_obj else list(sec$plot_obj)
-    for (pl in plots) {
-      doc <- officer::body_add_par(doc, sec$title, style = "heading 1")
+    doc <- officer::body_add_par(doc, sec$title, style = "heading 2")
+
+    # Plot page(s) - split_panels may give a list of two ggplots
+    plots <- if (is.list(sec$plot_obj) && !inherits(sec$plot_obj, "ggplot"))
+      sec$plot_obj else list(sec$plot_obj)
+    for (k in seq_along(plots)) {
+      pl <- plots[[k]]
+      if (k > 1) {
+        doc <- officer::body_add_break(doc)
+        doc <- .docx_add_caption(doc, paste0(sec$title, " (continued)"))
+      }
       if (inherits(pl, "patchwork")) {
         tmp_png <- tempfile(fileext = ".png")
-        ggplot2::ggsave(tmp_png, plot = pl, width = 6.5, height = 5, units = "in", dpi = 150)
-        doc <- officer::body_add_img(doc, src = tmp_png, width = 6.5, height = 5)
+        ggplot2::ggsave(tmp_png, plot = pl, width = .DOCX_PORTRAIT_WIDTH,
+                        height = 5, units = "in", dpi = 150)
+        doc <- officer::body_add_img(doc, src = tmp_png,
+                                     width = .DOCX_PORTRAIT_WIDTH, height = 5)
         unlink(tmp_png)
       } else {
-        doc <- officer::body_add_gg(doc, value = pl, width = 6.5, height = 5, res = 150)
+        doc <- officer::body_add_gg(doc, value = pl, width = .DOCX_PORTRAIT_WIDTH,
+                                    height = 5, res = 150)
       }
-      doc <- officer::body_add_break(doc)
     }
 
-    # Table page (plot loop already ended with a break)
+    # Table page. 18pt body text, fitted to the full text width so the larger
+    # font has somewhere to go.
     if (!is.null(sec$summary_ft)) {
-      doc <- officer::body_add_par(doc, sec$title, style = "heading 1")
-      doc <- flextable::body_add_flextable(doc, sec$summary_ft)
-      if (i < n) doc <- officer::body_add_break(doc)
-    } else if (i < n) {
-      # no table — the break from the plot loop is sufficient, nothing extra needed
+      doc <- officer::body_add_break(doc)
+      doc <- .docx_add_caption(doc, sec$title)
+      doc <- flextable::body_add_flextable(
+        doc,
+        .docx_fit_ft(sec$summary_ft,
+                     body_size   = .DOCX_SECTION_FONT,
+                     header_size = .DOCX_SECTION_FONT)
+      )
     }
   }
+
+  # The trailing section carries the page setup for everything after the last
+  # explicit break.
+  doc <- officer::body_set_default_section(doc, .docx_section_props("portrait", meta))
 
   print(doc, target = output_path)
   invisible(output_path)
@@ -1027,7 +1364,15 @@ generate_report <- function(dataset,
                           tableone_ft             = tableone_ft),
     docx = .assemble_docx(sections, dataset_summary_df, output_path, progress_fn,
                           include_dataset_summary = include_dataset_summary,
-                          tableone_ft             = tableone_ft),
+                          tableone_ft             = tableone_ft,
+                          meta                    = .docx_meta(
+                            dataset           = dataset,
+                            report_type       = report_type,
+                            n_sections        = length(sections),
+                            primary_variable  = primary_variable,
+                            primary_role      = primary_role,
+                            stratify_variable = stratify_variable
+                          )),
     html = .assemble_html(sections, dataset_summary_df, output_path,
                           report_type             = report_type,
                           linked_var_anchors      = linked_var_anchors,
@@ -1190,7 +1535,10 @@ generate_custom_report <- function(items, dataset, column_types, format,
 
   switch(format,
     pptx = .assemble_pptx(sections, dataset_summary_df, output_path, progress_fn),
-    docx = .assemble_docx(sections, dataset_summary_df, output_path, progress_fn),
+    docx = .assemble_docx(sections, dataset_summary_df, output_path, progress_fn,
+                          meta = .docx_meta(dataset     = dataset,
+                                            report_type = "custom",
+                                            n_sections  = length(sections))),
     html = .assemble_html(sections, dataset_summary_df, output_path,
                           report_type = "custom", linked_var_anchors = NULL)
   )

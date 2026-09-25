@@ -25,6 +25,66 @@ NULL
 }
 
 
+# How a plot_type string reads in a list row or an info row. Keep in step with
+# the switch() in render_plot.R: an unmapped type still renders, de-underscored,
+# rather than blank, so a new plot type is legible before it is named here.
+.PLOT_TYPE_LABELS <- c(
+  bar_count         = "Bar",
+  histogram_density = "Histogram",
+  bar_grouped       = "Grouped bar",
+  violin_jitter     = "Violin",
+  scatter_loess     = "Scatter",
+  trend_mean        = "Trend (mean)",
+  trend_numeric     = "Trend (numeric)",
+  trend_factor      = "Trend (proportion)"
+)
+
+.plot_type_label <- function(plot_type) {
+  if (is.null(plot_type) || !nzchar(plot_type)) return("Plot")
+  lbl <- unname(.PLOT_TYPE_LABELS[plot_type])
+  if (is.na(lbl)) gsub("_", " ", plot_type) else lbl
+}
+
+
+# Helper: the ids of a list of custom-report items, in order.
+.item_ids <- function(items) {
+  if (length(items) == 0) return(character(0))
+  vapply(items, `[[`, character(1), "id")
+}
+
+
+# Helper: one row of the Custom Report item list.
+#
+# The description is itself an actionButton, so clicking anywhere along the row
+# selects it with no client-side JS. The delete button is a *sibling* of that
+# button, not nested inside it: a button within a button is invalid HTML and
+# browsers drop the inner one.
+.custom_item_row <- function(ns, item, i, selected = FALSE) {
+  shiny::div(
+    class = paste("edark-report-item d-flex align-items-stretch mb-1",
+                  if (isTRUE(selected)) "selected" else ""),
+    shiny::actionButton(
+      ns(paste0("sel_", item$id)),
+      label = shiny::div(
+        class = "d-flex align-items-baseline gap-2 w-100",
+        shiny::tags$span(class = "edark-report-item-index text-muted small", i),
+        shiny::tags$span(class = "flex-grow-1 text-truncate", item$title),
+        shiny::tags$span(
+          class = "badge text-bg-secondary fw-normal",
+          .plot_type_label(item$plot_spec$plot_type)
+        )
+      ),
+      class = paste("edark-report-item-select btn flex-grow-1",
+                    "d-flex align-items-center text-start")
+    ),
+    edark_button(ns, paste0("remove_", item$id), NULL, icon = "trash",
+                 variant = "danger", size = "toolbar",
+                 class = "edark-report-item-delete",
+                 title = "Remove this item")
+  )
+}
+
+
 #' @rdname module_report
 #' @export
 report_ui <- function(id) {
@@ -135,16 +195,15 @@ report_ui <- function(id) {
       value = "custom_report",
       title = shiny::tagList(shiny::icon("layer-group"), " Custom Report"),
 
-      # D11: no centre. The item list *is* the page's main presentation, and it
-      # lives in the config pane because reordering and deleting are
-      # configuration. The old main-panel "Preview" card showed the same list
-      # again and nothing else (F5), so it is gone.
+      # Three panes like every other page. The item list is the artefact this
+      # page produces, so it belongs in the centre with its actions in a
+      # toolbar above it (F2); the config pane keeps the format and the one
+      # primary action; the info pane describes the selected item and the file.
+      # This page used to pass `result = NULL` under a D11 exception, with the
+      # list in the config pane - that exception is gone.
       edark_page(
         config = shiny::tagList(
-          edark_section_label("Report Items", first = TRUE),
-          shiny::uiOutput(ns("custom_items_gallery")),
-
-          edark_section_label("Output Format"),
+          edark_section_label("Output Format", first = TRUE),
           shinyWidgets::radioGroupButtons(
             ns("custom_output_format"),
             label    = NULL,
@@ -162,7 +221,7 @@ report_ui <- function(id) {
                          icon = "download", type = "download")
           )
         ),
-        result   = NULL,
+        result   = shiny::uiOutput(ns("custom_items_panel")),
         messages = edark_messages_ui(ns, "custom_messages"),
         info     = shiny::uiOutput(ns("custom_info"))
       )
@@ -537,63 +596,130 @@ report_server <- function(id, shared_state) {
     )
 
 
-    # ── Custom Report: gallery ────────────────────────────────────────────────
+    # ── Custom Report: selection ──────────────────────────────────────────────
+    # Which row the user has clicked. The toolbar above the list acts on it and
+    # the info pane describes it, so one selection replaces the per-row control
+    # stacks the list used to carry.
+    selected_item_id <- shiny::reactiveVal(NULL)
 
-    output$custom_items_gallery <- shiny::renderUI({
+    selected_index <- shiny::reactive({
+      items <- shared_state$custom_report_items
+      id    <- selected_item_id()
+      if (is.null(id) || length(items) == 0) return(NA_integer_)
+      idx <- which(.item_ids(items) == id)
+      if (length(idx) == 1) idx else NA_integer_
+    })
+
+    selected_item <- shiny::reactive({
+      idx <- selected_index()
+      if (is.na(idx)) NULL else shared_state$custom_report_items[[idx]]
+    })
+
+    # Removing a row leaves the selection on its neighbour rather than emptying
+    # the info pane.
+    .remove_item <- function(iid) {
+      curr <- shared_state$custom_report_items
+      idx  <- which(.item_ids(curr) == iid)
+      if (length(idx) != 1) return(invisible(NULL))
+
+      remaining <- curr[-idx]
+      shared_state$custom_report_items <- remaining
+
+      if (identical(shiny::isolate(selected_item_id()), iid)) {
+        selected_item_id(
+          if (length(remaining) == 0) NULL
+          else .item_ids(remaining)[min(idx, length(remaining))]
+        )
+      }
+      invisible(NULL)
+    }
+
+    .move_selected <- function(delta) {
+      curr   <- shared_state$custom_report_items
+      idx    <- shiny::isolate(selected_index())
+      if (is.na(idx)) return(invisible(NULL))
+      target <- idx + delta
+      if (target < 1 || target > length(curr)) return(invisible(NULL))
+
+      curr[c(idx, target)] <- curr[c(target, idx)]
+      shared_state$custom_report_items <- curr
+      invisible(NULL)
+    }
+
+    # ── Custom Report: the item list (result pane) ────────────────────────────
+
+    output$custom_items_panel <- shiny::renderUI({
       items <- shared_state$custom_report_items
       n     <- length(items)
 
       if (n == 0) {
-        return(shiny::tags$p(
-          class = "text-muted small",
-          shiny::icon("circle-info"), " No items yet.",
-          shiny::tags$br(),
-          "Add plots from the Explore tab using the",
-          shiny::tags$strong("Add to Custom Report"), "button."
+        return(edark_empty_state(
+          "No items in this report yet",
+          shiny::tagList(
+            "Run a plot in ", shiny::tags$strong("Explore"), " and click ",
+            shiny::tags$strong("Add to Custom Report"), " to queue it here."
+          ),
+          icon = "layer-group"
         ))
       }
 
+      idx     <- selected_index()
+      has_sel <- !is.na(idx)
+
       shiny::tagList(
-        lapply(seq_along(items), function(i) {
-          item <- items[[i]]
-          shiny::div(
-            class = "d-flex align-items-center gap-2 mb-2 p-2 border rounded",
-            # Thumbnail
-            shiny::tags$img(
-              src   = .thumb_src(item$thumb_path),
-              width = "80px", height = "60px",
-              style = "object-fit:cover; border-radius:4px; flex-shrink:0;"
-            ),
-            # Title
+        # Actions *on* the list, directly above it (F2). They act on the
+        # selected row, so the toolbar stays one row wide however many items
+        # there are - the per-row up/down/delete stack it replaces was three
+        # buttons tall and left little room for the description.
+        edark_action_toolbar(
+          shiny::tags$span(
+            class = "text-muted small me-auto",
+            if (has_sel) paste0("Item ", idx, " of ", n, " selected")
+            else "Select an item to reorder or remove it"
+          ),
+          # `disabled` is a formal of shiny::actionButton() taking a logical,
+          # not a raw HTML attribute - `disabled = NA` is accepted and silently
+          # ignored, which leaves the button live with nothing selected.
+          edark_button(ns, "item_up", "Move Up", icon = "angle-up",
+                       variant = "secondary", size = "toolbar",
+                       disabled = !(has_sel && idx > 1)),
+          edark_button(ns, "item_down", "Move Down", icon = "angle-down",
+                       variant = "secondary", size = "toolbar",
+                       disabled = !(has_sel && idx < n)),
+          edark_button(ns, "item_remove", "Remove", icon = "trash",
+                       variant = "danger", size = "toolbar",
+                       disabled = !has_sel),
+          edark_button(ns, "items_clear", "Clear All", icon = "xmark",
+                       variant = "danger", size = "toolbar")
+        ),
+
+        bslib::card(
+          bslib::card_header(shiny::icon("list-ol"), " Items in this report"),
+          bslib::card_body(
+            # The cap goes on this inner div, never on the card_body - see the
+            # header comment on .edark-scroll-table in inst/www/edark.css.
             shiny::div(
-              class = "flex-grow-1 small",
-              shiny::tags$strong(item$title)
-            ),
-            # Reorder and remove controls
-            shiny::div(
-              class = "d-flex flex-column gap-1",
-              if (i > 1)
-                edark_button(ns, paste0("up_", item$id), NULL, icon = "angle-up",
-                             variant = "secondary", size = "toolbar", class = "p-1"),
-              if (i < n)
-                edark_button(ns, paste0("down_", item$id), NULL, icon = "angle-down",
-                             variant = "secondary", size = "toolbar", class = "p-1"),
-              edark_button(ns, paste0("remove_", item$id), NULL, icon = "trash",
-                           variant = "danger", size = "toolbar", class = "p-1")
+              class = "edark-scroll-table",
+              lapply(seq_along(items), function(i) {
+                .custom_item_row(ns, items[[i]], i,
+                                 selected = identical(i, idx))
+              })
             )
           )
-        })
+        )
       )
     })
 
-    # Dynamic observer registration for per-item up/down/remove buttons.
-    # Uses the same lazy-registration + local() closure pattern as module_row_filter.R
-    # to avoid double-registration and R closure capture issues.
+    # Dynamic observer registration for the per-row select and delete buttons.
+    # Uses the same lazy-registration + local() closure pattern as
+    # module_row_filter.R to avoid double-registration and R closure capture
+    # issues. Reordering is no longer per row, so there is nothing to register
+    # for it.
     registered_item_ids <- shiny::reactiveVal(character(0))
 
     shiny::observe({
       items   <- shared_state$custom_report_items
-      ids     <- vapply(items, `[[`, character(1), "id")
+      ids     <- .item_ids(items)
       new_ids <- setdiff(ids, registered_item_ids())
       if (!length(new_ids)) return()
 
@@ -601,27 +727,12 @@ report_server <- function(id, shared_state) {
         local({
           iid <- item_id
 
+          shiny::observeEvent(input[[paste0("sel_", iid)]], {
+            selected_item_id(iid)
+          }, ignoreInit = TRUE)
+
           shiny::observeEvent(input[[paste0("remove_", iid)]], {
-            shared_state$custom_report_items <-
-              Filter(function(x) x$id != iid, shared_state$custom_report_items)
-          }, ignoreInit = TRUE)
-
-          shiny::observeEvent(input[[paste0("up_", iid)]], {
-            curr <- shared_state$custom_report_items
-            idx  <- which(vapply(curr, `[[`, character(1), "id") == iid)
-            if (length(idx) == 1 && idx > 1) {
-              curr[c(idx - 1, idx)] <- curr[c(idx, idx - 1)]
-              shared_state$custom_report_items <- curr
-            }
-          }, ignoreInit = TRUE)
-
-          shiny::observeEvent(input[[paste0("down_", iid)]], {
-            curr <- shared_state$custom_report_items
-            idx  <- which(vapply(curr, `[[`, character(1), "id") == iid)
-            if (length(idx) == 1 && idx < length(curr)) {
-              curr[c(idx, idx + 1)] <- curr[c(idx + 1, idx)]
-              shared_state$custom_report_items <- curr
-            }
+            .remove_item(iid)
           }, ignoreInit = TRUE)
         })
       }
@@ -629,13 +740,54 @@ report_server <- function(id, shared_state) {
       registered_item_ids(c(registered_item_ids(), new_ids))
     })
 
+    # ── Custom Report: toolbar actions ────────────────────────────────────────
+
+    shiny::observeEvent(input$item_up,   .move_selected(-1L))
+    shiny::observeEvent(input$item_down, .move_selected(1L))
+
+    shiny::observeEvent(input$item_remove, {
+      iid <- shiny::isolate(selected_item_id())
+      if (!is.null(iid)) .remove_item(iid)
+    })
+
+    # Clear All discards every item with no undo, so it confirms first. The
+    # per-row and toolbar Remove buttons take one item and do not.
+    shiny::observeEvent(input$items_clear, {
+      n <- length(shared_state$custom_report_items)
+      if (n == 0) return()
+
+      shiny::showModal(shiny::modalDialog(
+        title = "Clear all report items?",
+        shiny::tags$p(paste0(
+          "This removes all ", n, " item", if (n != 1) "s" else "",
+          " from the custom report. It cannot be undone."
+        )),
+        footer = shiny::tagList(
+          shiny::modalButton("Cancel"),
+          edark_button(ns, "items_clear_confirm", "Clear All",
+                       icon = "trash", variant = "danger", size = "dialog")
+        ),
+        easyClose = TRUE,
+        size      = "m"
+      ))
+    })
+
+    shiny::observeEvent(input$items_clear_confirm, {
+      shared_state$custom_report_items <- list()
+      selected_item_id(NULL)
+      shiny::removeModal()
+    })
+
     # -- Custom Report: info pane ---------------------------------------------
-    # The page has no centre (D11), so this is the only place that describes
-    # the file. The old main-panel "Preview" card re-listed the items that the
-    # config pane already shows, and nothing else (F5).
+    # The selected row's preview and provenance, then the scalar facts about
+    # the file. Factual only (D2): the list and its actions are in the centre,
+    # the output format and Generate in the config pane.
     output$custom_info <- shiny::renderUI({
       items <- shared_state$custom_report_items
       n     <- length(items)
+      item  <- selected_item()
+      idx   <- selected_index()
+      ds    <- shared_state$dataset_working
 
       format_label <- switch(input$custom_output_format %||% "pptx",
         pptx = "PowerPoint (.pptx)",
@@ -644,32 +796,75 @@ report_server <- function(id, shared_state) {
         "-"
       )
 
-      if (n == 0) {
-        return(shiny::tagList(
-          edark_section_label("Will contain", first = TRUE),
-          shiny::tags$p(
-            class = "small text-muted",
-            "Nothing yet. Run a plot in Explore and click ",
-            shiny::tags$strong("Add to Custom Report"),
-            " to queue it here."
-          )
-        ))
+      selected_block <- if (is.null(item)) {
+        shiny::tags$p(
+          class = "small text-muted",
+          if (n == 0) "Nothing queued yet."
+          else "Click an item in the list to preview it here."
+        )
+      } else {
+        spec <- item$plot_spec
+        shiny::tagList(
+          # The thumbnail the list used to carry at 80x60 px, where it was too
+          # small to recognise a plot by. One at a time, it gets the full pane.
+          shiny::tags$img(
+            src   = .thumb_src(item$thumb_path),
+            class = "edark-report-thumb mb-2",
+            alt   = paste("Preview of", item$title)
+          ),
+          edark_info_row("Position",  paste0(idx, " of ", n)),
+          edark_info_row("Plot type", .plot_type_label(spec$plot_type)),
+          # column_a / column_b are the axes: build_bivariate_plot_spec() has
+          # already swapped them for the primary variable's role, so naming
+          # them by axis is honest where "Primary" would be wrong half the time.
+          if (is.null(spec$column_b)) {
+            edark_info_row("Variable", spec$column_a)
+          } else {
+            shiny::tagList(
+              edark_info_row("X axis", spec$column_a),
+              edark_info_row("Y axis", spec$column_b)
+            )
+          },
+          edark_info_row(
+            "Stratify by",
+            if (is.null(spec$stratify_by) || !nzchar(spec$stratify_by)) "None"
+            else spec$stratify_by
+          ),
+
+          # The appearance frozen into this item when it was added (D7). It can
+          # differ from the Appearance panel's current settings and from the
+          # other items', and it is not visible anywhere else in the app.
+          edark_section_label("Appearance when added"),
+          edark_info_row("Theme",   spec$ggplot_theme  %||% "-"),
+          edark_info_row("Palette", spec$color_palette %||% "-"),
+          edark_info_row(
+            "Legend",
+            if (isTRUE(spec$show_legend)) (spec$legend_position %||% "Shown")
+            else "Hidden"
+          ),
+          edark_info_row("Data labels",
+                         if (isTRUE(spec$show_data_labels)) "Shown" else "Hidden"),
+          edark_info_row("Added", format(item$added_at, "%H:%M:%S"))
+        )
       }
 
-      kinds <- table(vapply(items, function(it) it$plot_spec$plot_type %||% "plot",
-                            character(1)))
+      kinds <- if (n == 0) NULL else table(vapply(
+        items, function(it) .plot_type_label(it$plot_spec$plot_type), character(1)
+      ))
 
       shiny::tagList(
-        edark_section_label("Will contain", first = TRUE),
+        edark_section_label("Selected item", first = TRUE),
+        selected_block,
+
+        edark_section_label("Will contain"),
         edark_info_row("Items",         n),
         edark_info_row("Output format", format_label),
-
-        edark_section_label("Item types"),
-        lapply(names(kinds), function(k) edark_info_row(k, as.integer(kinds[[k]]))),
+        if (!is.null(kinds))
+          lapply(names(kinds), function(k) edark_info_row(k, as.integer(kinds[[k]]))),
 
         edark_section_label("Source data"),
-        edark_info_row("Rows",    format(nrow(shared_state$dataset_working), big.mark = ",")),
-        edark_info_row("Columns", ncol(shared_state$dataset_working)),
+        edark_info_row("Rows",    if (!is.null(ds)) format(nrow(ds), big.mark = ",") else "-"),
+        edark_info_row("Columns", if (!is.null(ds)) ncol(ds) else "-"),
         shiny::tags$p(
           class = "small text-muted mt-2 mb-0",
           "Each item is re-drawn from the current working dataset when the
@@ -679,8 +874,7 @@ report_server <- function(id, shared_state) {
     })
 
 
-    # Messages for the Custom Report page. There is no centre, so the page
-    # contract puts these at the top of the info column.
+    # Messages for the Custom Report page, above the item list.
     edark_messages_server(output, shiny::reactive({
       msgs <- list()
       if (length(shared_state$custom_report_items) == 0) {
@@ -765,7 +959,8 @@ report_server <- function(id, shared_state) {
             # had on screen when it was added, so the document reproduces what
             # the user saw rather than restyling every item at once (D7).
             progress_fn      = function(frac, detail) {
-              session$sendCustomMessage("edark_report_progress", detail)
+              session$sendCustomMessage("edark_report_progress",
+                                        list(frac = frac, detail = detail))
             }
           )
         }, error = function(e) {
