@@ -637,7 +637,7 @@
 
   sections <- vector("list", n)
   for (i in seq_along(variables)) {
-    if (!is.null(progress_fn)) progress_fn(i / n, paste0("Variable ", i, " of ", n, ": ", variables[[i]]))
+    if (!is.null(progress_fn)) progress_fn(i / n, paste0("Building plots: variable ", i, " of ", n, ": ", variables[[i]]))
 
     var      <- variables[[i]]
     var_type <- column_types[[var]]
@@ -707,7 +707,7 @@
   sections <- vector("list", n)
 
   for (i in seq_along(secondary_vars)) {
-    if (!is.null(progress_fn)) progress_fn(i / n, paste0("Section ", i, " of ", n, ": ", secondary_vars[[i]]))
+    if (!is.null(progress_fn)) progress_fn(i / n, paste0("Building plots: variable ", i, " of ", n, ": ", secondary_vars[[i]]))
 
     sec_var <- secondary_vars[[i]]
 
@@ -776,6 +776,24 @@
   }
   Filter(Negate(is.null), sections)
 }
+
+
+# ---------------------------------------------------------------------------
+# Progress phases
+# ---------------------------------------------------------------------------
+# A report is built in two passes - build every section, then write the file -
+# and both count through the sections. Each pass gets its own share of one bar,
+# or the bar fills twice. HTML has no per-section write step (rmarkdown renders
+# in one call), so building takes almost all of its bar.
+
+# Map a pass's 0-1 progress onto [from, to] of the whole bar.
+.progress_span <- function(progress_fn, from, to) {
+  if (is.null(progress_fn)) return(NULL)
+  function(frac, detail) progress_fn(from + frac * (to - from), detail)
+}
+
+# Where building ends and writing begins, per format.
+.progress_split <- function(format) if (identical(format, "html")) 0.9 else 0.6
 
 
 # ---------------------------------------------------------------------------
@@ -858,7 +876,7 @@
   # ── Per-section: plot slide + table slide ────────────────────────────────
   n <- length(sections)
   for (i in seq_along(sections)) {
-    if (!is.null(progress_fn)) progress_fn(i / n, paste0("Slide ", i, " of ", n))
+    if (!is.null(progress_fn)) progress_fn(i / n, paste0("Writing slides: section ", i, " of ", n))
     sec <- sections[[i]]
 
     # Plot slide(s) — split_panels may give a list of two ggplots
@@ -1238,7 +1256,7 @@
 
   n <- length(sections)
   for (i in seq_along(sections)) {
-    if (!is.null(progress_fn)) progress_fn(i / n, paste0("Section ", i, " of ", n))
+    if (!is.null(progress_fn)) progress_fn(i / n, paste0("Writing document: section ", i, " of ", n))
     sec <- sections[[i]]
     if (i > 1) doc <- officer::body_add_break(doc)
 
@@ -1416,9 +1434,13 @@ generate_report <- function(dataset,
     legend_position  = legend_position
   )
 
+  build_end      <- .progress_split(format)
+  build_progress <- .progress_span(progress_fn, 0, build_end)
+  write_progress <- .progress_span(progress_fn, build_end, 1)
+
   sections <- if (report_type == "all_vars") {
     .build_all_vars_sections(dataset, column_types, variables, stratify_variable,
-                              progress_fn = progress_fn, plot_aesthetics = plot_aesthetics)
+                              progress_fn = build_progress, plot_aesthetics = plot_aesthetics)
   } else {
     if (is.null(primary_variable))
       stop("primary_variable must be specified for report_type = 'primary_vs_others'")
@@ -1428,7 +1450,7 @@ generate_report <- function(dataset,
     .build_primary_vs_others_sections(
       dataset, column_types, secondary_vars,
       primary_variable, primary_role, stratify_variable,
-      progress_fn = progress_fn, plot_aesthetics = plot_aesthetics
+      progress_fn = build_progress, plot_aesthetics = plot_aesthetics
     )
   }
 
@@ -1457,14 +1479,14 @@ generate_report <- function(dataset,
     )
   }
 
-  if (!is.null(progress_fn)) progress_fn(0.95, "Assembling output...")
+  if (!is.null(progress_fn)) progress_fn(build_end, "Assembling output...")
 
   switch(format,
-    pptx = .assemble_pptx(sections, dataset_summary_df, output_path, progress_fn,
+    pptx = .assemble_pptx(sections, dataset_summary_df, output_path, write_progress,
                           include_dataset_summary = include_dataset_summary,
                           tableone_ft             = tableone_ft,
                           collinearity            = collinearity),
-    docx = .assemble_docx(sections, dataset_summary_df, output_path, progress_fn,
+    docx = .assemble_docx(sections, dataset_summary_df, output_path, write_progress,
                           include_dataset_summary = include_dataset_summary,
                           tableone_ft             = tableone_ft,
                           collinearity            = collinearity,
@@ -1517,7 +1539,7 @@ generate_report <- function(dataset,
     title <- item$title
 
     if (!is.null(progress_fn))
-      progress_fn(i / n, paste0("Item ", i, " of ", n, ": ", title))
+      progress_fn(i / n, paste0("Building plots: item ", i, " of ", n, ": ", title))
 
     # Apply report-level aesthetics over the frozen per-item spec
     if (length(plot_aesthetics) > 0) spec <- modifyList(spec, plot_aesthetics)
@@ -1629,17 +1651,20 @@ generate_custom_report <- function(items, dataset, column_types, format,
     legend_position  = legend_position
   ))
 
-  sections <- .build_custom_report_sections(items, dataset, column_types, progress_fn,
+  build_end      <- .progress_split(format)
+  write_progress <- .progress_span(progress_fn, build_end, 1)
+  sections <- .build_custom_report_sections(items, dataset, column_types,
+                                             .progress_span(progress_fn, 0, build_end),
                                              plot_aesthetics = plot_aesthetics)
 
   if (length(sections) == 0)
     stop("No sections could be built from the custom report items.")
 
-  if (!is.null(progress_fn)) progress_fn(0.95, "Assembling output...")
+  if (!is.null(progress_fn)) progress_fn(build_end, "Assembling output...")
 
   switch(format,
-    pptx = .assemble_pptx(sections, dataset_summary_df, output_path, progress_fn),
-    docx = .assemble_docx(sections, dataset_summary_df, output_path, progress_fn,
+    pptx = .assemble_pptx(sections, dataset_summary_df, output_path, write_progress),
+    docx = .assemble_docx(sections, dataset_summary_df, output_path, write_progress,
                           meta = .docx_meta(dataset     = dataset,
                                             report_type = "custom",
                                             n_sections  = length(sections))),

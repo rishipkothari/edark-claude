@@ -32,6 +32,21 @@ filter whose `type` disagrees with the column as a backstop.
 
 ## Explore
 
+### 2026-09-25 - report progress bar filled twice for Word and PowerPoint
+
+Full Report counted to n twice for Word and PowerPoint ("Variable i of n", then
+"Section i of n"), and once for HTML. Custom Report did the same ("Item", then "Slide").
+
+Root cause: the section builders and the PPT / Word assemblers were handed the same
+`progress_fn` and each reported `i / n` over the whole bar. `.assemble_html()` reports
+nothing (one `rmarkdown::render()` call), which is why HTML looked right.
+
+Fix: `.progress_span()` gives each pass its own share of the bar - building 0-60% and
+writing 60-100% for PPT / Word, building 0-90% for HTML - and the labels name the pass
+("Building plots: variable i of n", "Writing slides: section i of n").
+
+**Durable rule: §N5.1.**
+
 ### 2026-09-25 - Report contents option: collinearity investigation
 
 Full Report gains a **Collinearity** checkbox (default off). It runs Analyze's

@@ -160,6 +160,8 @@ Applied in `module_explore_output.R` after `current_plot()` returns (not inside 
 ### N5.1 Generators and assemblers
 `generate_report()` and `generate_custom_report()` (`generate_report.R`) are Shiny-free and share three assemblers: `.assemble_pptx()`, `.assemble_docx()`, `.assemble_html()`. Custom report sections come from `.build_custom_report_sections()`, which traps errors per item and emits a placeholder.
 
+**Progress is two passes on one bar.** Building sections and writing the file (PPT / Word) both count through the sections, so each pass gets its own share: `.progress_span(progress_fn, from, to)` rescales a pass's 0-1 onto the bar, and `.progress_split(format)` says where building ends (0.6 for PPT / Word; 0.9 for HTML, whose `rmarkdown::render()` is one call with no per-section progress). A new pass that reports progress must get a span too, or the bar fills twice.
+
 ### N5.2 Split panels
 Assemblers detect two-panel plots with `is.list(x) && !inherits(x, "ggplot")` and render each panel independently.
 
