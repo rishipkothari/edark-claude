@@ -142,6 +142,12 @@ main-specific questions.
 
 ## TO-DOs
 
+### High priority
+- **Startup delay: splash screen.** First launch shows a noticeable delay. Step 1 (in place): temporary `[edark boot]` timing messages in the console (`.boot_log()` in `R/edark.R`) - run `edark(liver_tx)` and read where the time goes. Step 2, depending on the result:
+    - Time after the page arrives (session start -> browser idle): add a splash with `waiter::waiter_show_on_load()` in the UI, hidden from JS on the first `shiny:idle`, with a minimum display time (~0.8 s) and a maximum fallback (~15 s). Content: EDARK, dataset name, rows x columns, spinner, "Preparing your data...".
+    - Time before the page arrives (launch -> page requested -> session start): the splash cannot cover it; likely the bslib Sass compile of the custom Flatly theme, so precompile or cache the theme CSS.
+    - Remove the timing messages once done.
+
 ### Prepare
 
 #### High magnitude
