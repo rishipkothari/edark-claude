@@ -160,8 +160,11 @@ inst/
   `.docx_shrink_widths()` takes the overflow out of the widest columns only.
 - Statistical tests in the Explore › Relationship summary panel (num × fac → Kruskal-Wallis; fac × fac → chi-square / Fisher's). Reports already have these via the table helpers; the Explore summary does not.
 - Async report generation (synchronous now; cancel needs `future` / `promises`).
-- when changing LHS pills in explore data from describe to corelate and then clicking plot relationship button, secondary variable chosen for plot is the secondary variable in the correlate LHS pane; primary and stratify by are still left over from the last selection in the describe pill.
-- when going from correlate back to describe, it uses the primary and stratify by variables in correlate; i think we need to reassign the state variables on pill change/click
+- ~~Explore pill switch leaves stale state (Describe <-> Correlate reused the other pill's
+  primary / secondary / stratify)~~ - closed 2026-09-23 in `738da54`. Each pill's
+  `publish_state()` in `module_explore_controls.R` writes every shared field it owns from
+  its own inputs (and Describe clears `secondary_variable`), both when the pill becomes
+  active and on its plot button click.
 - Custom Report's config pane now holds only Output Format + Generate, so it has room for a "Report Contents" box like Full Report's (Dataset Summary, Table One). Probably a shared component between the two rather than two copies.
 - **Drag-and-drop reordering of Custom Report items.** The list is in the centre and reorders via the toolbar's Move Up / Move Down, which needs no JS. Drag would need `sortable` (a SortableJS wrapper) attached to the row container - `sortable_js()`, not `rank_list()`, which is text-labels-only. The fiddly part is not the drag: it is that the drop rewrites the DOM while `renderUI` re-renders from `shared_state$custom_report_items`, so the input -> server reorder -> re-render round trip has to land on the same order or the row snaps back. Needs `chromote` to verify.
 - generate full report spinner counts to 7 twice for word and powerpoint report format but not HTML: once with "variable #" then with "section #"
