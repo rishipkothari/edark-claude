@@ -77,22 +77,22 @@ analysis_main_ui <- function(id) {
           ),
           bslib::nav_panel(
             value = "create", title = "Create",
-            shiny::div(class = "pt-2", analysis_modelspec_create_ui(ns("modelspec")))
+            analysis_modelspec_create_ui(ns("modelspec"))
           ),
           bslib::nav_panel(
             value = "diagnostics",
             title = shiny::uiOutput(ns("title_diagnostics"), inline = TRUE),
-            shiny::div(class = "pt-2", analysis_diagnostics_ui(ns("diagnostics")))
+            analysis_diagnostics_ui(ns("diagnostics"))
           ),
           bslib::nav_panel(
             value = "performance",
             title = shiny::uiOutput(ns("title_performance"), inline = TRUE),
-            shiny::div(class = "pt-2", analysis_performance_ui(ns("performance")))
+            analysis_performance_ui(ns("performance"))
           ),
           bslib::nav_panel(
             value = "results",
             title = shiny::uiOutput(ns("title_results"), inline = TRUE),
-            shiny::div(class = "pt-2", analysis_results_ui(ns("results")))
+            analysis_results_ui(ns("results"))
           )
         )
       ),

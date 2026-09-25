@@ -88,6 +88,10 @@ Two sizes only: `sm` inside a table cell, `md` for a badge standing alone in a p
 
 The one type display that is deliberately *not* a badge is the italic sub-label under each column header in Prepare › Data Preview (`.make_col_defs()`): a badge in every header of a wide data table reads as noise.
 
+### N1.15 Spacing around nav rows and the page frame lives in CSS, not in wrappers
+- **Below a nav row:** `.nav-pills + .tab-content, .nav-underline + .tab-content` in `edark.css` gives one 0.75rem gap below every level-2 pill row and level-3b underline row (not inside a `.sidebar`, where level 3a has its own). Put a panel's content straight into `nav_panel()`. Do not wrap it in `div(class = "pt-2")`: those wrappers used to make some sub-tabs start 8px lower than their siblings, so the frame jumped when switching tabs.
+- **One frame per page:** `edark_page()` gives its inner (info) `layout_sidebar()` `border = FALSE, border_radius = FALSE`, and the outer one `padding = 0` when there is an info pane. Config | centre | info are then three columns of one bordered box, not a box inset inside another. The centre's padding comes from the inner layout. A page without an info pane keeps the outer padding, because nothing else supplies it.
+
 ---
 
 ## N2 — Statistical Methods Registry

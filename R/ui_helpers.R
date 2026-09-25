@@ -693,6 +693,9 @@ edark_page <- function(config, result, info = NULL, messages = NULL,
   centre <- if (is.null(info)) {
     shiny::tagList(messages, result)
   } else {
+    # No border and no rounding of its own: the outer layout's frame is the
+    # only one, so config | centre | info read as three columns of one box
+    # rather than a box inside a box.
     bslib::layout_sidebar(
       sidebar = bslib::sidebar(
         position = "right",
@@ -701,7 +704,9 @@ edark_page <- function(config, result, info = NULL, messages = NULL,
         class    = "edark-info-pane",
         info_body
       ),
-      fillable = FALSE,
+      fillable      = FALSE,
+      border        = FALSE,
+      border_radius = FALSE,
       shiny::tagList(messages, result)
     )
   }
@@ -714,6 +719,10 @@ edark_page <- function(config, result, info = NULL, messages = NULL,
       config
     ),
     fillable = FALSE,
+    # With an info pane, the inner layout brings the centre's padding and the
+    # info pane sits flush to the frame; padding here as well was the second,
+    # inset box. Without one, the centre needs this padding itself.
+    padding  = if (is.null(info)) NULL else 0,
     centre
   )
 }

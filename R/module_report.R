@@ -236,12 +236,12 @@ report_ui <- function(id) {
           bslib::nav_panel(
             value = "sections",
             title = shiny::tagList(shiny::icon("list-ol"), " Sections"),
-            shiny::div(class = "pt-2", shiny::uiOutput(ns("report_sections_panel")))
+            shiny::uiOutput(ns("report_sections_panel"))
           ),
           bslib::nav_panel(
             value = "preview",
             title = shiny::tagList(shiny::icon("eye"), " Preview"),
-            shiny::div(class = "pt-2", shiny::uiOutput(ns("full_preview_panel")))
+            shiny::uiOutput(ns("full_preview_panel"))
           )
         ),
         messages = edark_messages_ui(ns, "full_messages"),
@@ -297,12 +297,12 @@ report_ui <- function(id) {
           bslib::nav_panel(
             value = "items",
             title = shiny::tagList(shiny::icon("list-ol"), " Items"),
-            shiny::div(class = "pt-2", shiny::uiOutput(ns("custom_items_panel")))
+            shiny::uiOutput(ns("custom_items_panel"))
           ),
           bslib::nav_panel(
             value = "preview",
             title = shiny::tagList(shiny::icon("eye"), " Preview"),
-            shiny::div(class = "pt-2", shiny::uiOutput(ns("custom_preview_panel")))
+            shiny::uiOutput(ns("custom_preview_panel"))
           )
         ),
         messages = edark_messages_ui(ns, "custom_messages"),

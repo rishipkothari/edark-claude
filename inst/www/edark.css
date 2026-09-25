@@ -175,6 +175,12 @@
   color: #fff;
 }
 
+/* Space between pills, so a row reads as separate choices rather than one
+   segmented bar. Level 3a overrides this in the config pane. */
+.nav-pills {
+  gap: 0.375rem;
+}
+
 /* Stepper state: a step whose output exists and is current. The class is put
    on by .apply_gate() in module_analysis_main.R (Stage 1); this is where it
    becomes visible. A tint rather than a fill, so "done" never competes with
@@ -240,6 +246,21 @@
 .nav-tabs .nav-link.active,
 .nav-underline .nav-link.active {
   color: var(--bs-primary);
+}
+
+/* One gap below every level-2 pill row and level-3b underline row, before
+   whatever it switches - the next nav row, or the page frame. bslib leaves
+   none, so the rows sat directly on the content, and pages that wrapped their
+   panels in pt-2 landed 8 px lower than pages that did not. Do not add
+   per-panel padding for this; the gap lives here. Level 3a (config pane) has
+   its own spacing above. */
+.nav-pills + .tab-content,
+.nav-underline + .tab-content {
+  margin-top: 0.75rem;
+}
+
+.sidebar .nav-pills + .tab-content {
+  margin-top: 0;
 }
 
 
