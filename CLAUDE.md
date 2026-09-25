@@ -88,23 +88,45 @@ data-raw/
 └── liver_tx_sample.R           Regenerates data/liver_tx.rda — run with Rscript; seeded, reproducible
 
 inst/
-├    ├── ppt_16x9_blank_template.pptx   Bundled slide template for PPT output
-    └── word_docx_blank_template.docx  Bundled Word template for DOCX output - Title,
-                                       Subtitle and heading 1-9 styles; the TOC and the
-                                       section furniture are built in .assemble_docx()
-```
+├── report_template.Rmd             Rmd template for HTML report output
+├── templates/
+│   ├── ppt_16x9_blank_template.pptx   Bundled slide template for PPT output
+│   └── word_docx_blank_template.docx  Bundled Word template for DOCX output - Title,
+│                                      Subtitle and heading 1-9 styles; the TOC and the
+│                                      section furniture are built in .assemble_docx()
+└── www/
+    └── edark.css          ### What each file is for
 
----
+| File | Holds | Read it when |
+|---|---|---|
+| `CLAUDE.md` (this file) | The app at a glance, plus **open** TO-DOs | Always - it loads every session |
+| `PRD/CLAUDE.md` | The index: where everything lives, the non-negotiables, current state, doc/code discrepancies | Starting any task |
+| `PRD/PRD_*.md` | The spec - what the app *should* do (§M master, §P Prepare, §E Explore, §A Analyze) | Changing behaviour |
+| `PRD/NOTE_implementation.md` (§N) | How the code does it, and the traps found building it | **Before editing a module** |
+| `PRD/RESOLVED.md` | Closed TO-DOs with root cause and lessons | A bug smells familiar |
+| `PRD/BUILD_*.md` | Stage plans and acceptance criteria for one piece of work | Working through a planned build |
+| `PRD/NOTE_UI-principles.md` | Layout, action placement, visual hierarchy | Any UI work |
 
-## Documentation
+### What to update, when, and why
 
-### What goes where
-- Root CLAUDE.md holds only HIGH LEVEL information about the application at a glance, plus the running TO-DO list below. No TO-DOs belong in any nested CLAUDE.md.
-- Documentation information lives in `PRD/CLAUDE.md`: which documentation lives in which file, how to read it, quick references.
+- **Behaviour changed** → the stage PRD (§M if cross-stage). *Why:* the PRD wins over code, so a stale PRD makes the code wrong by definition.
+- **Hit a trap or wrote something non-obvious** → §N, in that stage's section. *Why:* §N is keyed to code and read prospectively - it is the only doc someone opens *before* touching a module.
+- **Closed a TO-DO** → delete it from the list below, write it up in `PRD/RESOLVED.md` (root cause, fix, lesson). If it produced a rule that should change how future code is written, **also** add that rule to §N and cross-link the two. *Why:* this file is loaded into every session, so it carries only live work.
+- **New TO-DO** → the list below, under its area and magnitude.
+- **Doc contradicts code** → `PRD/CLAUDE.md` › "Doc Discrepancies to Resolve", with the decision still to make.
+- **Added or renamed a file in `R/`** → the file map above, *and* the "Which Sections Govern Which File" table in `PRD/CLAUDE.md`.
+- Cite sections by prefix (§P7.2, §A8.6, §N1.12) in code comments and docs.
 
-### Reference files
-- Development reference files live in `PRD/`. See `PRD/CLAUDE.md` for the full list.
-- These cover application notes, PRDs, build plans and other references. They are detailed and should be the first stop for domain-specific questions.
+### §N vs RESOLVED.md - the split that matters
+
+They can hold the same fact for different jobs, and both are needed:
+
+- **§N answers "what must I know before I edit this file?"** - keyed to code, no dates, read prospectively.
+- **RESOLVED.md answers "have we hit this before?"** - keyed to date, carries the symptom and the hunt, read while debugging.
+
+A fix that yields a forward-looking rule goes in **both**: the rule in §N, the history in RESOLVED.md with a `**Durable rule: §NX.Y**` pointer. A one-off with no reusable rule goes in RESOLVED.md only. Never let §N carry the narrative or RESOLVED.md carry the rule alone - a rule filed only under a date is a rule nobody reads in time.
+main-specific questions.
+- Move resolved TODOs with durable lessons to `PRD/RESOLVED.md` for future reference.
 
 ---
 
@@ -123,16 +145,6 @@ inst/
 #### High magnitude
 
 #### Mid magnitude
-- ~~transform → row filter → transform does not show a warning on stage~~ - closed
-  2026-09-24. Root cause was one line shared by `.build_prepare_warnings()` and
-  `.prune_conflicting_filter_specs()`: both derived the changed-transform set from
-  `names(specs)`, the *currently staged* transforms, so a transform that had been
-  REMOVED since the last Apply was never tested. Worst case was cutpoints -> filter on
-  the bands -> remove the cutpoints: the categorical filter survived onto a column that
-  was numeric again, matched no rows, and Apply produced an empty dataset with no
-  warning. Both now use `union(names(specs), names(last_tx))`, and
-  `.apply_row_filters()` skips a filter whose `type` disagrees with the column as a
-  backstop.
 - Warnings section in the Apply pane — mimic the "Stratify by" section header in Report › Full Report.
 - varaible labels - in Prepare phase, column in master table that has a textbox for custom column labels. Buttons to apply some function (str to title, capitalize first only, variable name) to change all labels quickly for basic presentation purposes.
 
@@ -146,18 +158,6 @@ inst/
 - report -> full report main panel - should this contain a viewer for the file that is generated? and then a save button to export the report to a desired location? solves the "main panel sucks" issue
 
 #### Mid magnitude
-- ~~Word report: reference `.docx` template with defined heading styles~~ - closed
-  2026-09-24. `inst/templates/word_docx_blank_template.docx` now supplies the
-  Title / Subtitle / heading 1-9 styles, and `.assemble_docx()` builds a real
-  document on top of them: title page, a Word TOC field that populates from the
-  headings (heading 1 = Table 1 / Dataset Summary / the section group, heading 2 =
-  each variable), a running header naming the document, a page number bottom-right,
-  and four page sections so the dataset summary is landscape and everything else
-  portrait. Per-variable summary tables are laid out at 18pt. Two things worth
-  knowing: Word's NUMPAGES field counts *within a section*, so the footer is
-  "Page N" and not "Page N of M"; and Word's own table autofit wrecks a table
-  wider than the page, so `.docx_fit_ft()` computes the widths in R and
-  `.docx_shrink_widths()` takes the overflow out of the widest columns only.
 - Statistical tests in the Explore › Relationship summary panel (num × fac → Kruskal-Wallis; fac × fac → chi-square / Fisher's). Reports already have these via the table helpers; the Explore summary does not.
 - Async report generation (synchronous now; cancel needs `future` / `promises`).
 - when changing LHS pills in explore data from describe to corelate and then clicking plot relationship button, secondary variable chosen for plot is the secondary variable in the correlate LHS pane; primary and stratify by are still left over from the last selection in the describe pill.
@@ -170,11 +170,7 @@ inst/
 - Report contents option: collinearity investigation.
 - **Bug — centre tables in PPT + HTML reports:** `flextable::set_table_properties(align = "center")` is set in both `.style_dataset_summary_ft()` and `.style_section_ft()` in `generate_report.R`, but tables still render left-aligned in PPT and HTML (DOCX may work). Investigate `officer` slide content alignment for PPT and the Rmd template's table rendering for HTML.
 - appearance should be a pill next to explore data and report; full screen for config; this may change to "settings" later but we can leave it as appearance for now. main panel will house container for settings.
-en creating a report should only contain variables that are selected/included in report; all selected variables plus a stratify by variable if selected
-ll selected variables plus a stratify by variable if selected
-ll selected variables plus a stratify by variable if selected
-ll selected variables plus a stratify by variable if selected
-all selected variables plus a stratify by variable if selected
+- when creating a report it should only contain variables that are selected/included in report: all selected variables plus a stratify by variable if selected.
 
 ### Analyze
 
@@ -200,29 +196,8 @@ Phases 0–7 and 6b complete; Step 6 (Export, Phase 8) is a placeholder stub. Ph
 ### Other
 
 #### High magnitude
-- **UI consistency - built 2026-09-23, one decision open for you.** All six stages of
-  `PRD/BUILD_UI-redesign.md` are done: honest step-locking, a shared component library
-  (`R/ui_helpers.R`), one plain-CSS theme file (`inst/www/edark.css`), a config (left) /
-  result / info (right) page contract with a dedicated messages area, and flatter
-  navigation. Report stays inside Explore. `bslib` + R + CSS only - no SCSS, no new JS.
-  Explore › Report's Full / Custom are underline tabs (level 3b), not the config-pane pills
-  D8 originally named - **ruled 2026-09-23: they stay underlines**, because that is the third
-  nested level and consistency at a level beats the D8 wording. See Stage 5's build note in
-  `PRD/BUILD_UI-redesign.md`.
 - investigate reset pipeline and what it looks like
     - also with UI refresh, might be able to eliminate some of the click to lock in steps, should evaluate
-    - ~~Nine step pills wrap to two rows~~ - closed 2026-09-23: there are six steps, and with
-      "3 · Variables" / "4 · Covariates" they fit one row at 1280 px (Stage 5).
-- ~~RHS pane is tied to the main pane, where the LHS pane is independent; I wanted three
-  independent panes~~ - closed 2026-09-23. Root cause was not the pane structure: bslib
-  ships `.bslib-card .card-body { max-height: var(--bslib-card-body-max-height, none) }`,
-  two classes to `.edark-scroll-table`'s one, so any scroll cap put directly on a
-  `card_body` lost on specificity and the content grew without limit. That blew out the
-  CSS grid row the centre and info panes share, stretching the info pane to match (1660 px
-  on Prepare › Columns) and forcing the whole document to scroll. Capping the content -
-  never on the card_body itself - fixes all three panes at once. Convention and the three
-  containment mechanisms are in the header comment on `.edark-scroll-table`
-  (`inst/www/edark.css`) and `EDARK_RESULT_HEIGHT` (`R/ui_helpers.R`).
 
 #### Mid magnitude
 - Export (§P9): working dataset, prepare/analyze spec, model ouptuts/results (including diagnostics). Formats for results would be individual files vs single document/report (select output type word, pdf, HTML). Zip all files. Share a writer with Step 9 and sessions (§M7).
@@ -235,18 +210,7 @@ Phases 0–7 and 6b complete; Step 6 (Export, Phase 8) is a placeholder stub. Ph
   compiled code, so the gate can be skipped with
   `options(buildtools.check = function(action) TRUE)`, but installing Rtools is the real
   fix. With the gate skipped on 2026-09-24 the check ran 0 errors, 2 warnings, 1 note;
-  the roxygen errors are closed (see below) and what remains is undeclared imports -
-  `@importFrom` for the `stats` / `utils` functions used (`median`, `sd`, `IQR`,
-  `na.omit`, `quantile`, `setNames`, `modifyList`, `str`, ...) plus a
+  the roxygen errors are closed (`PRD/RESOLVED.md`) and what remains is undeclared
+  imports - `@importFrom` for the `stats` / `utils` functions used (`median`, `sd`,
+  `IQR`, `na.omit`, `quantile`, `setNames`, `modifyList`, `str`, ...) plus a
   `utils::globalVariables()` entry for `.data` and the NSE column names.
-- ~~roxygen errors on every `devtools::document()`~~ - closed 2026-09-24. Two unrelated
-  causes. (1) `DESCRIPTION` sets `Roxygen: list(markdown = TRUE)`, and markdown mode
-  escapes `%` for you, so a hand-written `\%` came out of roxygen as `\\%` - a literal
-  backslash followed by an Rd comment that ate the rest of the line, including the
-  closing `}` of the `\item{}` it sat in. That is what made `man/liver_tx.Rd` report
-  every later `\item` as an unknown macro and every later section header as unexpected,
-  and what roxygen called mismatched braces in `stats_inference.R`. Write a plain `%` in
-  roxygen comments. (2) Markdown links like `[edark_run_gate()]` become real `\link{}`
-  cross-references, but every helper in `R/ui_helpers.R` is `@keywords internal` +
-  `@noRd` and so has no man page to link to. Undocumented internals are referred to with
-  a code span - `` `edark_run_gate()` `` - not a link.

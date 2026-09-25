@@ -70,6 +70,17 @@ session$sendCustomMessage("edark_analysis_progress", list(frac = 0.5, detail = "
 ### N1.11 `switch(NULL, ...)` crashes
 `switch()` on `NULL` throws "EXPR must be a length 1 vector". `route_plot_type()` and `build_trend_plot_spec()` can return `NULL`; always NULL-guard `spec$plot_type` before dispatch.
 
+### N1.12 Never cap height on a bslib `card_body`
+bslib ships `.bslib-card .card-body { max-height: var(--bslib-card-body-max-height, none) }` — two classes. A scroll cap written as a single class (`.edark-scroll-table`) loses on specificity, so the content grows without limit, blows out the CSS grid row the centre and info panes share, and stretches every pane in that row to match (1660 px on Prepare › Columns), forcing the whole document to scroll.
+
+**Cap the content, never the `card_body` itself.** Doing so fixes all three panes at once. The convention and the three containment mechanisms are in the header comment on `.edark-scroll-table` (`inst/www/edark.css`) and `EDARK_RESULT_HEIGHT` (`R/ui_helpers.R`).
+
+### N1.13 roxygen: plain `%`, and no links to `@noRd` helpers
+`DESCRIPTION` sets `Roxygen: list(markdown = TRUE)`, which has two consequences that break `devtools::document()` with errors pointing far from the real line:
+
+1. **Markdown mode escapes `%` for you.** A hand-written `\%` reaches Rd as `\\%` — a literal backslash then an Rd comment that eats the rest of the line, including the closing `}` of the `\item{}` it sits in. Symptom: every *later* `\item` reported as an unknown macro and every later section header as unexpected. Write a plain `%`.
+2. **Markdown links become real `\link{}` cross-references.** Every helper in `R/ui_helpers.R` is `@keywords internal` + `@noRd` and so has no man page to link to. Refer to an undocumented internal with a code span — `` `edark_run_gate()` `` — not `[edark_run_gate()]`.
+
 ---
 
 ## N2 — Statistical Methods Registry
@@ -108,6 +119,7 @@ Any `reactive({})` that only calls `apply_prepare_pipeline(shared_state)` will *
 - Pipeline helpers live in `module_column_transform.R` only: `.apply_column_transforms()`, `.make_range_labels()`, `.transform_spec_is_valid()`.
 - **Adding a transform type:** (1) new dropdown option in `transform_variables_ui`; (2) new config `renderUI` case; (3) new branch in `.apply_column_transforms()` + `.transform_spec_is_valid()`. No other files need changes.
 - Auto-factor and cut-point transforms produce **ordered** factors; Analyze converts them to unordered before fitting (§N6.6).
+- **A removed transform is still a change.** Anything comparing staged transforms against the last applied set must key off `union(names(specs), names(last_tx))`, never `names(specs)` alone — a transform deleted since the last Apply is absent from the staged list and would go untested. This is why `.build_prepare_warnings()` and `.prune_conflicting_filter_specs()` both use the union, and why `.apply_row_filters()` skips a filter whose `type` disagrees with the column as a backstop (`RESOLVED.md`, Prepare, 2026-09-24).
 
 ---
 
@@ -155,6 +167,15 @@ Report Table One: `.build_tableone_df()` / `.style_tableone_ft()`. Section table
 
 ### N5.6 Custom report items
 Structure: `list(id, plot_spec, thumb_path, title, added_at)`. PNG thumbnails go to `tempdir()` and are deleted in `session$onSessionEnded` (`edark.R`). Gallery up / down / remove observers follow §N1.9. Navigation: `requested_tab` / `requested_report_subtab` observed in `edark.R`, which calls `bslib::nav_select()` and clears the request.
+
+### N5.7 Word (`.docx`) assembly
+`.assemble_docx()` builds on `inst/templates/word_docx_blank_template.docx`, which supplies Title / Subtitle / heading 1-9 styles. Structure: title page, a Word TOC field that populates from the headings (heading 1 = Table 1 / Dataset Summary / the section group, heading 2 = each variable), a running header, a page number bottom-right, and four page sections so the dataset summary is landscape and the rest portrait.
+
+Two traps:
+1. **`NUMPAGES` counts within a section**, not the document. With four sections a "Page N of M" footer reports the wrong M, so the footer is "Page N" only.
+2. **Word's table autofit wrecks any table wider than the page.** Do not leave widths to Word: `.docx_fit_ft()` computes them in R, and `.docx_shrink_widths()` takes the overflow out of the widest columns only.
+
+Closed to-do with the full history: `RESOLVED.md` (Explore, 2026-09-24).
 
 ---
 

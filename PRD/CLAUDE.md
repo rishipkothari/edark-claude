@@ -18,6 +18,7 @@ This file is the **index**: where to find things, the rules that must never be b
 | [NOTE_UI-principles.md](NOTE_UI-principles.md) | — | Layout, action placement, visual hierarchy. Read before any UI work so it isn't reinvented each time |
 | [BUILD_Analysis.md](BUILD_Analysis.md) | — | Analyze build phases and acceptance criteria (incl. Phase 5b code generator, Phase 8 export, Phase S sessions) |
 | [BUILD_UI-redesign.md](BUILD_UI-redesign.md) | - | **The single UI plan** (Claude + Codex assessments merged 2026-09-22; revised 2026-09-23 from user feedback, §1.3): settled decisions, assessment, and Stages 0-6 - honest locking first, component library, CSS theme, config / result / info page contract with a messages area, flatter navigation. `bslib` + R + plain CSS only. Stage status table at the top; work one stage per session. **§1.3 holds the UI principles taken from real use (button scale, placement by scope, shared settings, no redundant surfaces) - read it before any UI work, alongside `NOTE_UI-principles.md`** |
+| [RESOLVED.md](RESOLVED.md) | — | Closed to-dos with root cause and lessons. Check here when a bug smells familiar, before re-deriving a fix |
 | [Codex proofing.md](Codex%20proofing.md) | — | Briefing notes for an external proofing agent |
 | [tools/PRD_section_map.md](tools/PRD_section_map.md) | — | Old → new section numbers (migration aid), plus the scripts that generated it |
 
@@ -35,6 +36,8 @@ This file is the **index**: where to find things, the rules that must never be b
 | What does `reset_analysis_pipeline()` clear? | §A8.6, §N6.13 |
 | Preflight check codes | §A8.2; adding a check §N6.12 |
 | A reactable table loses its checkbox state | §N1.4 |
+| A pane or the whole page scrolls when it should not | §N1.12 |
+| `devtools::document()` errors on lines that look fine | §N1.13 |
 | An input still has a value after its UI disappeared | §N1.3 |
 | Test dataset features (collinearity, noise, missingness) | §N7 |
 | Association vs prediction; validation method (bootstrap / CV / held-out set) | §A1.4a; helpers §N6.2 |
@@ -87,7 +90,8 @@ What each file does is in the root `CLAUDE.md`. This is the § lookup.
 | `module_trend_controls.R` | §E5 |
 | `module_explore_output.R` | §E6 |
 | `module_appearance.R` | §E7 |
-| `ui_helpers.R` | - (BUILD_UI-redesign Stages 1-2) |
+| `ui_helpers.R` | §N1.12 (BUILD_UI-redesign Stages 1-2) |
+| `inst/www/edark.css` | §N1.12 |
 | `module_report.R` | §E10–E12 |
 | `module_analysis_main.R` | §A5.1, §N6.3 |
 | `module_analysis_setup.R` | §A5.3, §N6.4 |
@@ -151,7 +155,10 @@ Each needs a decision: change the code or change the doc.
 
 ## Keeping the Docs Current
 
+The full policy - what to update, when and why - is in the root `CLAUDE.md` › Documentation. In short:
+
 - Behaviour change → update the stage PRD (or §M if cross-stage).
 - New pitfall or non-obvious mechanic → §N, in the relevant stage section.
-- New to-do → root `CLAUDE.md`. Discovered doc/code mismatch → this file.
+- New to-do → root `CLAUDE.md`. Closed to-do → move it out of root `CLAUDE.md` into [RESOLVED.md](RESOLVED.md), in full. Discovered doc/code mismatch → this file.
+- **A closed to-do that yields a forward-looking rule goes in both places**: the rule in §N (keyed to code, read before editing a module), the history in [RESOLVED.md](RESOLVED.md) (keyed to date, read while debugging), with a `**Durable rule: §NX.Y**` pointer joining them.
 - Cite sections with their prefix (§P7.2, §A8.6) in code comments and docs.
