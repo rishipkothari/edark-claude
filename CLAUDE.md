@@ -157,7 +157,6 @@ main-specific questions.
 
 #### High magnitude
 - Alternative plot types per variable combination (heat map, balloon plot, etc.)
-- report -> full report main panel - should this contain a viewer for the file that is generated? and then a save button to export the report to a desired location? solves the "main panel sucks" issue
 
 #### Mid magnitude
 - Statistical tests in the Explore › Relationship summary panel (num × fac → Kruskal-Wallis; fac × fac → chi-square / Fisher's). Reports already have these via the table helpers; the Explore summary does not.
