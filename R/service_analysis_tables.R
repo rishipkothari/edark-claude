@@ -24,6 +24,9 @@ NULL
 #'   difference to the by-exposure / by-outcome tab. Only applied when that
 #'   stratifier has exactly 2 observed levels. \code{NULL} (the default) falls
 #'   back to the matching field in \code{spec$table1_specification}.
+#' @param progress_fn Optional \code{function(fraction, detail)}, called as
+#'   each table starts and once at the end. The tables built are those named
+#'   by \code{.table1_plan()}, one equal share of the bar each.
 #'
 #' @details P-values and SMD are mutually exclusive per tab: when both are
 #'   requested for the same stratifier, SMD wins.
@@ -36,7 +39,8 @@ build_table1 <- function(data,
                          include_pvalues_exposure = NULL,
                          include_pvalues_outcome  = NULL,
                          include_smd_exposure     = NULL,
-                         include_smd_outcome      = NULL) {
+                         include_smd_outcome      = NULL,
+                         progress_fn              = NULL) {
 
   roles        <- spec$variable_roles
   outcome_var  <- roles$outcome_variable
@@ -53,16 +57,6 @@ build_table1 <- function(data,
 
   if (length(t1_vars) == 0) {
     return(list(overall = NULL, by_exposure = NULL, by_outcome = NULL))
-  }
-
-  # A stratifier must be categorical with at least 2 observed levels. Without
-  # this, a numeric `by` variable makes gtsummary treat every distinct value as
-  # its own group.
-  .can_stratify <- function(v) {
-    if (is.null(v) || !nzchar(v) || !v %in% names(data)) return(FALSE)
-    col <- data[[v]]
-    if (!(is.factor(col) || is.character(col) || is.logical(col))) return(FALSE)
-    length(unique(stats::na.omit(as.character(col)))) >= 2L
   }
 
   .build_one <- function(by_var, include_p, include_smd_flag) {
@@ -134,8 +128,6 @@ build_table1 <- function(data,
     }, error = function(e) NULL)
   }
 
-  overall <- .build_one(NULL, FALSE, FALSE)
-
   # An explicit argument wins; NULL falls back to the spec.
   .flag <- function(arg, spec_val) if (is.null(arg)) isTRUE(spec_val) else isTRUE(arg)
 
@@ -144,17 +136,59 @@ build_table1 <- function(data,
   smd_exp <- .flag(include_smd_exposure,     t1_spec$include_smd_exposure)
   smd_out <- .flag(include_smd_outcome,      t1_spec$include_smd_outcome)
 
-  by_exposure <- if (.can_stratify(exposure_var) &&
-                     isTRUE(t1_spec$stratify_by_exposure)) {
-    .build_one(exposure_var, p_exp && !smd_exp, smd_exp)
-  } else NULL
+  out  <- list(overall = NULL, by_exposure = NULL, by_outcome = NULL)
+  plan <- .table1_plan(data, spec)
+  n    <- length(plan)
+  .progress <- function(frac, detail) if (is.function(progress_fn)) progress_fn(frac, detail)
 
-  by_outcome <- if (.can_stratify(outcome_var) &&
-                    isTRUE(t1_spec$stratify_by_outcome)) {
-    .build_one(outcome_var, p_out && !smd_out, smd_out)
-  } else NULL
+  # Each table sits mid-way through its own segment while it builds.
+  for (i in seq_len(n)) {
+    key <- names(plan)[i]
+    .progress((i - 0.5) / n, sprintf("Building table %d of %d: %s\u2026", i, n, plan[[i]]))
+    out[[key]] <- switch(key,
+      overall     = .build_one(NULL, FALSE, FALSE),
+      by_exposure = .build_one(exposure_var, p_exp && !smd_exp, smd_exp),
+      by_outcome  = .build_one(outcome_var,  p_out && !smd_out, smd_out)
+    )
+  }
+  .progress(1, "Done")
 
-  list(overall = overall, by_exposure = by_exposure, by_outcome = by_outcome)
+  out
+}
+
+
+#' Which Table 1 tables a spec builds, in build order
+#'
+#' Shared by \code{build_table1()} and the Step 2 progress modal, so the bar's
+#' stops always match the tables actually built.
+#'
+#' @return Named character vector: names from \code{overall},
+#'   \code{by_exposure}, \code{by_outcome}; values are display labels
+#'   ("Overall", "By <variable>").
+#' @keywords internal
+#' @noRd
+.table1_plan <- function(data, spec) {
+  roles   <- spec$variable_roles
+  t1_spec <- spec$table1_specification
+  plan    <- c(overall = "Overall")
+  if (isTRUE(t1_spec$stratify_by_exposure) && .can_stratify(data, roles$exposure_variable)) {
+    plan["by_exposure"] <- paste("By", roles$exposure_variable)
+  }
+  if (isTRUE(t1_spec$stratify_by_outcome) && .can_stratify(data, roles$outcome_variable)) {
+    plan["by_outcome"] <- paste("By", roles$outcome_variable)
+  }
+  plan
+}
+
+
+# A stratifier must be categorical with at least 2 observed levels. Without
+# this, a numeric `by` variable makes gtsummary treat every distinct value as
+# its own group.
+.can_stratify <- function(data, v) {
+  if (is.null(v) || !nzchar(v) || !v %in% names(data)) return(FALSE)
+  col <- data[[v]]
+  if (!(is.factor(col) || is.character(col) || is.logical(col))) return(FALSE)
+  length(unique(stats::na.omit(as.character(col)))) >= 2L
 }
 
 

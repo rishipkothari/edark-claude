@@ -287,35 +287,12 @@ analysis_table1_server <- function(id, shared_state) {
       spec$table1_specification$include_smd_exposure     <- identical(stat_exp, "smd")
       spec$table1_specification$include_smd_outcome      <- identical(stat_out, "smd")
 
-      shiny::showModal(shiny::modalDialog(
-        title = shiny::tagList(
-          shiny::tags$span(
-            class = "spinner-border spinner-border-sm me-2",
-            role  = "status",
-            shiny::tags$span(class = "visually-hidden", "Loading...")
-          ),
-          "Generating Table 1\u2026"
-        ),
-        shiny::div(
-          class = "progress mb-2",
-          style = "height: 6px;",
-          shiny::div(
-            id              = "edark_analysis_progress_bar",
-            class           = "progress-bar progress-bar-striped progress-bar-animated",
-            role            = "progressbar",
-            style           = "width: 5%;",
-            `aria-valuenow` = "5",
-            `aria-valuemin` = "0",
-            `aria-valuemax` = "100"
-          )
-        ),
-        shiny::tags$p(
-          id    = "edark_analysis_progress_detail",
-          class = "text-muted mb-0 small",
-          "Building summary table\u2026"
-        ),
-        footer    = NULL,
-        easyClose = FALSE
+      # One stop on the bar per table, named as it is built.
+      plan <- .table1_plan(adata, spec)
+      shiny::showModal(.analysis_progress_modal(
+        "Generating Table 1\u2026",
+        detail_text = "Starting\u2026",
+        stops       = unname(plan)
       ))
       on.exit(shiny::removeModal(), add = TRUE)
 
@@ -325,7 +302,11 @@ analysis_table1_server <- function(id, shared_state) {
         include_pvalues_exposure = identical(stat_exp, "pvalues"),
         include_pvalues_outcome  = identical(stat_out, "pvalues"),
         include_smd_exposure     = identical(stat_exp, "smd"),
-        include_smd_outcome      = identical(stat_out, "smd")
+        include_smd_outcome      = identical(stat_out, "smd"),
+        progress_fn = function(frac, detail) {
+          session$sendCustomMessage("edark_analysis_progress",
+                                    list(frac = frac, detail = detail))
+        }
       )
 
       # Store in analysis_result

@@ -559,3 +559,30 @@
 .edark-messages {
   margin-bottom: 0.5rem;
 }
+
+/* Staged progress bar (.analysis_progress_modal(stops = ...)): a tick between
+   equal segments, one label per segment underneath. */
+.edark-progress-staged {
+  position: relative;
+}
+
+.edark-progress-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--bs-body-bg, #fff);
+}
+
+.edark-progress-stops {
+  display: flex;
+  font-size: 0.75rem;
+  color: var(--bs-secondary-color, #6c757d);
+}
+
+.edark-progress-stops > span {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+}

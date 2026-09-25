@@ -10,7 +10,8 @@ build_table1(
   include_pvalues_exposure = NULL,
   include_pvalues_outcome = NULL,
   include_smd_exposure = NULL,
-  include_smd_outcome = NULL
+  include_smd_outcome = NULL,
+  progress_fn = NULL
 )
 }
 \arguments{
@@ -26,6 +27,10 @@ the matching field in \code{spec$table1_specification}.}
 difference to the by-exposure / by-outcome tab. Only applied when that
 stratifier has exactly 2 observed levels. \code{NULL} (the default) falls
 back to the matching field in \code{spec$table1_specification}.}
+
+\item{progress_fn}{Optional \code{function(fraction, detail)}, called as
+each table starts and once at the end. The tables built are those named
+by \code{.table1_plan()}, one equal share of the bar each.}
 }
 \value{
 A named list: \code{overall}, \code{by_exposure}, \code{by_outcome}.

@@ -69,7 +69,21 @@ NULL
 
 
 # ── Shared helper: blocking modal ─────────────────────────────────────────────
-.analysis_progress_modal <- function(title_text, detail_text = "Running\u2026", cancel_id = NULL) {
+# `stops` (optional character vector) splits the bar into one equal segment
+# per named step: a tick between segments and each name underneath. The caller
+# moves the bar through the segments with the usual progress messages.
+.analysis_progress_modal <- function(title_text, detail_text = "Running\u2026", cancel_id = NULL,
+                                     stops = NULL) {
+  n_stops <- length(stops)
+  ticks <- if (n_stops > 1L) lapply(seq_len(n_stops - 1L), function(k) {
+    shiny::tags$span(class = "edark-progress-tick",
+                     style = sprintf("left: %.4f%%;", 100 * k / n_stops))
+  })
+  stop_labels <- if (n_stops > 1L) shiny::div(
+    class = "edark-progress-stops mb-2",
+    lapply(stops, function(s) shiny::tags$span(class = "text-truncate", title = s, s))
+  )
+
   shiny::modalDialog(
     title = shiny::tagList(
       shiny::tags$span(
@@ -80,7 +94,7 @@ NULL
       title_text
     ),
     shiny::div(
-      class = "progress mb-2",
+      class = if (n_stops > 1L) "progress edark-progress-staged mb-1" else "progress mb-2",
       style = "height: 6px;",
       shiny::div(
         id              = "edark_analysis_progress_bar",
@@ -90,8 +104,10 @@ NULL
         `aria-valuenow` = "5",
         `aria-valuemin` = "0",
         `aria-valuemax` = "100"
-      )
+      ),
+      ticks
     ),
+    stop_labels,
     shiny::tags$p(
       id    = "edark_analysis_progress_detail",
       class = "text-muted mb-0 small",
