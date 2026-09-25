@@ -295,6 +295,31 @@
    5  Components (built by R/ui_helpers.R)
    ========================================================================== */
 
+/* Badges (edark_badge / edark_type_badge in R/ui_helpers.R).
+
+   Two sizes only: sm for a badge inside a table cell, md for one standing on
+   its own in a pane. Sizing lives here so no caller sets font-size inline. */
+.edark-badge {
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.edark-badge-sm {
+  font-size: 0.7rem;
+  padding: 0.2em 0.5em;
+}
+
+.edark-badge-md {
+  font-size: 0.8rem;
+  padding: 0.35em 0.65em;
+}
+
+/* A type the Prepare pipeline cast away from the original: the type's own
+   colour still says what it is now, the ring says it moved. */
+.edark-badge-changed {
+  box-shadow: 0 0 0 2px var(--bs-warning);
+}
+
 .edark-section-label {
   letter-spacing: 0.03em;
 }

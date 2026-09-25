@@ -178,8 +178,7 @@ analysis_covariate_confirm_ui <- function(id) {
         )
       ),
       messages  = edark_messages_ui(ns),
-      info      = shiny::uiOutput(ns("sample_ui")),
-      info_open = "closed"
+      info      = shiny::uiOutput(ns("sample_ui"))
     )
   )
 }
@@ -465,17 +464,6 @@ analysis_covariate_confirm_server <- function(id, shared_state) {
         row.names = NULL
       )
 
-      .type_badge <- function(t) {
-        cls <- switch(t,
-          numeric   = "badge text-bg-primary",
-          factor    = "badge text-bg-success",
-          datetime  = "badge text-bg-warning text-dark",
-          character = "badge text-bg-secondary",
-          "badge text-bg-light text-dark"
-        )
-        htmltools::tags$span(class = cls, style = "font-size:0.7rem;", t)
-      }
-
       # ── Method column: header with Add/Replace + tooltip, coloured cells ──
       .method_state <- function(key, v) {
         info <- mi[[key]]
@@ -606,14 +594,12 @@ analysis_covariate_confirm_server <- function(id, shared_state) {
               if (index > length(locked_vars)) return(value)
               htmltools::tagList(
                 value, " ",
-                htmltools::tags$span(class = "badge text-bg-dark",
-                                     style = "font-size:0.65rem;",
-                                     roles_col[index])
+                edark_badge(roles_col[index], role = "role")
               )
             }
           ),
           Type = reactable::colDef(
-            minWidth = 80, cell = function(value, index) .type_badge(value)
+            minWidth = 80, cell = function(value, index) edark_type_badge(value)
           ),
           missing = reactable::colDef(
             name = "Missing", minWidth = 80,

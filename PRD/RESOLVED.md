@@ -110,3 +110,19 @@ See Stage 5's build note in `BUILD_UI-redesign.md`.
 
 There are six steps, and with "3 · Variables" / "4 · Covariates" they fit one row at
 1280 px (Stage 5).
+
+### 2026-09-25 - full report tables described the dataset, not the report
+
+Dataset Summary was built from every numeric/factor column in the working dataset and
+Table One from the selected variables only in Describe mode, where it was also the only
+mode that offered the checkbox. Both now follow the report contents:
+
+- `content_vars` = selected variables, plus the primary variable in Correlate mode
+  (it appears in every section).
+- **Table One** = `content_vars` minus the stratify variable, which is the column header.
+- **Dataset Summary** = `content_vars` plus the stratify variable.
+
+`.build_dataset_summary()` gained an optional `variables` argument; NULL keeps the
+whole-dataset behaviour that Prepare > Data Preview and the custom report rely on.
+Table One's `report_type == "all_vars"` gate is gone from `generate_report()` and from
+the Report module's checkbox, info row, and call, so Correlate reports can carry one.

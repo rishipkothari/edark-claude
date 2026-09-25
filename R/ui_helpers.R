@@ -311,6 +311,101 @@ edark_empty_state <- function(title, body = NULL, icon = "circle-info") {
 }
 
 
+# ── Badges ────────────────────────────────────────────────────────────────────
+
+#' Variant for each badge role, written once
+#'
+#' Before this, Prepare rendered a column's type as `tags$code` while Analyze
+#' rendered the same fact as a coloured Bootstrap badge at two different font
+#' sizes. One fact, one look: every badge in the app comes from
+#' `edark_badge()` and takes its colour from here.
+#'
+#' Keys are roles, not colours, so a caller never names a Bootstrap variant.
+#'
+#' @keywords internal
+#' @noRd
+.EDARK_BADGE_VARIANT <- c(
+  # Column types (detect_column_types() values)
+  numeric   = "primary",
+  factor    = "success",
+  datetime  = "warning text-dark",
+  character = "secondary",
+
+  # Study type (Analyze > Setup info pane)
+  study_exposure_outcome     = "primary",
+  study_risk_factor          = "success",
+  study_descriptive_exposure = "warning text-dark",
+  study_descriptive          = "secondary",
+
+  # Other roles
+  role      = "dark",       # a variable's assigned analysis role
+  count     = "primary",    # a live count beside a label
+  neutral   = "secondary",
+  muted     = "light text-dark",
+  changed   = "warning text-dark"
+)
+
+
+#' One badge
+#'
+#' The app's only badge builder. Callers pass a role from
+#' `.EDARK_BADGE_VARIANT`; unknown roles fall back to `muted` rather than
+#' erroring, so a new column type shows up as a plain badge instead of
+#' breaking a table cell.
+#'
+#' @param text Character or tag. What the badge says.
+#' @param role Character. A name of `.EDARK_BADGE_VARIANT`.
+#' @param size One of "sm" (in-table, the default) or "md" (standalone).
+#' @param class Character or NULL. Extra classes, e.g. `"w-100 d-block"`.
+#' @param ... Passed to `htmltools::tags$span()` (`title`, `style`, ...).
+#'
+#' @return A `htmltools::tags$span`.
+#' @keywords internal
+#' @noRd
+edark_badge <- function(text, role = "neutral", size = c("sm", "md"),
+                        class = NULL, ...) {
+  size    <- match.arg(size)
+  variant <- unname(.EDARK_BADGE_VARIANT[role])
+  if (length(variant) != 1L || is.na(variant)) variant <- .EDARK_BADGE_VARIANT[["muted"]]
+
+  htmltools::tags$span(
+    class = paste(
+      c("badge", paste0("text-bg-", variant), "edark-badge",
+        paste0("edark-badge-", size), class),
+      collapse = " "
+    ),
+    ...,
+    text
+  )
+}
+
+
+#' A column type, as a badge
+#'
+#' Used by every table that shows a type - Prepare > Columns, Prepare > Data
+#' Preview, Analyze > Setup, Analyze > Covariates - so the same type reads the
+#' same everywhere.
+#'
+#' @param type Character. A `detect_column_types()` value.
+#' @param changed Logical. TRUE marks a type the Prepare pipeline has cast away
+#'   from the original; it keeps the type's own colour and gains a ring.
+#'
+#' @return A `htmltools::tags$span`.
+#' @keywords internal
+#' @noRd
+edark_type_badge <- function(type, changed = FALSE) {
+  if (is.null(type) || length(type) != 1L || is.na(type)) {
+    return(edark_badge("-", role = "muted"))
+  }
+  edark_badge(
+    type,
+    role  = if (type %in% names(.EDARK_BADGE_VARIANT)) type else "muted",
+    class = if (isTRUE(changed)) "edark-badge-changed" else NULL,
+    title = if (isTRUE(changed)) "Cast by the Prepare pipeline" else NULL
+  )
+}
+
+
 # ── Status messages ───────────────────────────────────────────────────────────
 
 #' The severity scale, named once

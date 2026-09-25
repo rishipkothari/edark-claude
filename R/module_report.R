@@ -69,10 +69,8 @@ NULL
         class = "d-flex align-items-baseline gap-2 w-100",
         shiny::tags$span(class = "edark-report-item-index text-muted small", i),
         shiny::tags$span(class = "flex-grow-1 text-truncate", item$title),
-        shiny::tags$span(
-          class = "badge text-bg-secondary fw-normal",
-          .plot_type_label(item$plot_spec$plot_type)
-        )
+        edark_badge(.plot_type_label(item$plot_spec$plot_type),
+                    role = "neutral", class = "fw-normal")
       ),
       class = paste("edark-report-item-select btn flex-grow-1",
                     "d-flex align-items-center text-start")
@@ -156,11 +154,8 @@ report_ui <- function(id) {
           edark_section_label("Report Contents"),
           shiny::checkboxInput(ns("include_dataset_summary"),
                                "Dataset Summary", value = TRUE),
-          shiny::conditionalPanel(
-            condition = paste0("input['", ns("report_type"), "'] == 'all_vars'"),
-            shiny::checkboxInput(ns("include_tableone"),
-                                 "Table One", value = FALSE)
-          ),
+          shiny::checkboxInput(ns("include_tableone"),
+                               "Table One", value = FALSE),
 
           edark_section_label("Output Format"),
           shinyWidgets::radioGroupButtons(
@@ -442,10 +437,8 @@ report_server <- function(id, shared_state) {
                        if (is.null(sv) || !nzchar(sv)) "None" else sv),
         edark_info_row("Dataset summary",
                        if (isTRUE(input$include_dataset_summary)) "Included" else "No"),
-        if (identical(input$report_type, "all_vars")) {
-          edark_info_row("Table One",
-                         if (isTRUE(input$include_tableone)) "Included" else "No")
-        },
+        edark_info_row("Table One",
+                       if (isTRUE(input$include_tableone)) "Included" else "No"),
 
         edark_section_label("Source data"),
         edark_info_row("Rows",    if (!is.null(ds)) format(nrow(ds), big.mark = ",") else "-"),
@@ -570,8 +563,7 @@ report_server <- function(id, shared_state) {
             format                  = input$output_format,
             output_path             = file,
             include_dataset_summary = isTRUE(input$include_dataset_summary),
-            include_tableone        = isTRUE(input$include_tableone) &&
-                                        input$report_type == "all_vars",
+            include_tableone        = isTRUE(input$include_tableone),
             # The aesthetics on screen, not a second set owned by Report, so
             # the generated document matches the plot the user has been
             # looking at (D7 / D9).

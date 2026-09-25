@@ -30,11 +30,17 @@
 #'
 #' @param dataset A data.frame.
 #' @param column_types Named character vector from detect_column_types().
+#' @param variables Optional character vector restricting the summary to these
+#'   columns (in the order given). NULL summarises every eligible column.
 #' @return A data.frame suitable for flextable().
 #' @noRd
-.build_dataset_summary <- function(dataset, column_types) {
+.build_dataset_summary <- function(dataset, column_types, variables = NULL) {
   analyzed_cols <- names(column_types)[column_types %in% c("numeric", "factor")]
   analyzed_cols <- analyzed_cols[analyzed_cols %in% names(dataset)]
+  # Report callers pass the selected variables so the summary matches what the
+  # report actually contains, not the whole working dataset.
+  if (!is.null(variables))
+    analyzed_cols <- variables[variables %in% analyzed_cols]
 
   rows <- lapply(analyzed_cols, function(col) {
     x        <- dataset[[col]]
@@ -1287,17 +1293,29 @@ generate_report <- function(dataset,
   stopifnot(format %in% c("pptx", "docx", "html"))
   stopifnot(is.data.frame(dataset), length(variables) >= 1)
 
+  strat <- if (!is.null(stratify_variable) && nzchar(stratify_variable))
+    stratify_variable else NULL
+
+  # Both tables describe the report, not the dataset. Table 1 carries the
+  # variables that become sections, plus the primary variable in correlation
+  # mode since it appears in every section; the dataset summary adds the
+  # stratify variable on top of those.
+  content_vars <- variables
+  if (report_type == "primary_vs_others" && !is.null(primary_variable))
+    content_vars <- union(primary_variable, content_vars)
+  tableone_vars <- setdiff(content_vars, strat)
+  summary_vars  <- unique(c(content_vars, strat))
+
   # Build dataset-level summary once (numeric + factor only)
   if (!is.null(progress_fn)) progress_fn(0, "Building dataset summary...")
-  dataset_summary_df <- .build_dataset_summary(dataset, column_types)
+  dataset_summary_df <- .build_dataset_summary(dataset, column_types, summary_vars)
 
-  # Build Table One if requested (only meaningful for all_vars / descriptive mode)
-  tableone_ft <- if (isTRUE(include_tableone) && report_type == "all_vars") {
-    strat <- if (!is.null(stratify_variable) && nzchar(stratify_variable))
-      stratify_variable else NULL
-    to_vars <- variables[variables %in% names(column_types) &
-                           column_types[variables] %in% c("numeric", "factor")]
-    if (!is.null(strat)) to_vars <- setdiff(to_vars, strat)
+  # Build Table One if requested
+  tableone_ft <- if (isTRUE(include_tableone)) {
+    to_vars <- tableone_vars[
+      tableone_vars %in% names(column_types) &
+        column_types[tableone_vars] %in% c("numeric", "factor")
+    ]
     to_df <- tryCatch(
       .build_tableone_df(dataset, column_types, to_vars, strat),
       error = function(e) NULL

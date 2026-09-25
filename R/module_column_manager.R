@@ -80,15 +80,11 @@ column_manager_server <- function(id, shared_state) {
           ),
           shiny::tags$td(
             class = "py-1 align-middle",
-            shiny::tags$code(class = "small text-muted", orig_type)
+            edark_type_badge(orig_type)
           ),
           shiny::tags$td(
             class = "py-1 align-middle",
-            if (type_changed) {
-              shiny::tags$code(class = "small text-warning fw-bold", curr_type)
-            } else {
-              shiny::tags$code(class = "small text-muted", curr_type)
-            }
+            edark_type_badge(curr_type, changed = type_changed)
           )
         )
       })

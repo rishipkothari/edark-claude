@@ -276,8 +276,7 @@ explore_output_server <- function(id, shared_state) {
     output$view_report_btn_ui <- shiny::renderUI({
       n     <- length(shared_state$custom_report_items)
       label <- if (n > 0)
-        shiny::tagList("View Report",
-                       shiny::tags$span(class = "badge bg-primary ms-1", n))
+        shiny::tagList("View Report", edark_badge(n, role = "count", class = "ms-1"))
       else "View Report"
       edark_button(ns, "view_report_btn", label, icon = "file-export",
                    size = "toolbar")

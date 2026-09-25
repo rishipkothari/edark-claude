@@ -149,10 +149,7 @@ analysis_setup_ui <- function(id) {
         shiny::uiOutput(ns("incoming_snapshot_ui")),
         shiny::uiOutput(ns("role_summary_ui")),
         shiny::uiOutput(ns("selected_snapshot_ui"))
-      ),
-      # The role table is one row per variable with four role columns, so at
-      # 1280 px it needs the width back (§M9.4 NF-05).
-      info_open = "closed"
+      )
     )
   )
 }
@@ -551,17 +548,6 @@ analysis_setup_server <- function(id, shared_state) {
       ctypes <- shiny::isolate(shared_state$column_types)
       vars   <- setdiff(names(adata), ".edark_row_id")
 
-      .type_badge <- function(t) {
-        cls <- switch(t,
-          numeric   = "badge text-bg-primary",
-          factor    = "badge text-bg-success",
-          datetime  = "badge text-bg-warning text-dark",
-          character = "badge text-bg-secondary",
-          "badge text-bg-light text-dark"
-        )
-        htmltools::tags$span(class = cls, style = "font-size:0.7rem;", t)
-      }
-
       .dash <- function() htmltools::tags$span("-", class = "text-muted")
 
       .radio_cell <- function(role_key) {
@@ -637,7 +623,7 @@ analysis_setup_server <- function(id, shared_state) {
           Type = reactable::colDef(
             name     = "Type",
             minWidth = 80,
-            cell     = function(value, index) .type_badge(value)
+            cell     = function(value, index) edark_type_badge(value)
           ),
           ref_level = reactable::colDef(
             name     = "Ref. Level",
@@ -763,10 +749,13 @@ analysis_setup_server <- function(id, shared_state) {
       st  <- spec$specification_metadata$study_type
       st  <- if (is.null(st)) "descriptive" else st
       cfg <- switch(st,
-        exposure_outcome     = list(label = "Exposure-Outcome Study",   cls = "primary"),
-        risk_factor          = list(label = "Risk Factor / Association", cls = "success"),
-        descriptive_exposure = list(label = "Descriptive (Exposure)",   cls = "warning text-dark"),
-        list(label = "Descriptive Cohort", cls = "secondary")
+        exposure_outcome     = list(label = "Exposure-Outcome Study",
+                                    role = "study_exposure_outcome"),
+        risk_factor          = list(label = "Risk Factor / Association",
+                                    role = "study_risk_factor"),
+        descriptive_exposure = list(label = "Descriptive (Exposure)",
+                                    role = "study_descriptive_exposure"),
+        list(label = "Descriptive Cohort", role = "study_descriptive")
       )
 
       exp_var <- spec$variable_roles$exposure_variable
@@ -781,11 +770,9 @@ analysis_setup_server <- function(id, shared_state) {
 
       shiny::tagList(
         edark_section_label("Study Type"),
-        shiny::tags$span(
-          class = paste0("badge text-bg-", cfg$cls, " w-100 d-block py-2"),
-          style = "font-size:0.8rem; white-space:normal;",
-          cfg$label
-        ),
+        edark_badge(cfg$label, role = cfg$role, size = "md",
+                    class = "w-100 d-block",
+                    style = "white-space:normal;"),
         nudge
       )
     })

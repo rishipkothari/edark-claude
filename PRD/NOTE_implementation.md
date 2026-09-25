@@ -81,6 +81,13 @@ bslib ships `.bslib-card .card-body { max-height: var(--bslib-card-body-max-heig
 1. **Markdown mode escapes `%` for you.** A hand-written `\%` reaches Rd as `\\%` — a literal backslash then an Rd comment that eats the rest of the line, including the closing `}` of the `\item{}` it sits in. Symptom: every *later* `\item` reported as an unknown macro and every later section header as unexpected. Write a plain `%`.
 2. **Markdown links become real `\link{}` cross-references.** Every helper in `R/ui_helpers.R` is `@keywords internal` + `@noRd` and so has no man page to link to. Refer to an undocumented internal with a code span — `` `edark_run_gate()` `` — not `[edark_run_gate()]`.
 
+### N1.14 Badges come from `edark_badge()` only
+Every badge in the app is built by `edark_badge()` / `edark_type_badge()` in `R/ui_helpers.R`; sizing lives in `.edark-badge*` in `inst/www/edark.css`. Callers pass a *role* (`numeric`, `factor`, `role`, `count`, `study_*`, ...), never a Bootstrap variant and never an inline `font-size`. An unknown role falls back to `muted` rather than erroring, so a new column type degrades to a plain badge instead of breaking a table cell.
+
+Two sizes only: `sm` inside a table cell, `md` for a badge standing alone in a pane. A column type the Prepare pipeline has cast keeps its own colour and gains a ring (`edark_type_badge(type, changed = TRUE)`) - colour says what it is, the ring says it moved.
+
+The one type display that is deliberately *not* a badge is the italic sub-label under each column header in Prepare › Data Preview (`.make_col_defs()`): a badge in every header of a wide data table reads as noise.
+
 ---
 
 ## N2 — Statistical Methods Registry

@@ -233,7 +233,7 @@ data_preview_server <- function(id, shared_state) {
       Variable   = reactable::colDef(minWidth = 110, sticky = "left",
                      style = list(fontWeight = "600")),
       Type       = reactable::colDef(minWidth = 75,
-                     cell = function(v) shiny::tags$code(class = "small text-muted", v)),
+                     cell = function(v) edark_type_badge(v)),
       N          = reactable::colDef(minWidth = 60,  align = "right"),
       N_missing  = reactable::colDef(name = "Missing", minWidth = 70, align = "right"),
       Pct_miss   = reactable::colDef(name = "% Miss",  minWidth = 65, align = "right"),

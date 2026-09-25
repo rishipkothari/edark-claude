@@ -53,7 +53,7 @@ R/
 ├── module_appearance.R         Explore › Appearance panel — the app's only plot-aesthetics controls; sole writer of the five aesthetic shared_state fields
 ├── module_report.R             Report tab — Full / Custom underline tabs; Full has a config pane + resolved section list, Custom has no centre (D11)
 │
-├── ui_helpers.R                Shared UI component library — lock reasons, buttons, section labels, empty states, messages, info rows, model header, aesthetics controls
+├── ui_helpers.R                Shared UI component library — lock reasons, buttons, badges, section labels, empty states, messages, info rows, model header, aesthetics controls
 │
 ├── module_analysis_main.R          Analyze tab — orchestrator; 6-step navset_pill (Step 5 nests Model sub-tabs) + JS progress handler + step/sub-tab gating
 ├── module_analysis_setup.R         Analyze › Step 1: Setup — dataset freeze, role assignment (outcome/exposure/candidates/clusters), study type, model purpose + train/test split, reset modal with undo (Phases 1, 6b)
@@ -106,6 +106,8 @@ inst/
 | `PRD/RESOLVED.md` | Closed TO-DOs with root cause and lessons | A bug smells familiar |
 | `PRD/BUILD_*.md` | Stage plans and acceptance criteria for one piece of work | Working through a planned build |
 | `PRD/NOTE_UI-principles.md` | Layout, action placement, visual hierarchy | Any UI work |
+
+```
 
 ### What to update, when, and why
 
@@ -170,7 +172,6 @@ main-specific questions.
 - Report contents option: collinearity investigation.
 - **Bug — centre tables in PPT + HTML reports:** `flextable::set_table_properties(align = "center")` is set in both `.style_dataset_summary_ft()` and `.style_section_ft()` in `generate_report.R`, but tables still render left-aligned in PPT and HTML (DOCX may work). Investigate `officer` slide content alignment for PPT and the Rmd template's table rendering for HTML.
 - appearance should be a pill next to explore data and report; full screen for config; this may change to "settings" later but we can leave it as appearance for now. main panel will house container for settings.
-- when creating a report it should only contain variables that are selected/included in report: all selected variables plus a stratify by variable if selected.
 
 ### Analyze
 
@@ -186,7 +187,6 @@ Phases 0–7 and 6b complete; Step 6 (Export, Phase 8) is a placeholder stub. Ph
 - **Covariates and Model › Summary have config panes with nothing to configure.** Both pages keep their configuration in the table (Covariates) or have none at all (Summary), so after the Stage 4 page contract their left panes carry orientation text rather than controls. Honest but thin. Either give them real global controls - Covariates has an obvious candidate in table-level Select all / Clear, and a search - or decide those two pages are a deliberate exception to D6 and say so in the plan.
 
 #### Low magnitude
-- **`PF_LOOKS_CATEGORICAL` may be noisy** on genuine small counts (e.g. transfusion units 0–8). Threshold `.PF_CATEGORICAL_MAX_VALUES` (10) in `service_analysis_validation.R`.
 - Collinearity plot base size should scale with the number of variables; still too small with few.
 - **Mixed models have no influence check** — Model › Diagnostics offers Cook's distance / leverage for lm / glm only. A cluster-level (leave-one-cluster-out) influence check would close the gap (§A11.2).
 - generate table 1 spinner - specify which table its working on, e.g. if it has 3 to generate (overall, by exposure, by outcome) have 3 stops on the bar and change text to say which is being created
