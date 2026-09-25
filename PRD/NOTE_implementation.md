@@ -187,11 +187,12 @@ Two traps:
 
 Closed to-do with the full history: `RESOLVED.md` (Explore, 2026-09-24).
 
-### N5.8 Full Report in-app preview
-`report_server()` renders the HTML report into `tempdir()/edark-preview-<session token>/report_NNN.html`, registers that folder with `shiny::addResourcePath()` under the same prefix, and shows it in an `<iframe>` in the centre pane. Rules:
+### N5.8 In-app preview (both pills)
+`report_server()` renders the HTML report into `tempdir()/edark-preview-<session token>/<full|custom>_NNN.html`, registers that folder with `shiny::addResourcePath()` under the same prefix, and shows it in an `<iframe>` in the centre pane. Rules:
 - **An iframe, never `includeHTML()`.** The report is a full `html_document` with its own Bootstrap theme and scripts; inlined, it restyles the app.
 - **A new file name per generation**, so the browser cannot show a cached copy. The previous file is deleted only after the new one succeeds.
-- **One argument list.** `full_report_args()` feeds both the download and the preview; the preview stores the list it was built from, and the stale message is `!identical(preview$args, full_report_args())`. The list holds the dataset itself, and `identical()` short-circuits on the same object, so this is cheap.
+- **One argument list per pill.** `full_report_args()` / `custom_report_args()` feed both the download and the preview; the preview stores the list it was built from, and `.preview_is_stale()` is `!identical()` against the current one. The list holds the dataset itself, and `identical()` short-circuits on the same object, so this is cheap.
+- **One set of helpers.** `.preview_build()`, `.preview_discard()`, `.preview_view()` and `.preview_save_handler()` take the pill's `reactiveVal`, so the two pills differ only in their `run()` function and where the view goes (Full: replaces the section list; Custom: the Preview tab of `custom_result_tabs`).
 - The resource path and folder are removed in `session$onSessionEnded`.
 - Both pills' progress modals come from `.report_progress_modal()` (§M3.5).
 

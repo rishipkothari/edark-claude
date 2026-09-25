@@ -252,7 +252,8 @@ report_ui <- function(id) {
           shinyWidgets::radioGroupButtons(
             ns("custom_output_format"),
             label    = NULL,
-            choices  = c("PowerPoint" = "pptx",
+            choices  = c("In App"     = "inapp",
+                         "PowerPoint" = "pptx",
                          "Word"       = "docx",
                          "HTML"       = "html"),
             selected = "pptx",
@@ -260,13 +261,36 @@ report_ui <- function(id) {
             width    = "100%"
           ),
 
+          # As in Full Report: In App previews, every other format downloads.
           shiny::div(
             class = "mt-3",
-            edark_button(ns, "custom_download_btn", "Generate & Download",
-                         icon = "download", type = "download")
+            shiny::conditionalPanel(
+              condition = paste0("input['", ns("custom_output_format"), "'] == 'inapp'"),
+              edark_button(ns, "custom_preview_btn", "Generate Preview", icon = "eye")
+            ),
+            shiny::conditionalPanel(
+              condition = paste0("input['", ns("custom_output_format"), "'] != 'inapp'"),
+              edark_button(ns, "custom_download_btn", "Generate & Download",
+                           icon = "download", type = "download")
+            )
           )
         ),
-        result   = shiny::uiOutput(ns("custom_items_panel")),
+        # Two artefacts, so two tabs: the item list the user curates, and the
+        # in-app preview of the report built from it (§E12). Generating a
+        # preview switches to its tab; closing it switches back.
+        result   = bslib::navset_underline(
+          id = ns("custom_result_tabs"),
+          bslib::nav_panel(
+            value = "items",
+            title = shiny::tagList(shiny::icon("list-ol"), " Items"),
+            shiny::div(class = "pt-2", shiny::uiOutput(ns("custom_items_panel")))
+          ),
+          bslib::nav_panel(
+            value = "preview",
+            title = shiny::tagList(shiny::icon("eye"), " Preview"),
+            shiny::div(class = "pt-2", shiny::uiOutput(ns("custom_preview_panel")))
+          )
+        ),
         messages = edark_messages_ui(ns, "custom_messages"),
         info     = shiny::uiOutput(ns("custom_info"))
       )
@@ -503,29 +527,8 @@ report_server <- function(id, shared_state) {
     # Result: the in-app preview when there is one, else the ordered section
     # list itself.
     output$report_sections_panel <- shiny::renderUI({
-      pv <- preview()
-      if (!is.null(pv)) {
-        return(shiny::tagList(
-          edark_action_toolbar(
-            shiny::tags$span(
-              class = "text-muted small me-auto",
-              paste0("Preview generated ", format(pv$at, "%H:%M:%S"))
-            ),
-            edark_button(ns, "preview_save", "Save HTML", icon = "download",
-                         type = "download", variant = "secondary",
-                         size = "toolbar"),
-            edark_button(ns, "preview_close", "Close Preview", icon = "xmark",
-                         variant = "secondary", size = "toolbar")
-          ),
-          # An iframe, not includeHTML(): the report carries its own Bootstrap
-          # theme and scripts, which would restyle the app if inlined (§N5.8).
-          shiny::tags$iframe(
-            src   = pv$url,
-            class = "edark-report-preview",
-            title = "Report preview"
-          )
-        ))
-      }
+      pv <- full_preview()
+      if (!is.null(pv)) return(.preview_view(pv, "preview_save", "preview_close"))
 
       secs <- full_sections()
 
@@ -569,15 +572,107 @@ report_server <- function(id, shared_state) {
           detail = "The report is generated from the current working dataset."
         )))
       }
-      pv <- preview()
-      if (!is.null(pv) && !identical(pv$args, full_report_args())) {
-        msgs <- c(msgs, list(edark_message(
-          "stale", "The settings or data have changed since this preview was generated.",
-          detail = "Generate Preview again to update it. Save HTML saves the preview as shown."
-        )))
+      if (.preview_is_stale(full_preview(), full_report_args())) {
+        msgs <- c(msgs, list(.preview_stale_message()))
       }
       msgs
     }), id = "full_messages")
+
+    # ── In-app preview (both pills) ───────────────────────────────────────────
+    # In App renders the HTML report into a per-session temp folder served under
+    # its own resource path, and the centre pane shows it in an iframe (§N5.8).
+    # Nothing is downloaded until the user clicks Save HTML, which copies the
+    # file already built. Each pill keeps its own reactiveVal holding
+    # list(path, url, args, at), or NULL when there is no preview.
+    preview_prefix <- paste0("edark-preview-", session$token)
+    preview_dir    <- file.path(tempdir(), preview_prefix)
+    preview_count  <- 0L
+
+    session$onSessionEnded(function() {
+      if (preview_prefix %in% names(shiny::resourcePaths()))
+        shiny::removeResourcePath(preview_prefix)
+      unlink(preview_dir, recursive = TRUE)
+    })
+
+    .preview_discard <- function(rv) {
+      pv <- shiny::isolate(rv())
+      if (!is.null(pv)) unlink(pv$path)
+      rv(NULL)
+    }
+
+    # Build a preview with run(args, path), which returns TRUE on success. The
+    # previous preview is only discarded once the new one has been built.
+    .preview_build <- function(rv, stem, args, run) {
+      dir.create(preview_dir, showWarnings = FALSE, recursive = TRUE)
+      if (!preview_prefix %in% names(shiny::resourcePaths()))
+        shiny::addResourcePath(preview_prefix, preview_dir)
+
+      # A new file name each time, so the iframe never shows a cached copy.
+      preview_count <<- preview_count + 1L
+      fname <- sprintf("%s_%03d.html", stem, preview_count)
+      path  <- file.path(preview_dir, fname)
+
+      if (!run(args, path)) return(FALSE)
+      .preview_discard(rv)
+      rv(list(
+        path = path,
+        url  = paste0(preview_prefix, "/", fname),
+        args = args,
+        at   = Sys.time()
+      ))
+      TRUE
+    }
+
+    # The preview is stale when what it was built from no longer matches what
+    # would be built now. `args` holds the dataset itself, and identical()
+    # short-circuits on the same object, so this is cheap.
+    .preview_is_stale <- function(pv, args_now) {
+      !is.null(pv) && !identical(pv$args, args_now)
+    }
+
+    .preview_stale_message <- function() {
+      edark_message(
+        "stale", "The report contents or data have changed since this preview was generated.",
+        detail = "Generate Preview again to update it. Save HTML saves the preview as shown."
+      )
+    }
+
+    .preview_view <- function(pv, save_id, close_id) {
+      shiny::tagList(
+        edark_action_toolbar(
+          shiny::tags$span(
+            class = "text-muted small me-auto",
+            paste0("Preview generated ", format(pv$at, "%H:%M:%S"))
+          ),
+          edark_button(ns, save_id, "Save HTML", icon = "download",
+                       type = "download", variant = "secondary",
+                       size = "toolbar"),
+          edark_button(ns, close_id, "Close Preview", icon = "xmark",
+                       variant = "secondary", size = "toolbar")
+        ),
+        # An iframe, not includeHTML(): the report carries its own Bootstrap
+        # theme and scripts, which would restyle the app if inlined (§N5.8).
+        shiny::tags$iframe(
+          src   = pv$url,
+          class = "edark-report-preview",
+          title = "Report preview"
+        )
+      )
+    }
+
+    .preview_save_handler <- function(rv, file_stem) {
+      shiny::downloadHandler(
+        filename = function() {
+          paste0(file_stem, format(shiny::isolate(rv())$at, "%Y%m%d_%H%M%S"), ".html")
+        },
+        content = function(file) {
+          pv <- shiny::isolate(rv())
+          if (is.null(pv) || !file.exists(pv$path)) stop("No preview to save.")
+          file.copy(pv$path, file, overwrite = TRUE)
+        }
+      )
+    }
+
 
     # ── Full report: generation ───────────────────────────────────────────────
     # Everything generate_report() needs apart from the format, the output path
@@ -665,65 +760,19 @@ report_server <- function(id, shared_state) {
 
 
     # ── Full report: in-app preview ───────────────────────────────────────────
-    # In App renders the HTML report into a per-session temp folder served under
-    # its own resource path, and the centre pane shows it in an iframe (§N5.8).
-    # Nothing is downloaded until the user clicks Save HTML, which copies the
-    # file already built.
-    preview <- shiny::reactiveVal(NULL)   # list(path, url, args, at) or NULL
 
-    preview_prefix <- paste0("edark-preview-", session$token)
-    preview_dir    <- file.path(tempdir(), preview_prefix)
-    preview_count  <- 0L
-
-    .discard_preview <- function() {
-      pv <- shiny::isolate(preview())
-      if (!is.null(pv)) unlink(pv$path)
-      preview(NULL)
-    }
-
-    session$onSessionEnded(function() {
-      if (preview_prefix %in% names(shiny::resourcePaths()))
-        shiny::removeResourcePath(preview_prefix)
-      unlink(preview_dir, recursive = TRUE)
-    })
+    full_preview <- shiny::reactiveVal(NULL)
 
     shiny::observeEvent(input$preview_btn, {
       args <- full_report_args()
       if (length(args$variables) == 0) return()
-
-      dir.create(preview_dir, showWarnings = FALSE, recursive = TRUE)
-      if (!preview_prefix %in% names(shiny::resourcePaths()))
-        shiny::addResourcePath(preview_prefix, preview_dir)
-
-      # A new file name each time, so the iframe never shows a cached copy.
-      preview_count <<- preview_count + 1L
-      fname <- sprintf("report_%03d.html", preview_count)
-      path  <- file.path(preview_dir, fname)
-
-      if (.run_full_report(args, "html", path)) {
-        .discard_preview()
-        preview(list(
-          path = path,
-          url  = paste0(preview_prefix, "/", fname),
-          args = args,
-          at   = Sys.time()
-        ))
-      }
+      .preview_build(full_preview, "full", args,
+                     function(a, path) .run_full_report(a, "html", path))
     })
 
-    shiny::observeEvent(input$preview_close, .discard_preview())
+    shiny::observeEvent(input$preview_close, .preview_discard(full_preview))
 
-    output$preview_save <- shiny::downloadHandler(
-      filename = function() {
-        paste0("edark_report_",
-               format(shiny::isolate(preview())$at, "%Y%m%d_%H%M%S"), ".html")
-      },
-      content = function(file) {
-        pv <- shiny::isolate(preview())
-        if (is.null(pv) || !file.exists(pv$path)) stop("No preview to save.")
-        file.copy(pv$path, file, overwrite = TRUE)
-      }
-    )
+    output$preview_save <- .preview_save_handler(full_preview, "edark_report_")
 
 
     # ── Custom Report: selection ──────────────────────────────────────────────
@@ -920,6 +969,7 @@ report_server <- function(id, shared_state) {
       ds    <- shared_state$dataset_working
 
       format_label <- switch(input$custom_output_format %||% "pptx",
+        inapp = "In app (HTML preview)",
         pptx = "PowerPoint (.pptx)",
         docx = "Word (.docx)",
         html = "HTML (.html)",
@@ -1022,60 +1072,114 @@ report_server <- function(id, shared_state) {
           detail = "Their thumbnails still show the earlier data; the generated report will not."
         )))
       }
+      if (.preview_is_stale(custom_preview(), custom_report_args())) {
+        msgs <- c(msgs, list(.preview_stale_message()))
+      }
       msgs
     }), id = "custom_messages")
 
-    # ── Custom Report: download handler ───────────────────────────────────────
+    # ── Custom Report: generation ─────────────────────────────────────────────
+    # What generate_custom_report() is built from. The items are re-drawn from
+    # the current working dataset, so the dataset is part of it (§E12).
+    custom_report_args <- shiny::reactive({
+      list(
+        items        = shared_state$custom_report_items,
+        dataset      = shared_state$dataset_working,
+        column_types = shared_state$column_types
+      )
+    })
+
+    # Build the custom report into `path` behind the progress modal. Returns
+    # TRUE on success; on failure shows the error and returns FALSE.
+    .run_custom_report <- function(args, format, path) {
+      n_items <- length(args$items)
+      if (n_items == 0) {
+        shiny::showNotification(
+          "Custom report is empty. Add plots from the Explore tab first.",
+          type = "warning", duration = 6
+        )
+        return(FALSE)
+      }
+
+      shiny::showModal(.report_progress_modal(
+        paste0("Generating Custom Report (", n_items, " item",
+               if (n_items != 1) "s" else "", ")")
+      ))
+      on.exit(shiny::removeModal(), add = TRUE)
+
+      tryCatch({
+        generate_custom_report(
+          items        = args$items,
+          dataset      = args$dataset,
+          column_types = args$column_types,
+          format       = format,
+          output_path  = path,
+          # No report-level aesthetics: each item carries the appearance it
+          # had on screen when it was added, so the document reproduces what
+          # the user saw rather than restyling every item at once (D7).
+          progress_fn  = function(frac, detail) {
+            session$sendCustomMessage("edark_report_progress",
+                                      list(frac = frac, detail = detail))
+          }
+        )
+        TRUE
+      }, error = function(e) {
+        shiny::showNotification(
+          paste("Custom report generation failed:", conditionMessage(e)),
+          type     = "error",
+          duration = 10
+        )
+        FALSE
+      })
+    }
 
     output$custom_download_btn <- shiny::downloadHandler(
       filename = function() {
         ext <- switch(input$custom_output_format,
-                      pptx = ".pptx", docx = ".docx", html = ".html")
+                      pptx = ".pptx", docx = ".docx", ".html")
         paste0("edark_custom_report_", format(Sys.time(), "%Y%m%d_%H%M%S"), ext)
       },
       content = function(file) {
-        items <- shiny::isolate(shared_state$custom_report_items)
-
-        if (length(items) == 0) {
-          shiny::showNotification(
-            "Custom report is empty. Add plots from the Explore tab first.",
-            type = "warning", duration = 6
-          )
-          stop("No items in custom report.")
-        }
-
-        n_items <- length(items)
-        shiny::showModal(.report_progress_modal(
-          paste0("Generating Custom Report (", n_items, " item",
-                 if (n_items != 1) "s" else "", ")")
-        ))
-        on.exit(shiny::removeModal(), add = TRUE)
-
-        tryCatch({
-          generate_custom_report(
-            items            = items,
-            dataset          = shared_state$dataset_working,
-            column_types     = shared_state$column_types,
-            format           = input$custom_output_format,
-            output_path      = file,
-            # No report-level aesthetics: each item carries the appearance it
-            # had on screen when it was added, so the document reproduces what
-            # the user saw rather than restyling every item at once (D7).
-            progress_fn      = function(frac, detail) {
-              session$sendCustomMessage("edark_report_progress",
-                                        list(frac = frac, detail = detail))
-            }
-          )
-        }, error = function(e) {
-          shiny::showNotification(
-            paste("Custom report generation failed:", conditionMessage(e)),
-            type     = "error",
-            duration = 10
-          )
-          stop(e)
-        })
+        fmt <- if (input$custom_output_format %in% c("pptx", "docx"))
+                 input$custom_output_format else "html"
+        if (!.run_custom_report(shiny::isolate(custom_report_args()), fmt, file))
+          stop("Custom report generation failed.")
       }
     )
+
+
+    # ── Custom Report: in-app preview (Preview tab) ───────────────────────────
+
+    custom_preview <- shiny::reactiveVal(NULL)
+
+    shiny::observeEvent(input$custom_preview_btn, {
+      built <- .preview_build(custom_preview, "custom", custom_report_args(),
+                              function(a, path) .run_custom_report(a, "html", path))
+      if (built) bslib::nav_select("custom_result_tabs", "preview", session = session)
+    })
+
+    shiny::observeEvent(input$custom_preview_close, {
+      .preview_discard(custom_preview)
+      bslib::nav_select("custom_result_tabs", "items", session = session)
+    })
+
+    output$custom_preview_panel <- shiny::renderUI({
+      pv <- custom_preview()
+      if (is.null(pv)) {
+        return(edark_empty_state(
+          "No preview yet",
+          shiny::tagList(
+            "Choose ", shiny::tags$strong("In App"), " under Output Format and click ",
+            shiny::tags$strong("Generate Preview"), " to see the report here."
+          ),
+          icon = "eye"
+        ))
+      }
+      .preview_view(pv, "custom_preview_save", "custom_preview_close")
+    })
+
+    output$custom_preview_save <- .preview_save_handler(custom_preview,
+                                                        "edark_custom_report_")
   })
 }
 

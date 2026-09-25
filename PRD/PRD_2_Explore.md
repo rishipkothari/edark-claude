@@ -178,7 +178,7 @@ The Report sub-tab turns the working dataset into a slide deck or document. Two 
 - **Full Report** (§E11) — generated automatically from chosen variables.
 - **Custom Report** (§E12) — the plots the user added from Plot, in the user's order.
 
-Each pill has a sidebar with **Generate & Download** (primary), **Output Format** (PowerPoint · Word · HTML) and its own options. Full Report's Output Format also offers **In App** (§E11.4), which swaps the primary action for **Generate Preview**. Neither pill has aesthetics controls: both generate with the values in force in **Appearance** (§E7), so the document matches the plot on screen (D7). Generation runs in a blocking progress modal (§M3.5).
+Each pill has a sidebar with **Generate & Download** (primary), **Output Format** (PowerPoint · Word · HTML) and its own options. Output Format also offers **In App** (§E11.4), which swaps the primary action for **Generate Preview**. Neither pill has aesthetics controls: both generate with the values in force in **Appearance** (§E7), so the document matches the plot on screen (D7). Generation runs in a blocking progress modal (§M3.5).
 
 Datetime columns are excluded from reports.
 
@@ -209,14 +209,14 @@ Variables are chosen in a **Select Variables** modal.
 - A toolbar above the preview carries **Save HTML** (downloads the file already built, no regeneration) and **Close Preview**.
 - Changing any setting, the variables, the aesthetics or the working dataset after generating raises a stale message; the preview is not rebuilt until **Generate Preview** is clicked again. **Save HTML** saves the preview as shown.
 - To export as PowerPoint or Word, pick that format and use **Generate & Download**.
-- Full Report only; Custom Report has no In App option.
+- Custom Report has the same option; its preview goes in a tab of its own (§E12).
 
 ---
 
 ## E12 — Custom Report
 
 - **Add to Custom Report** in the Plot output panel snapshots the current plot spec and a thumbnail, with the aesthetics in force at that moment written into the item's own spec. Items added under different appearance settings therefore keep their own look; nothing restyles them at generation time.
-- The pill shows a **gallery** of queued items with move up / move down / remove; the main area previews thumbnails.
+- The centre has two tabs: **Items**, the queued list with move up / move down / remove (the info pane previews the selected item's thumbnail), and **Preview**, the In App report (§E11.4). Generate Preview switches to the Preview tab; Close Preview switches back to Items. Reordering, adding or removing items marks the preview stale.
 - At generation time each item is **re-rendered from the current working dataset** — the data is not snapshotted.
 - An item whose columns no longer exist renders a placeholder; the rest of the report still generates (§M3.7).
 - Trend items contribute a plot only (no table).
