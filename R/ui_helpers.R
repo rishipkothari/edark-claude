@@ -82,7 +82,7 @@ edark_lock_reason <- function(key) {
 #' A primary run button with a slot for its unmet precondition
 #'
 #' Renders the button plus an output directly beneath it that carries the
-#' reason the button is disabled. Pair it with [edark_run_gate()] in the
+#' reason the button is disabled. Pair it with `edark_run_gate()` in the
 #' module server: the button is never re-rendered (so its click count is
 #' stable), only its enabled state and the reason text change.
 #'
@@ -99,7 +99,7 @@ edark_lock_reason <- function(key) {
 #' @param variant Character. Bootstrap variant, without the `btn-` prefix.
 #' @param enabled Logical. The state the button is *first rendered* in.
 #'   Defaults to FALSE because a gated button's precondition is unmet at
-#'   launch; [edark_run_gate()] takes over on the first flush. Rendering it
+#'   launch; `edark_run_gate()` takes over on the first flush. Rendering it
 #'   enabled first would flash a clickable button.
 #'
 #' @return A `shiny::tagList`.
@@ -117,7 +117,7 @@ edark_run_button <- function(ns, id, label, icon = "play", variant = "primary",
 }
 
 
-#' Gate an [edark_run_button()] on a precondition
+#' Gate an `edark_run_button()` on a precondition
 #'
 #' Call once per run button inside `moduleServer()`. Disables the button while
 #' `enabled` is false and writes `reason` into the button's reason slot, so the
@@ -125,11 +125,11 @@ edark_run_button <- function(ns, id, label, icon = "play", variant = "primary",
 #' after the click.
 #'
 #' @param output The module's `output` object.
-#' @param id Character. The same bare id passed to [edark_run_button()].
+#' @param id Character. The same bare id passed to `edark_run_button()`.
 #' @param enabled A reactive expression (or plain logical) - TRUE when the
 #'   button may be clicked.
 #' @param reason A reactive expression returning a character scalar, or a plain
-#'   character scalar, from [edark_lock_reason()]. Only read while disabled;
+#'   character scalar, from `edark_lock_reason()`. Only read while disabled;
 #'   NULL or "" shows no text.
 #'
 #' @return Invisible NULL, called for its side effects.
@@ -188,7 +188,7 @@ edark_section_label <- function(text, first = FALSE) {
 #' Two scales only (F1 / D10): an action that changes the configuration is
 #' full width at default size in the config pane; an action on an
 #' already-produced artefact is small and outlined, in an
-#' [edark_action_toolbar()]. Dialog actions are default size and shrink to
+#' `edark_action_toolbar()`. Dialog actions are default size and shrink to
 #' their label.
 #'
 #' @keywords internal
@@ -335,7 +335,7 @@ edark_empty_state <- function(title, body = NULL, icon = "circle-info") {
 
 #' One warning, error, blocker or stale notice
 #'
-#' @param level One of the names of [.EDARK_MESSAGE_LEVELS].
+#' @param level One of the names of `.EDARK_MESSAGE_LEVELS`.
 #' @param text Character or tag. The message itself, one sentence.
 #' @param detail Character or tag. Optional smaller second line.
 #'
@@ -437,7 +437,7 @@ edark_model_header <- function(title, fields = list(), notes = NULL) {
 #'
 #' Returned as named groups so one definition of the inputs serves both
 #' layouts: stacked under section labels for a 340 px pane
-#' ([edark_aesthetics_controls()]), or a card each on the full-width
+#' (`edark_aesthetics_controls()`), or a card each on the full-width
 #' Appearance page. The ids must not be written twice - two copies of
 #' `ns("ggplot_theme")` in one document is a duplicate input.
 #'
@@ -558,7 +558,7 @@ EDARK_RESULT_HEIGHT <- "calc(100vh - 320px)"
 #'   \item \strong{Config} holds inputs and exactly one primary action, at the
 #'     bottom, in every mode of the page (F3). No read-only facts.
 #'   \item \strong{Result} holds the one artefact, with actions *on* it in an
-#'     [edark_action_toolbar()] directly above (F2).
+#'     `edark_action_toolbar()` directly above (F2).
 #'   \item \strong{Info} is neutral, factual and live: what the current
 #'     settings produce. Never an input, never an action, never a warning.
 #'   \item \strong{Messages} is the only place a warning, error, blocker or
@@ -626,7 +626,7 @@ edark_page <- function(config, result, info = NULL, messages = NULL,
 
 #' The messages slot for a page
 #'
-#' One per page. Renders whatever [edark_message()] items the module's server
+#' One per page. Renders whatever `edark_message()` items the module's server
 #' writes into it, and takes no space when there are none. Every warning,
 #' error, blocker and stale notice on the page goes here and nowhere else
 #' (D3) - not into the info pane, and not into a toast.
@@ -646,9 +646,9 @@ edark_messages_ui <- function(ns, id = "messages") {
 #' Fill a page's messages slot
 #'
 #' @param output The module's `output` object.
-#' @param items A reactive returning a list of [edark_message()] tags, or
+#' @param items A reactive returning a list of `edark_message()` tags, or
 #'   `NULL` / an empty list when the page has nothing to say.
-#' @param id Character. Matches [edark_messages_ui()].
+#' @param id Character. Matches `edark_messages_ui()`.
 #'
 #' @return Invisible NULL, called for its side effect.
 #' @keywords internal

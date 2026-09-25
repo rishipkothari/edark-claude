@@ -10,5 +10,20 @@ in every export. See the "Statistical methods registry" in CLAUDE.md and
 PRD §4.2. Do not compute p-values or CIs anywhere else — call these.
 }
 \details{
-
+\describe{
+\item{Regression coefficients}{\code{edark_coef_table()}: Wald-type 95\%
+CI = estimate \eqn{\pm} critical value \eqn{\times} SE, where the
+critical value comes from the same distribution as the model's native
+p-value — t with residual df (\code{lm}), t with Satterthwaite df
+(\code{lmerTest::lmer}), standard normal (\code{glm},
+\code{lme4::glmer}). So a CI excludes the null exactly when p < 0.05.
+Odds ratios are the exponentiated estimate and limits.}
+\item{Group comparisons}{\code{edark_group_test()}: numeric by group —
+Kruskal-Wallis (any number of groups); categorical by group — Pearson
+chi-square without continuity correction, or Fisher's exact test when
+any expected count is < 5.}
+\item{Correlation}{\code{edark_cor_test()}: Pearson r; t-test p-value
+(n - 2 df); 95\% CI by Fisher's z.}
+\item{Display}{\code{edark_format_p()}: "< 0.001", else 3 decimals.}
+}
 }

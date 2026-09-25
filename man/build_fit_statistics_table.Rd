@@ -7,7 +7,7 @@
 build_fit_statistics_table(result)
 }
 \arguments{
-\item{result}{The \code{analysis_result}. Adds the AUC (and its 95\\% CI)
+\item{result}{The \code{analysis_result}. Adds the AUC (and its 95\% CI)
 when Performance computed it, for each set of rows (apparent, test).}
 }
 \value{

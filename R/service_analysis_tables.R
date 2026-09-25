@@ -367,7 +367,7 @@ results_table_flextable <- function(tbl) {
 
 #' Format fit statistics for display and export
 #'
-#' @param result The \code{analysis_result}. Adds the AUC (and its 95\% CI)
+#' @param result The \code{analysis_result}. Adds the AUC (and its 95% CI)
 #'   when Performance computed it, for each set of rows (apparent, test).
 #' @return A data.frame(Statistic, Value) of display strings, or \code{NULL}.
 #' @export

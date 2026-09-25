@@ -6,7 +6,7 @@
 #' script covers all three variable selection methods (run methods use actual
 #' parameters; unrun methods are fully commented out), the confirmed model
 #' fit, all applicable diagnostics, and results extraction. Uses
-#' \code{pacman::p_load()} and \code{\%>\%} throughout. See PRD §7.9.
+#' \code{pacman::p_load()} and \code{%>%} throughout. See PRD §7.9.
 #' Implemented in Phase 5 of the build plan.
 #'
 #' @name service_analysis_codegen

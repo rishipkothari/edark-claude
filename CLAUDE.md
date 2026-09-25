@@ -88,9 +88,7 @@ data-raw/
 └── liver_tx_sample.R           Regenerates data/liver_tx.rda — run with Rscript; seeded, reproducible
 
 inst/
-├── report_template.Rmd         Bundled Rmd template for HTML report output
-└── templates/
-    ├── ppt_16x9_blank_template.pptx   Bundled slide template for PPT output
+├    ├── ppt_16x9_blank_template.pptx   Bundled slide template for PPT output
     └── word_docx_blank_template.docx  Bundled Word template for DOCX output - Title,
                                        Subtitle and heading 1-9 styles; the TOC and the
                                        section furniture are built in .assemble_docx()
@@ -112,6 +110,8 @@ inst/
 
 ## Coding philosophy
 - do not use /u2014 dashes, use hyphens or other simple ASCII characters where appropriate
+- do not commit without permission
+- if you are instructed to commit, add a message of at most 6 sentences, be brief. also, push after commits
 - remind me to push after commits
 
 ---
@@ -170,6 +170,11 @@ inst/
 - Report contents option: collinearity investigation.
 - **Bug — centre tables in PPT + HTML reports:** `flextable::set_table_properties(align = "center")` is set in both `.style_dataset_summary_ft()` and `.style_section_ft()` in `generate_report.R`, but tables still render left-aligned in PPT and HTML (DOCX may work). Investigate `officer` slide content alignment for PPT and the Rmd template's table rendering for HTML.
 - appearance should be a pill next to explore data and report; full screen for config; this may change to "settings" later but we can leave it as appearance for now. main panel will house container for settings.
+en creating a report should only contain variables that are selected/included in report; all selected variables plus a stratify by variable if selected
+ll selected variables plus a stratify by variable if selected
+ll selected variables plus a stratify by variable if selected
+ll selected variables plus a stratify by variable if selected
+all selected variables plus a stratify by variable if selected
 
 ### Analyze
 
@@ -224,3 +229,24 @@ Phases 0–7 and 6b complete; Step 6 (Export, Phase 8) is a placeholder stub. Ph
 
 ### Low magnitude
 - `shinytest2` module tests + `testthat` unit tests.
+- **Install Rtools 4.5 and get `devtools::check()` to 0/0/0.** `devtools::check()`
+  currently dies at "Could not find tools necessary to compile a package" - Rtools is
+  not installed (https://cran.r-project.org/bin/windows/Rtools/). The package has no
+  compiled code, so the gate can be skipped with
+  `options(buildtools.check = function(action) TRUE)`, but installing Rtools is the real
+  fix. With the gate skipped on 2026-09-24 the check ran 0 errors, 2 warnings, 1 note;
+  the roxygen errors are closed (see below) and what remains is undeclared imports -
+  `@importFrom` for the `stats` / `utils` functions used (`median`, `sd`, `IQR`,
+  `na.omit`, `quantile`, `setNames`, `modifyList`, `str`, ...) plus a
+  `utils::globalVariables()` entry for `.data` and the NSE column names.
+- ~~roxygen errors on every `devtools::document()`~~ - closed 2026-09-24. Two unrelated
+  causes. (1) `DESCRIPTION` sets `Roxygen: list(markdown = TRUE)`, and markdown mode
+  escapes `%` for you, so a hand-written `\%` came out of roxygen as `\\%` - a literal
+  backslash followed by an Rd comment that ate the rest of the line, including the
+  closing `}` of the `\item{}` it sat in. That is what made `man/liver_tx.Rd` report
+  every later `\item` as an unknown macro and every later section header as unexpected,
+  and what roxygen called mismatched braces in `stats_inference.R`. Write a plain `%` in
+  roxygen comments. (2) Markdown links like `[edark_run_gate()]` become real `\link{}`
+  cross-references, but every helper in `R/ui_helpers.R` is `@keywords internal` +
+  `@noRd` and so has no man page to link to. Undocumented internals are referred to with
+  a code span - `` `edark_run_gate()` `` - not a link.

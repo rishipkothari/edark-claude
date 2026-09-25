@@ -300,8 +300,8 @@ NULL
 
 #' Forest plot of the adjusted estimates
 #'
-#' Three aligned panels (patchwork): labels | estimates with 95\% CIs |
-#' "OR (95\% CI)" and p. Built from \code{build_results_table()} so the plot
+#' Three aligned panels (patchwork): labels | estimates with 95% CIs |
+#' "OR (95% CI)" and p. Built from \code{build_results_table()} so the plot
 #' shows exactly the numbers in the table. Logistic models use a log-scale OR
 #' axis with a reference line at 1; linear models a line at 0. The exposure is
 #' highlighted.

@@ -6,7 +6,7 @@
 #' PRD §4.2. Do not compute p-values or CIs anywhere else — call these.
 #'
 #' \describe{
-#'   \item{Regression coefficients}{\code{edark_coef_table()}: Wald-type 95\%
+#'   \item{Regression coefficients}{\code{edark_coef_table()}: Wald-type 95%
 #'     CI = estimate \eqn{\pm} critical value \eqn{\times} SE, where the
 #'     critical value comes from the same distribution as the model's native
 #'     p-value — t with residual df (\code{lm}), t with Satterthwaite df
@@ -18,7 +18,7 @@
 #'     chi-square without continuity correction, or Fisher's exact test when
 #'     any expected count is < 5.}
 #'   \item{Correlation}{\code{edark_cor_test()}: Pearson r; t-test p-value
-#'     (n - 2 df); 95\% CI by Fisher's z.}
+#'     (n - 2 df); 95% CI by Fisher's z.}
 #'   \item{Display}{\code{edark_format_p()}: "< 0.001", else 3 decimals.}
 #' }
 #'

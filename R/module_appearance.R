@@ -18,7 +18,7 @@
 #'
 #' The page has no config pane: its whole content *is* configuration, so the
 #' controls sit in the main area as one plain list, each group under an
-#' [edark_section_label()] ([edark_aesthetics_groups()]). There are five
+#' `edark_section_label()` (`edark_aesthetics_groups()`). There are five
 #' single-value settings in total - a card apiece framed them as four separate
 #' artefacts and spent most of the page on chrome. It is the D6 exception the
 #' page contract allows for a page that produces nothing.
