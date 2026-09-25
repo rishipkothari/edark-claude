@@ -178,7 +178,7 @@ The Report sub-tab turns the working dataset into a slide deck or document. Two 
 - **Full Report** (§E11) — generated automatically from chosen variables.
 - **Custom Report** (§E12) — the plots the user added from Plot, in the user's order.
 
-Each pill has a sidebar with **Generate & Download** (primary), **Output Format** (PowerPoint · Word · HTML) and its own options. Neither pill has aesthetics controls: both generate with the values in force in **Appearance** (§E7), so the document matches the plot on screen (D7). Generation runs in a blocking progress modal (§M3.5).
+Each pill has a sidebar with **Generate & Download** (primary), **Output Format** (PowerPoint · Word · HTML) and its own options. Full Report's Output Format also offers **In App** (§E11.4), which swaps the primary action for **Generate Preview**. Neither pill has aesthetics controls: both generate with the values in force in **Appearance** (§E7), so the document matches the plot on screen (D7). Generation runs in a blocking progress modal (§M3.5).
 
 Datetime columns are excluded from reports.
 
@@ -203,6 +203,13 @@ Variables are chosen in a **Select Variables** modal.
 ### E11.3 Overlap Guards
 - Correlation skips a secondary variable equal to the stratify variable, and the variable modal hides it.
 - Describe Variables drops the stratify variable from its section list.
+
+### E11.4 In-App Preview
+- **In App** builds the HTML report and shows it in the centre pane instead of downloading it. The section list returns when the preview is closed.
+- A toolbar above the preview carries **Save HTML** (downloads the file already built, no regeneration) and **Close Preview**.
+- Changing any setting, the variables, the aesthetics or the working dataset after generating raises a stale message; the preview is not rebuilt until **Generate Preview** is clicked again. **Save HTML** saves the preview as shown.
+- To export as PowerPoint or Word, pick that format and use **Generate & Download**.
+- Full Report only; Custom Report has no In App option.
 
 ---
 

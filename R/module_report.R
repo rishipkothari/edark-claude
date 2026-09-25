@@ -83,6 +83,43 @@ NULL
 }
 
 
+# Helper: the blocking progress modal both pills show while a report builds
+# (§M3.5). Its bar and detail line are driven by the edark_report_progress
+# handler registered in report_ui().
+.report_progress_modal <- function(title) {
+  shiny::modalDialog(
+    title = shiny::tagList(
+      shiny::tags$span(
+        class = "spinner-border spinner-border-sm me-2",
+        role  = "status",
+        shiny::tags$span(class = "visually-hidden", "Loading...")
+      ),
+      title
+    ),
+    shiny::div(
+      class = "progress mb-2",
+      style = "height: 6px;",
+      shiny::div(
+        id              = "edark_progress_bar",
+        class           = "progress-bar progress-bar-striped progress-bar-animated",
+        role            = "progressbar",
+        style           = "width: 0%;",
+        `aria-valuenow` = "0",
+        `aria-valuemin` = "0",
+        `aria-valuemax` = "100"
+      )
+    ),
+    shiny::tags$p(
+      id    = "edark_progress_detail",
+      class = "text-muted mb-0 small",
+      "Starting..."
+    ),
+    footer    = NULL,
+    easyClose = FALSE
+  )
+}
+
+
 #' @rdname module_report
 #' @export
 report_ui <- function(id) {
@@ -163,7 +200,8 @@ report_ui <- function(id) {
           shinyWidgets::radioGroupButtons(
             ns("output_format"),
             label    = NULL,
-            choices  = c("PowerPoint" = "pptx",
+            choices  = c("In App"     = "inapp",
+                         "PowerPoint" = "pptx",
                          "Word"       = "docx",
                          "HTML"       = "html"),
             selected = "pptx",
@@ -171,14 +209,24 @@ report_ui <- function(id) {
             width    = "100%"
           ),
 
+          # One primary action either way (F3): In App builds the HTML report
+          # into the centre pane, every other format downloads a file.
           shiny::div(
             class = "mt-3",
-            edark_button(ns, "download_btn", "Generate & Download",
-                         icon = "download", type = "download")
+            shiny::conditionalPanel(
+              condition = paste0("input['", ns("output_format"), "'] == 'inapp'"),
+              edark_button(ns, "preview_btn", "Generate Preview", icon = "eye")
+            ),
+            shiny::conditionalPanel(
+              condition = paste0("input['", ns("output_format"), "'] != 'inapp'"),
+              edark_button(ns, "download_btn", "Generate & Download",
+                           icon = "download", type = "download")
+            )
           )
         ),
 
-        # Result: the sections the current settings resolve to, in order. Not a
+        # Result: the in-app preview once one has been generated; before that,
+        # the sections the current settings resolve to, in order. Not a
         # restatement of the controls (F5) - which variables survive depends on
         # eligibility, the primary variable and the stratify variable.
         result   = shiny::uiOutput(ns("report_sections_panel")),
@@ -413,6 +461,7 @@ report_server <- function(id, shared_state) {
         "-"
       )
       format_label <- switch(input$output_format %||% "pptx",
+        inapp = "In app (HTML preview)",
         pptx = "PowerPoint (.pptx)",
         docx = "Word (.docx)",
         html = "HTML (.html)",
@@ -451,8 +500,33 @@ report_server <- function(id, shared_state) {
     })
 
 
-    # Result: the ordered section list itself.
+    # Result: the in-app preview when there is one, else the ordered section
+    # list itself.
     output$report_sections_panel <- shiny::renderUI({
+      pv <- preview()
+      if (!is.null(pv)) {
+        return(shiny::tagList(
+          edark_action_toolbar(
+            shiny::tags$span(
+              class = "text-muted small me-auto",
+              paste0("Preview generated ", format(pv$at, "%H:%M:%S"))
+            ),
+            edark_button(ns, "preview_save", "Save HTML", icon = "download",
+                         type = "download", variant = "secondary",
+                         size = "toolbar"),
+            edark_button(ns, "preview_close", "Close Preview", icon = "xmark",
+                         variant = "secondary", size = "toolbar")
+          ),
+          # An iframe, not includeHTML(): the report carries its own Bootstrap
+          # theme and scripts, which would restyle the app if inlined (§N5.8).
+          shiny::tags$iframe(
+            src   = pv$url,
+            class = "edark-report-preview",
+            title = "Report preview"
+          )
+        ))
+      }
+
       secs <- full_sections()
 
       if (length(secs) == 0) {
@@ -495,100 +569,159 @@ report_server <- function(id, shared_state) {
           detail = "The report is generated from the current working dataset."
         )))
       }
+      pv <- preview()
+      if (!is.null(pv) && !identical(pv$args, full_report_args())) {
+        msgs <- c(msgs, list(edark_message(
+          "stale", "The settings or data have changed since this preview was generated.",
+          detail = "Generate Preview again to update it. Save HTML saves the preview as shown."
+        )))
+      }
       msgs
     }), id = "full_messages")
 
-    # ── Full report: download handler ─────────────────────────────────────────
+    # ── Full report: generation ───────────────────────────────────────────────
+    # Everything generate_report() needs apart from the format, the output path
+    # and the progress callback. The download and the in-app preview both call
+    # it, and the preview keeps the list it was built from so the stale check
+    # is a plain identical() against the current settings.
+    full_report_args <- shiny::reactive({
+      vars <- selected_vars()
+      if (is.null(vars) || length(vars) == 0) vars <- eligible_vars()
+      sv <- input$stratify_variable
+
+      aes_now <- edark_current_aesthetics(shared_state)
+
+      list(
+        dataset                 = shared_state$dataset_working,
+        column_types            = shared_state$column_types,
+        report_type             = input$report_type,
+        variables               = vars,
+        primary_variable        = if (identical(input$report_type, "primary_vs_others"))
+                                     input$primary_variable else NULL,
+        primary_role            = input$primary_role %||% "exposure",
+        stratify_variable       = if (is.null(sv) || !nzchar(sv)) NULL else sv,
+        include_dataset_summary = isTRUE(input$include_dataset_summary),
+        include_tableone        = isTRUE(input$include_tableone),
+        include_collinearity    = isTRUE(input$include_collinearity),
+        # The aesthetics on screen, not a second set owned by Report, so the
+        # generated document matches the plot the user has been looking at
+        # (D7 / D9).
+        ggplot_theme            = aes_now$ggplot_theme,
+        color_palette           = aes_now$color_palette,
+        show_data_labels        = aes_now$show_data_labels,
+        show_legend             = aes_now$show_legend,
+        legend_position         = aes_now$legend_position
+      )
+    })
+
+    # Build the full report into `path` behind the progress modal. Returns
+    # TRUE on success; on failure shows the error and returns FALSE.
+    .run_full_report <- function(args, format, path) {
+      n_sections <- if (identical(args$report_type, "primary_vs_others")) {
+        length(setdiff(args$variables, args$primary_variable))
+      } else {
+        length(args$variables)
+      }
+
+      shiny::showModal(.report_progress_modal(
+        paste0("Generating Report (", n_sections, " section",
+               if (n_sections != 1) "s" else "", ")")
+      ))
+      on.exit(shiny::removeModal(), add = TRUE)
+
+      tryCatch({
+        do.call(generate_report, c(args, list(
+          format      = format,
+          output_path = path,
+          progress_fn = function(frac, detail) {
+            session$sendCustomMessage("edark_report_progress",
+                                      list(frac = frac, detail = detail))
+          }
+        )))
+        TRUE
+      }, error = function(e) {
+        shiny::showNotification(
+          paste("Report generation failed:", conditionMessage(e)),
+          type     = "error",
+          duration = 10
+        )
+        FALSE
+      })
+    }
 
     output$download_btn <- shiny::downloadHandler(
       filename = function() {
         ext <- switch(input$output_format,
-                      pptx = ".pptx", docx = ".docx", html = ".html")
+                      pptx = ".pptx", docx = ".docx", ".html")
         paste0("edark_report_", format(Sys.time(), "%Y%m%d_%H%M%S"), ext)
       },
       content = function(file) {
-        vars <- selected_vars()
-        if (is.null(vars) || length(vars) == 0) vars <- eligible_vars()
+        fmt <- if (input$output_format %in% c("pptx", "docx")) input$output_format
+               else "html"
+        if (!.run_full_report(full_report_args(), fmt, file))
+          stop("Report generation failed.")
+      }
+    )
 
-        n_sections <- if (input$report_type == "primary_vs_others") {
-          length(setdiff(vars, input$primary_variable))
-        } else {
-          length(vars)
-        }
 
-        shiny::showModal(shiny::modalDialog(
-          title = shiny::tagList(
-            shiny::tags$span(
-              class = "spinner-border spinner-border-sm me-2",
-              role  = "status",
-              shiny::tags$span(class = "visually-hidden", "Loading...")
-            ),
-            paste0("Generating Report (", n_sections, " section",
-                   if (n_sections != 1) "s" else "", ")")
-          ),
-          shiny::div(
-            class = "progress mb-2",
-            style = "height: 6px;",
-            shiny::div(
-              id              = "edark_progress_bar",
-              class           = "progress-bar progress-bar-striped progress-bar-animated",
-              role            = "progressbar",
-              style           = "width: 0%;",
-              `aria-valuenow` = "0",
-              `aria-valuemin` = "0",
-              `aria-valuemax` = "100"
-            )
-          ),
-          shiny::tags$p(
-            id    = "edark_progress_detail",
-            class = "text-muted mb-0 small",
-            "Starting..."
-          ),
-          footer    = NULL,
-          easyClose = FALSE
+    # ── Full report: in-app preview ───────────────────────────────────────────
+    # In App renders the HTML report into a per-session temp folder served under
+    # its own resource path, and the centre pane shows it in an iframe (§N5.8).
+    # Nothing is downloaded until the user clicks Save HTML, which copies the
+    # file already built.
+    preview <- shiny::reactiveVal(NULL)   # list(path, url, args, at) or NULL
+
+    preview_prefix <- paste0("edark-preview-", session$token)
+    preview_dir    <- file.path(tempdir(), preview_prefix)
+    preview_count  <- 0L
+
+    .discard_preview <- function() {
+      pv <- shiny::isolate(preview())
+      if (!is.null(pv)) unlink(pv$path)
+      preview(NULL)
+    }
+
+    session$onSessionEnded(function() {
+      if (preview_prefix %in% names(shiny::resourcePaths()))
+        shiny::removeResourcePath(preview_prefix)
+      unlink(preview_dir, recursive = TRUE)
+    })
+
+    shiny::observeEvent(input$preview_btn, {
+      args <- full_report_args()
+      if (length(args$variables) == 0) return()
+
+      dir.create(preview_dir, showWarnings = FALSE, recursive = TRUE)
+      if (!preview_prefix %in% names(shiny::resourcePaths()))
+        shiny::addResourcePath(preview_prefix, preview_dir)
+
+      # A new file name each time, so the iframe never shows a cached copy.
+      preview_count <<- preview_count + 1L
+      fname <- sprintf("report_%03d.html", preview_count)
+      path  <- file.path(preview_dir, fname)
+
+      if (.run_full_report(args, "html", path)) {
+        .discard_preview()
+        preview(list(
+          path = path,
+          url  = paste0(preview_prefix, "/", fname),
+          args = args,
+          at   = Sys.time()
         ))
-        on.exit(shiny::removeModal(), add = TRUE)
+      }
+    })
 
-        aes_now <- edark_current_aesthetics(shared_state)
+    shiny::observeEvent(input$preview_close, .discard_preview())
 
-        tryCatch({
-          generate_report(
-            dataset                 = shared_state$dataset_working,
-            column_types            = shared_state$column_types,
-            report_type             = input$report_type,
-            variables               = vars,
-            primary_variable        = if (input$report_type == "primary_vs_others")
-                                         input$primary_variable else NULL,
-            primary_role            = input$primary_role %||% "exposure",
-            stratify_variable       = {
-              sv <- input$stratify_variable
-              if (is.null(sv) || !nzchar(sv)) NULL else sv
-            },
-            format                  = input$output_format,
-            output_path             = file,
-            include_dataset_summary = isTRUE(input$include_dataset_summary),
-            include_tableone        = isTRUE(input$include_tableone),
-            include_collinearity    = isTRUE(input$include_collinearity),
-            # The aesthetics on screen, not a second set owned by Report, so
-            # the generated document matches the plot the user has been
-            # looking at (D7 / D9).
-            ggplot_theme            = aes_now$ggplot_theme,
-            color_palette           = aes_now$color_palette,
-            show_data_labels        = aes_now$show_data_labels,
-            show_legend             = aes_now$show_legend,
-            legend_position         = aes_now$legend_position,
-            progress_fn             = function(frac, detail) {
-              session$sendCustomMessage("edark_report_progress", list(frac = frac, detail = detail))
-            }
-          )
-        }, error = function(e) {
-          shiny::showNotification(
-            paste("Report generation failed:", conditionMessage(e)),
-            type     = "error",
-            duration = 10
-          )
-          stop(e)
-        })
+    output$preview_save <- shiny::downloadHandler(
+      filename = function() {
+        paste0("edark_report_",
+               format(shiny::isolate(preview())$at, "%Y%m%d_%H%M%S"), ".html")
+      },
+      content = function(file) {
+        pv <- shiny::isolate(preview())
+        if (is.null(pv) || !file.exists(pv$path)) stop("No preview to save.")
+        file.copy(pv$path, file, overwrite = TRUE)
       }
     )
 
@@ -912,36 +1045,9 @@ report_server <- function(id, shared_state) {
         }
 
         n_items <- length(items)
-        shiny::showModal(shiny::modalDialog(
-          title = shiny::tagList(
-            shiny::tags$span(
-              class = "spinner-border spinner-border-sm me-2",
-              role  = "status",
-              shiny::tags$span(class = "visually-hidden", "Loading...")
-            ),
-            paste0("Generating Custom Report (", n_items, " item",
-                   if (n_items != 1) "s" else "", ")")
-          ),
-          shiny::div(
-            class = "progress mb-2",
-            style = "height: 6px;",
-            shiny::div(
-              id              = "edark_progress_bar",
-              class           = "progress-bar progress-bar-striped progress-bar-animated",
-              role            = "progressbar",
-              style           = "width: 0%;",
-              `aria-valuenow` = "0",
-              `aria-valuemin` = "0",
-              `aria-valuemax` = "100"
-            )
-          ),
-          shiny::tags$p(
-            id    = "edark_progress_detail",
-            class = "text-muted mb-0 small",
-            "Starting..."
-          ),
-          footer    = NULL,
-          easyClose = FALSE
+        shiny::showModal(.report_progress_modal(
+          paste0("Generating Custom Report (", n_items, " item",
+                 if (n_items != 1) "s" else "", ")")
         ))
         on.exit(shiny::removeModal(), add = TRUE)
 

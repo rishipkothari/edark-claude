@@ -405,6 +405,19 @@
 }
 
 
+/* Report > Full Report's in-app preview. The report is a light-themed page of
+   its own, so the frame keeps a white background in dark mode too. Height is
+   EDARK_RESULT_HEIGHT in R/ui_helpers.R. */
+.edark-report-preview {
+  display: block;
+  width: 100%;
+  height: calc(100vh - 320px);
+  border: 1px solid var(--bs-border-color-translucent);
+  border-radius: var(--bs-border-radius);
+  background-color: #fff;
+}
+
+
 /* ==========================================================================
    6  Containment
 
