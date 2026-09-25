@@ -339,6 +339,46 @@
 }
 
 
+#' Collinearity investigation for the report
+#'
+#' The same three pieces as Analyze › Variable Investigation › Collinearity,
+#' from the same \code{compute_collinearity()}: a Pearson heatmap of the
+#' numeric variables, a Cramer's V heatmap of the factors, and the pairs above
+#' 0.7. A heatmap needs at least two variables of its type. Numeric x factor
+#' pairs are not measured, there or here.
+#'
+#' @return \code{NULL} when fewer than two numeric or factor variables, else
+#'   \code{list(cor_plot, cramers_plot, flagged_ft)}; either plot may be
+#'   \code{NULL}.
+#' @noRd
+.build_collinearity_report <- function(dataset, column_types, variables) {
+  vars <- variables[variables %in% names(column_types) &
+                      column_types[variables] %in% c("numeric", "factor")]
+  if (length(vars) < 2L) return(NULL)
+  coll <- tryCatch(compute_collinearity(dataset, vars), error = function(e) NULL)
+  if (is.null(coll)) return(NULL)
+
+  cor_plot <- if (!is.null(coll$cor_matrix) && ncol(coll$cor_matrix) >= 2L)
+    .plot_correlation_heatmap(coll$cor_matrix, "Pearson Correlation (Numeric Variables)")
+  cramers_plot <- if (!is.null(coll$cramers_v_mat) && ncol(coll$cramers_v_mat) >= 2L)
+    .plot_cramers_heatmap(coll$cramers_v_mat, "Cram\u00e9r's V (Factor Variables)")
+  if (is.null(cor_plot) && is.null(cramers_plot)) return(NULL)
+
+  fp <- coll$flagged_pairs
+  fp_df <- if (nrow(fp) > 0L) {
+    data.frame(`Variable 1` = fp$var1, `Variable 2` = fp$var2,
+               Measure = fp$type, Value = sprintf("%.2f", fp$value),
+               check.names = FALSE, stringsAsFactors = FALSE)
+  } else {
+    data.frame(Result = "No pair of variables above 0.7.", stringsAsFactors = FALSE)
+  }
+
+  list(cor_plot     = cor_plot,
+       cramers_plot = cramers_plot,
+       flagged_ft   = .style_section_ft(fp_df))
+}
+
+
 # ---------------------------------------------------------------------------
 # Per-section table helpers
 # ---------------------------------------------------------------------------
@@ -781,7 +821,8 @@
 .assemble_pptx <- function(sections, dataset_summary_df, output_path,
                              progress_fn = NULL,
                              include_dataset_summary = TRUE,
-                             tableone_ft = NULL) {
+                             tableone_ft = NULL,
+                             collinearity = NULL) {
   prs <- officer::read_pptx(
     system.file("templates/ppt_16x9_blank_template.pptx", package = "edark")
   )
@@ -791,6 +832,19 @@
     prs <- officer::add_slide(prs, layout = "Blank", master = "Office Theme")
     prs <- .pptx_title(prs, "Table 1")
     prs <- .pptx_table(prs, tableone_ft)
+  }
+
+  # ── Optional: Collinearity - one slide per heatmap, then the pairs ───────
+  if (!is.null(collinearity)) {
+    for (pl in Filter(Negate(is.null),
+                      list(collinearity$cor_plot, collinearity$cramers_plot))) {
+      prs <- officer::add_slide(prs, layout = "Blank", master = "Office Theme")
+      prs <- .pptx_title(prs, "Collinearity")
+      prs <- .pptx_plot(prs, pl)
+    }
+    prs <- officer::add_slide(prs, layout = "Blank", master = "Office Theme")
+    prs <- .pptx_title(prs, "Collinearity: Pairs Above 0.7")
+    prs <- .pptx_table(prs, collinearity$flagged_ft)
   }
 
   # ── Optional: Dataset summary slide ─────────────────────────────────────
@@ -1102,6 +1156,7 @@
                              progress_fn = NULL,
                              include_dataset_summary = TRUE,
                              tableone_ft = NULL,
+                             collinearity = NULL,
                              meta = NULL) {
   if (is.null(meta))
     meta <- list(
@@ -1127,12 +1182,27 @@
   doc <- .docx_add_title_page(doc, meta)
   doc <- .docx_end_section(doc, "portrait", meta = NULL)
 
-  # -- Front matter: contents, then Table 1 when requested. Portrait.
+  # -- Front matter: contents, then Table 1 and collinearity when requested.
+  #    Portrait.
   doc <- .docx_add_toc_page(doc)
   if (!is.null(tableone_ft)) {
     doc <- officer::body_add_break(doc)
     doc <- officer::body_add_par(doc, "Table 1", style = "heading 1")
     doc <- flextable::body_add_flextable(doc, .docx_fit_ft(tableone_ft))
+  }
+  if (!is.null(collinearity)) {
+    doc <- officer::body_add_break(doc)
+    doc <- officer::body_add_par(doc, "Collinearity", style = "heading 1")
+    plots <- Filter(Negate(is.null),
+                    list(collinearity$cor_plot, collinearity$cramers_plot))
+    for (k in seq_along(plots)) {
+      if (k > 1) doc <- officer::body_add_break(doc)
+      doc <- officer::body_add_gg(doc, value = plots[[k]], width = .DOCX_PORTRAIT_WIDTH,
+                                  height = .DOCX_PORTRAIT_WIDTH, res = 150)
+    }
+    doc <- officer::body_add_break(doc)
+    doc <- .docx_add_caption(doc, "Pairs above 0.7")
+    doc <- flextable::body_add_flextable(doc, .docx_fit_ft(collinearity$flagged_ft))
   }
 
   # -- Dataset summary: the one landscape page, so it needs a section break on
@@ -1223,7 +1293,8 @@
                              report_type = "all_vars",
                              linked_var_anchors = NULL,
                              include_dataset_summary = TRUE,
-                             tableone_ft = NULL) {
+                             tableone_ft = NULL,
+                             collinearity = NULL) {
   template_path <- system.file("report_template.Rmd", package = "edark")
 
   rmarkdown::render(
@@ -1237,7 +1308,8 @@
       report_type             = report_type,
       linked_var_anchors      = linked_var_anchors,
       include_dataset_summary = include_dataset_summary,
-      tableone_ft             = tableone_ft
+      tableone_ft             = tableone_ft,
+      collinearity            = collinearity
     ),
     quiet             = TRUE,
     envir             = new.env(parent = globalenv())
@@ -1268,6 +1340,9 @@
 #' @param output_path Absolute path to write the report to.
 #' @param progress_fn Optional \code{function(fraction, detail)} called at each
 #'   section milestone. Intended for use with \code{shiny::setProgress()}.
+#' @param include_collinearity Logical. Add a collinearity investigation after
+#'   Table One: Pearson and Cramer's V heatmaps plus pairs above 0.7, over the
+#'   same variables as Table One. Default \code{FALSE}.
 #'
 #' @return Invisibly returns \code{output_path}.
 #'
@@ -1284,6 +1359,7 @@ generate_report <- function(dataset,
                              progress_fn             = NULL,
                              include_dataset_summary = TRUE,
                              include_tableone        = FALSE,
+                             include_collinearity    = FALSE,
                              ggplot_theme            = "minimal",
                              color_palette           = "Set2",
                              show_data_labels        = FALSE,
@@ -1323,6 +1399,13 @@ generate_report <- function(dataset,
     if (!is.null(to_df) && nrow(to_df) > 0)
       .style_tableone_ft(to_df, has_strat = !is.null(strat))
     else NULL
+  } else NULL
+
+  # Collinearity over the same variables as Table One: the stratify variable
+  # is a column header there and not a candidate here either.
+  collinearity <- if (isTRUE(include_collinearity)) {
+    if (!is.null(progress_fn)) progress_fn(0, "Computing collinearity...")
+    .build_collinearity_report(dataset, column_types, tableone_vars)
   } else NULL
 
   plot_aesthetics <- list(
@@ -1379,10 +1462,12 @@ generate_report <- function(dataset,
   switch(format,
     pptx = .assemble_pptx(sections, dataset_summary_df, output_path, progress_fn,
                           include_dataset_summary = include_dataset_summary,
-                          tableone_ft             = tableone_ft),
+                          tableone_ft             = tableone_ft,
+                          collinearity            = collinearity),
     docx = .assemble_docx(sections, dataset_summary_df, output_path, progress_fn,
                           include_dataset_summary = include_dataset_summary,
                           tableone_ft             = tableone_ft,
+                          collinearity            = collinearity,
                           meta                    = .docx_meta(
                             dataset           = dataset,
                             report_type       = report_type,
@@ -1395,7 +1480,8 @@ generate_report <- function(dataset,
                           report_type             = report_type,
                           linked_var_anchors      = linked_var_anchors,
                           include_dataset_summary = include_dataset_summary,
-                          tableone_ft             = tableone_ft)
+                          tableone_ft             = tableone_ft,
+                          collinearity            = collinearity)
   )
 
   invisible(output_path)

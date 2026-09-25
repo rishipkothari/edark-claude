@@ -17,6 +17,7 @@ generate_report(
   progress_fn = NULL,
   include_dataset_summary = TRUE,
   include_tableone = FALSE,
+  include_collinearity = FALSE,
   ggplot_theme = "minimal",
   color_palette = "Set2",
   show_data_labels = FALSE,
@@ -46,6 +47,10 @@ generate_report(
 
 \item{progress_fn}{Optional \code{function(fraction, detail)} called at each
 section milestone. Intended for use with \code{shiny::setProgress()}.}
+
+\item{include_collinearity}{Logical. Add a collinearity investigation after
+Table One: Pearson and Cramer's V heatmaps plus pairs above 0.7, over the
+same variables as Table One. Default \code{FALSE}.}
 }
 \value{
 Invisibly returns \code{output_path}.

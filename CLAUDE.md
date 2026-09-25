@@ -169,7 +169,6 @@ main-specific questions.
 - generate full report spinner counts to 7 twice for word and powerpoint report format but not HTML: once with "variable #" then with "section #"
 
 #### Low magnitude
-- Report contents option: collinearity investigation.
 - **Bug — centre tables in PPT + HTML reports:** `flextable::set_table_properties(align = "center")` is set in both `.style_dataset_summary_ft()` and `.style_section_ft()` in `generate_report.R`, but tables still render left-aligned in PPT and HTML (DOCX may work). Investigate `officer` slide content alignment for PPT and the Rmd template's table rendering for HTML.
 - appearance should be a pill next to explore data and report; full screen for config; this may change to "settings" later but we can leave it as appearance for now. main panel will house container for settings.
 
@@ -183,6 +182,7 @@ Phases 0–7 and 6b complete; Step 6 (Export, Phase 8) is a placeholder stub. Ph
 - Propensity score model subtypes - matching, score adjusted, IPTW, etc
 
 #### Mid magnitude
+- **Collinearity misses numeric x factor pairs.** `compute_collinearity()` measures numeric pairs (Pearson r) and factor pairs (Cramer's V) only, so a numeric variable that tracks a factor strongly (e.g. age by a factor) is never flagged - in Step 3 or in the Explore report's Collinearity section, which reuses it. Needs a third measure such as the correlation ratio (eta); changes Step 3's pill and the report together.
 - Univariable screen flags a multi-level factor as suggested if *any* level term clears the threshold; an overall per-variable likelihood-ratio p would be more correct (`service_analysis_variable_selection.R`).
 - **Covariates and Model › Summary have config panes with nothing to configure.** Both pages keep their configuration in the table (Covariates) or have none at all (Summary), so after the Stage 4 page contract their left panes carry orientation text rather than controls. Honest but thin. Either give them real global controls - Covariates has an obvious candidate in table-level Select all / Clear, and a search - or decide those two pages are a deliberate exception to D6 and say so in the plan.
 

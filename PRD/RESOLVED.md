@@ -32,6 +32,19 @@ filter whose `type` disagrees with the column as a backstop.
 
 ## Explore
 
+### 2026-09-25 - Report contents option: collinearity investigation
+
+Full Report gains a **Collinearity** checkbox (default off). It runs Analyze's
+`compute_collinearity()` over Table One's variable set and renders the three pieces of
+Step 3's Collinearity pill: Pearson heatmap (numerics), Cramer's V heatmap (factors),
+pairs above 0.7. Placed after Table One in PPT, Word and HTML.
+
+The two heatmaps were inline in Step 3's `renderPlot()`s; they moved to
+`service_analysis_plots.R` so the app and the report draw the same figure. Known gap
+carried over from Step 3: numeric x factor pairs are not measured.
+
+**Durable rule: §N5.5.**
+
 ### 2026-09-24 — Word report: reference `.docx` template with defined heading styles
 
 `inst/templates/word_docx_blank_template.docx` now supplies the Title / Subtitle /

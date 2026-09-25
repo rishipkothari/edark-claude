@@ -27,6 +27,54 @@ NULL
 }
 
 
+# ── Collinearity heatmaps (Analyze Step 3 and the Explore report) ─────────────
+
+# Text and tile labels shrink as the matrix grows.
+.heatmap_sizes <- function(n_vars) {
+  list(label = max(2, min(5, 10 - 0.6 * n_vars)),
+       base  = max(9, min(16, round(18 - 0.6 * n_vars))))
+}
+
+.heatmap_base <- function(df, base_size, title) {
+  ggplot2::ggplot(df, ggplot2::aes(x = .data$Var1, y = .data$Var2, fill = .data$value)) +
+    ggplot2::geom_tile(color = "white") +
+    ggplot2::theme_minimal(base_size = base_size) +
+    ggplot2::theme(
+      axis.text.x  = ggplot2::element_text(angle = 45, hjust = 1),
+      panel.grid   = ggplot2::element_blank()
+    ) +
+    ggplot2::labs(x = NULL, y = NULL, title = title)
+}
+
+.heatmap_df <- function(mat) {
+  df <- as.data.frame(as.table(mat))
+  names(df) <- c("Var1", "Var2", "value")
+  df$value <- as.numeric(df$value)
+  df
+}
+
+# Pearson r matrix from compute_collinearity()$cor_matrix.
+.plot_correlation_heatmap <- function(mat, title = "Pearson Correlation Matrix") {
+  sz <- .heatmap_sizes(nrow(mat))
+  .heatmap_base(.heatmap_df(mat), sz$base, title) +
+    ggplot2::geom_text(ggplot2::aes(label = round(.data$value, 2L)),
+                       size = sz$label, color = "black") +
+    ggplot2::scale_fill_gradient2(low = "#2166ac", mid = "white", high = .AP_FLAG,
+                                  midpoint = 0, limits = c(-1, 1), name = "r")
+}
+
+# Cramer's V matrix from compute_collinearity()$cramers_v_mat.
+.plot_cramers_heatmap <- function(mat, title = "Cram\u00e9r's V Matrix") {
+  sz <- .heatmap_sizes(nrow(mat))
+  .heatmap_base(.heatmap_df(mat), sz$base, title) +
+    ggplot2::geom_text(ggplot2::aes(label = ifelse(is.na(.data$value), "",
+                                                    round(.data$value, 2L))),
+                       size = sz$label, color = "black") +
+    ggplot2::scale_fill_gradient(low = "white", high = .AP_FLAG, limits = c(0, 1),
+                                 na.value = "grey90", name = "V")
+}
+
+
 # ── Residuals ─────────────────────────────────────────────────────────────────
 
 .plot_resid_fitted <- function(fitted, resid) {

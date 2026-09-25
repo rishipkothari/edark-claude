@@ -156,6 +156,8 @@ report_ui <- function(id) {
                                "Dataset Summary", value = TRUE),
           shiny::checkboxInput(ns("include_tableone"),
                                "Table One", value = FALSE),
+          shiny::checkboxInput(ns("include_collinearity"),
+                               "Collinearity", value = FALSE),
 
           edark_section_label("Output Format"),
           shinyWidgets::radioGroupButtons(
@@ -439,6 +441,8 @@ report_server <- function(id, shared_state) {
                        if (isTRUE(input$include_dataset_summary)) "Included" else "No"),
         edark_info_row("Table One",
                        if (isTRUE(input$include_tableone)) "Included" else "No"),
+        edark_info_row("Collinearity",
+                       if (isTRUE(input$include_collinearity)) "Included" else "No"),
 
         edark_section_label("Source data"),
         edark_info_row("Rows",    if (!is.null(ds)) format(nrow(ds), big.mark = ",") else "-"),
@@ -564,6 +568,7 @@ report_server <- function(id, shared_state) {
             output_path             = file,
             include_dataset_summary = isTRUE(input$include_dataset_summary),
             include_tableone        = isTRUE(input$include_tableone),
+            include_collinearity    = isTRUE(input$include_collinearity),
             # The aesthetics on screen, not a second set owned by Report, so
             # the generated document matches the plot the user has been
             # looking at (D7 / D9).

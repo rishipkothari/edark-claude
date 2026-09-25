@@ -530,72 +530,19 @@ analysis_varinvestigation_server <- function(id, shared_state) {
       }
     })
 
-    # Correlation heatmap
+    # Heatmaps: the same builders the Explore report uses (service_analysis_plots.R)
     output$collin_heatmap <- shiny::renderPlot({
       coll <- collin_computed()
       shiny::req(!is.null(coll), !is.null(coll$cor_matrix))
-
-      mat        <- coll$cor_matrix
-      n_vars     <- nrow(mat)
-      label_size <- max(2, min(5, 10 - 0.6 * n_vars))
-      base_size  <- max(9, min(16, round(18 - 0.6 * n_vars)))
-      df  <- as.data.frame(as.table(mat))
-      names(df) <- c("Var1", "Var2", "r")
-      df$r <- as.numeric(df$r)
-
-      ggplot2::ggplot(df, ggplot2::aes(x = .data$Var1, y = .data$Var2, fill = .data$r)) +
-        ggplot2::geom_tile(color = "white") +
-        ggplot2::geom_text(ggplot2::aes(label = round(.data$r, 2L)),
-                           size = label_size, color = "black") +
-        ggplot2::scale_fill_gradient2(
-          low     = "#2166ac",
-          mid     = "white",
-          high    = "#d6604d",
-          midpoint = 0,
-          limits  = c(-1, 1),
-          name    = "r"
-        ) +
-        ggplot2::theme_minimal(base_size = base_size) +
-        ggplot2::theme(
-          axis.text.x  = ggplot2::element_text(angle = 45, hjust = 1),
-          panel.grid   = ggplot2::element_blank()
-        ) +
-        ggplot2::labs(x = NULL, y = NULL,
-                      title = "Pearson Correlation Matrix (Numeric Candidates)")
+      .plot_correlation_heatmap(coll$cor_matrix,
+                                "Pearson Correlation Matrix (Numeric Candidates)")
     })
 
-    # Cramér's V heatmap
     output$collin_cramers <- shiny::renderPlot({
       coll <- collin_computed()
       shiny::req(!is.null(coll), !is.null(coll$cramers_v_mat))
-
-      mat        <- coll$cramers_v_mat
-      n_vars     <- nrow(mat)
-      label_size <- max(2, min(5, 10 - 0.6 * n_vars))
-      base_size  <- max(9, min(16, round(18 - 0.6 * n_vars)))
-      df  <- as.data.frame(as.table(mat))
-      names(df) <- c("Var1", "Var2", "V")
-      df$V <- as.numeric(df$V)
-
-      ggplot2::ggplot(df, ggplot2::aes(x = .data$Var1, y = .data$Var2, fill = .data$V)) +
-        ggplot2::geom_tile(color = "white") +
-        ggplot2::geom_text(ggplot2::aes(label = ifelse(is.na(.data$V), "",
-                                                        round(.data$V, 2L))),
-                           size = label_size, color = "black") +
-        ggplot2::scale_fill_gradient(
-          low  = "white",
-          high = "#d6604d",
-          limits = c(0, 1),
-          na.value = "grey90",
-          name = "V"
-        ) +
-        ggplot2::theme_minimal(base_size = base_size) +
-        ggplot2::theme(
-          axis.text.x  = ggplot2::element_text(angle = 45, hjust = 1),
-          panel.grid   = ggplot2::element_blank()
-        ) +
-        ggplot2::labs(x = NULL, y = NULL,
-                      title = "Cram\u00e9r's V Matrix (Factor Candidates)")
+      .plot_cramers_heatmap(coll$cramers_v_mat,
+                            "Cram\u00e9r's V Matrix (Factor Candidates)")
     })
 
     # Flagged pairs table

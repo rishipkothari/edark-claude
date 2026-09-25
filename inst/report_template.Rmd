@@ -17,6 +17,7 @@ params:
   linked_var_anchors: NULL
   include_dataset_summary: TRUE
   tableone_ft: NULL
+  collinearity: NULL
 ---
 
 ```{css, echo=FALSE}
@@ -122,6 +123,21 @@ tableone_ft             <- params$tableone_ft
 if (!is.null(tableone_ft)) {
   cat("## Table 1\n\n")
   print(flextable::htmltools_value(tableone_ft))
+  cat('\n\n<hr class="section-rule">\n\n')
+}
+```
+
+```{r collinearity, results='asis', fig.width=8, fig.height=7}
+collinearity <- params$collinearity
+if (!is.null(collinearity)) {
+  cat("## Collinearity\n\n")
+  for (pl in Filter(Negate(is.null),
+                    list(collinearity$cor_plot, collinearity$cramers_plot))) {
+    print(pl)
+    cat('\n\n')
+  }
+  cat("**Pairs above 0.7**\n\n")
+  print(flextable::htmltools_value(collinearity$flagged_ft))
   cat('\n\n<hr class="section-rule">\n\n')
 }
 ```

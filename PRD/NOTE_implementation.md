@@ -171,6 +171,7 @@ Assemblers detect two-panel plots with `is.list(x) && !inherits(x, "ggplot")` an
 
 ### N5.5 Table One and section tables
 Report Table One: `.build_tableone_df()` / `.style_tableone_ft()`. Section tables: `.build_bivariate_fac_fac_table()` etc. All tests via §N2. Table styling: `.style_dataset_summary_ft()`, `.style_section_ft()`.
+Report Collinearity: `.build_collinearity_report()` calls Analyze's `compute_collinearity()`, and its heatmaps are `.plot_correlation_heatmap()` / `.plot_cramers_heatmap()` in `service_analysis_plots.R` - the same builders Step 3 renders. Change a heatmap there, not in either caller.
 
 ### N5.6 Custom report items
 Structure: `list(id, plot_spec, thumb_path, title, added_at)`. PNG thumbnails go to `tempdir()` and are deleted in `session$onSessionEnded` (`edark.R`). Gallery up / down / remove observers follow §N1.9. Navigation: `requested_tab` / `requested_report_subtab` observed in `edark.R`, which calls `bslib::nav_select()` and clears the request.

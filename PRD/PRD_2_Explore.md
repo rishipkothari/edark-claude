@@ -198,6 +198,7 @@ Variables are chosen in a **Select Variables** modal.
 ### E11.2 Report Contents Options
 - **Dataset Summary** (default on): one row per numeric / factor variable across the dataset, linked to its section in HTML.
 - **Table One** (default off; Describe Variables only): classic clinical Table 1 — numeric rows mean ± SD with Kruskal-Wallis p; factor rows N per level with chi-square / Fisher's p. Columns: `Overall (N = x)`, one per stratum, `p-value`. Rendered before the dataset summary; stratified by the sidebar Stratify By.
+- **Collinearity** (default off): the Analyze Step 3 collinearity view over the same variables as Table One - a Pearson r heatmap of the numeric variables, a Cramer's V heatmap of the factors (each needs at least two of its type), and a table of pairs above 0.7. Numeric x factor pairs are not measured. Rendered after Table One, before the dataset summary; omitted when fewer than two numeric or two factor variables qualify.
 
 ### E11.3 Overlap Guards
 - Correlation skips a secondary variable equal to the stratify variable, and the variable modal hides it.
@@ -218,7 +219,7 @@ Variables are chosen in a **Select Variables** modal.
 
 ## E13 — Output Formats
 
-Every report may open with Table One and / or the Dataset Summary, then one section per item. **A plot and its table never share a slide or page.**
+Every report may open with Table One, Collinearity and / or the Dataset Summary, then one section per item. **A plot and its table never share a slide or page.**
 
 | Format | Engine | Notes |
 |---|---|---|
@@ -260,4 +261,4 @@ edark_report(liver_tx, report_type = "primary_vs_others",
 
 `edark_report(data, report_type = "all_vars", variables = NULL, primary_variable = NULL, primary_role = "exposure", stratify_variable = NULL, report_format = "html", output_path = NULL, max_factor_levels = 20)` validates and casts the data like `edark()` (§P2), then calls `generate_report()`.
 
-`generate_report()` and `generate_custom_report()` take plain arguments (dataset, column types, format, output path, aesthetics, optional `progress_fn(fraction, detail)`), so the same code serves the app's download buttons and scripts. `generate_custom_report()`'s aesthetic arguments default to `NULL`, meaning "keep the appearance each item was captured with" — which is how the app calls it. Passing a value overrides *every* item, for programmatic callers who want one consistent look. `generate_report()`'s `include_dataset_summary` / `include_tableone` default to on / off.
+`generate_report()` and `generate_custom_report()` take plain arguments (dataset, column types, format, output path, aesthetics, optional `progress_fn(fraction, detail)`), so the same code serves the app's download buttons and scripts. `generate_custom_report()`'s aesthetic arguments default to `NULL`, meaning "keep the appearance each item was captured with" — which is how the app calls it. Passing a value overrides *every* item, for programmatic callers who want one consistent look. `generate_report()`'s `include_dataset_summary` / `include_tableone` / `include_collinearity` default to on / off / off.
