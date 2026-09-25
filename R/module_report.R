@@ -225,11 +225,25 @@ report_ui <- function(id) {
           )
         ),
 
-        # Result: the in-app preview once one has been generated; before that,
-        # the sections the current settings resolve to, in order. Not a
-        # restatement of the controls (F5) - which variables survive depends on
-        # eligibility, the primary variable and the stratify variable.
-        result   = shiny::uiOutput(ns("report_sections_panel")),
+        # Result, in two tabs. Sections: what the current settings resolve to,
+        # in order - read-only, and not a restatement of the controls (F5),
+        # since which variables survive depends on eligibility, the primary
+        # variable and the stratify variable. Preview: the In App report
+        # (§E11.4). Generating a preview switches to its tab; closing it
+        # switches back.
+        result   = bslib::navset_underline(
+          id = ns("full_result_tabs"),
+          bslib::nav_panel(
+            value = "sections",
+            title = shiny::tagList(shiny::icon("list-ol"), " Sections"),
+            shiny::div(class = "pt-2", shiny::uiOutput(ns("report_sections_panel")))
+          ),
+          bslib::nav_panel(
+            value = "preview",
+            title = shiny::tagList(shiny::icon("eye"), " Preview"),
+            shiny::div(class = "pt-2", shiny::uiOutput(ns("full_preview_panel")))
+          )
+        ),
         messages = edark_messages_ui(ns, "full_messages"),
         info     = shiny::uiOutput(ns("full_info"))
       )
@@ -524,12 +538,8 @@ report_server <- function(id, shared_state) {
     })
 
 
-    # Result: the in-app preview when there is one, else the ordered section
-    # list itself.
+    # Result, Sections tab: the ordered section list itself.
     output$report_sections_panel <- shiny::renderUI({
-      pv <- full_preview()
-      if (!is.null(pv)) return(.preview_view(pv, "preview_save", "preview_close"))
-
       secs <- full_sections()
 
       if (length(secs) == 0) {
@@ -634,6 +644,17 @@ report_server <- function(id, shared_state) {
       edark_message(
         "stale", "The report contents or data have changed since this preview was generated.",
         detail = "Generate Preview again to update it. Save HTML saves the preview as shown."
+      )
+    }
+
+    .preview_empty_state <- function() {
+      edark_empty_state(
+        "No preview yet",
+        shiny::tagList(
+          "Choose ", shiny::tags$strong("In App"), " under Output Format and click ",
+          shiny::tags$strong("Generate Preview"), " to see the report here."
+        ),
+        icon = "eye"
       )
     }
 
@@ -759,18 +780,28 @@ report_server <- function(id, shared_state) {
     )
 
 
-    # ── Full report: in-app preview ───────────────────────────────────────────
+    # ── Full report: in-app preview (Preview tab) ─────────────────────────────
 
     full_preview <- shiny::reactiveVal(NULL)
 
     shiny::observeEvent(input$preview_btn, {
       args <- full_report_args()
       if (length(args$variables) == 0) return()
-      .preview_build(full_preview, "full", args,
-                     function(a, path) .run_full_report(a, "html", path))
+      built <- .preview_build(full_preview, "full", args,
+                              function(a, path) .run_full_report(a, "html", path))
+      if (built) bslib::nav_select("full_result_tabs", "preview", session = session)
     })
 
-    shiny::observeEvent(input$preview_close, .preview_discard(full_preview))
+    shiny::observeEvent(input$preview_close, {
+      .preview_discard(full_preview)
+      bslib::nav_select("full_result_tabs", "sections", session = session)
+    })
+
+    output$full_preview_panel <- shiny::renderUI({
+      pv <- full_preview()
+      if (is.null(pv)) return(.preview_empty_state())
+      .preview_view(pv, "preview_save", "preview_close")
+    })
 
     output$preview_save <- .preview_save_handler(full_preview, "edark_report_")
 
@@ -1165,16 +1196,7 @@ report_server <- function(id, shared_state) {
 
     output$custom_preview_panel <- shiny::renderUI({
       pv <- custom_preview()
-      if (is.null(pv)) {
-        return(edark_empty_state(
-          "No preview yet",
-          shiny::tagList(
-            "Choose ", shiny::tags$strong("In App"), " under Output Format and click ",
-            shiny::tags$strong("Generate Preview"), " to see the report here."
-          ),
-          icon = "eye"
-        ))
-      }
+      if (is.null(pv)) return(.preview_empty_state())
       .preview_view(pv, "custom_preview_save", "custom_preview_close")
     })
 

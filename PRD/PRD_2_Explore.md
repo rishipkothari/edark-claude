@@ -205,11 +205,11 @@ Variables are chosen in a **Select Variables** modal.
 - Describe Variables drops the stratify variable from its section list.
 
 ### E11.4 In-App Preview
-- **In App** builds the HTML report and shows it in the centre pane instead of downloading it. The section list returns when the preview is closed.
+- **In App** builds the HTML report and shows it in the centre pane instead of downloading it. The centre has two tabs: **Sections**, the read-only list of sections the current settings resolve to, and **Preview**. Generate Preview switches to the Preview tab; Close Preview discards the preview and switches back to Sections.
 - A toolbar above the preview carries **Save HTML** (downloads the file already built, no regeneration) and **Close Preview**.
 - Changing any setting, the variables, the aesthetics or the working dataset after generating raises a stale message; the preview is not rebuilt until **Generate Preview** is clicked again. **Save HTML** saves the preview as shown.
 - To export as PowerPoint or Word, pick that format and use **Generate & Download**.
-- Custom Report has the same option; its preview goes in a tab of its own (§E12).
+- Custom Report has the same option and a Preview tab of its own; its first tab is the editable item list rather than a read-only summary (§E12).
 
 ---
 
