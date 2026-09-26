@@ -1,4 +1,4 @@
-# CLAUDE.md — EDARK v0.2
+# CLAUDE.md — EDARK v0.9
 
 ## What this is
 An R package providing an interactive Shiny GUI for exploratory data analysis of tabular datasets, focused on clinical research workflows. A researcher calls `edark(dataset)`, prepares the data, explores variables interactively, and optionally exports a report.
@@ -137,16 +137,13 @@ main-specific questions.
 - do not commit without permission
 - if you are instructed to commit, add a message of at most 6 sentences, be brief. also, push after commits
 - remind me to push after commits
+- before every commit, update `EDARK_LAST_UPDATE` in `R/ui_helpers.R` to that day's date - it is shown on the splash screen. Keep `EDARK_VERSION` in step with `Version:` in DESCRIPTION.
 
 ---
 
 ## TO-DOs
 
 ### High priority
-- **Startup delay: splash screen.** First launch shows a noticeable delay. Step 1 (in place): temporary `[edark boot]` timing messages in the console (`.boot_log()` in `R/edark.R`) - run `edark(liver_tx)` and read where the time goes. Step 2, depending on the result:
-    - Time after the page arrives (session start -> browser idle): add a splash with `waiter::waiter_show_on_load()` in the UI, hidden from JS on the first `shiny:idle`, with a minimum display time (~0.8 s) and a maximum fallback (~15 s). Content: EDARK, dataset name, rows x columns, spinner, "Preparing your data...".
-    - Time before the page arrives (launch -> page requested -> session start): the splash cannot cover it; likely the bslib Sass compile of the custom Flatly theme, so precompile or cache the theme CSS.
-    - Remove the timing messages once done.
 
 ### Prepare
 
@@ -173,6 +170,7 @@ main-specific questions.
 - **Drag-and-drop reordering of Custom Report items.** The list is in the centre and reorders via the toolbar's Move Up / Move Down, which needs no JS. Drag would need `sortable` (a SortableJS wrapper) attached to the row container - `sortable_js()`, not `rank_list()`, which is text-labels-only. The fiddly part is not the drag: it is that the drop rewrites the DOM while `renderUI` re-renders from `shared_state$custom_report_items`, so the input -> server reorder -> re-render round trip has to land on the same order or the row snaps back. Needs `chromote` to verify.
 
 #### Low magnitude
+- add options in reporting for including table 1 (with checkboxes for overall, by primary variable (if a correlate report) and by stratify variable if that is selected) (and this table 1 would have a second set of radios for all variables or selected variables), dataset summary (radio option for all variables or only selected variables); this should show up in custom report also, except for table one has no options in the stratified variety, but will maintain the radio option for all variables or selected variables (whcih includes any variable present in any plot either as exposure outcome or stratify by), and the dataset summary would offer the same variable inclusion radio selector
 - **Bug — centre tables in PPT + HTML reports:** `flextable::set_table_properties(align = "center")` is set in both `.style_dataset_summary_ft()` and `.style_section_ft()` in `generate_report.R`, but tables still render left-aligned in PPT and HTML (DOCX may work). Investigate `officer` slide content alignment for PPT and the Rmd template's table rendering for HTML.
 - appearance should be a pill next to explore data and report; full screen for config; this may change to "settings" later but we can leave it as appearance for now. main panel will house container for settings.
 
@@ -207,6 +205,7 @@ Phases 0–7 and 6b complete; Step 6 (Export, Phase 8) is a placeholder stub. Ph
 - Export (§P9): working dataset, prepare/analyze spec, model ouptuts/results (including diagnostics). Formats for results would be individual files vs single document/report (select output type word, pdf, HTML). Zip all files. Share a writer with Step 9 and sessions (§M7).
 
 ### Low magnitude
+- add color palettes that have more colors in them than 8 - shoot for maybe 20?
 - `shinytest2` module tests + `testthat` unit tests.
 - **Install Rtools 4.5 and get `devtools::check()` to 0/0/0.** `devtools::check()`
   currently dies at "Could not find tools necessary to compile a package" - Rtools is

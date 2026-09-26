@@ -1,4 +1,4 @@
-# RESOLVED — EDARK v0.2
+# RESOLVED — EDARK v0.9
 
 Closed TO-DOs, with the root cause and whatever was learned fixing them.
 
@@ -88,6 +88,26 @@ _Nothing closed yet._
 ---
 
 ## Other
+
+### 2026-09-25 - first-launch delay: splash screen
+
+The app took a visibly long time to become usable on launch. Temporary `[edark boot]`
+instrumentation in `edark()` timed each phase, and the first reading was misread: the gap
+from `edark()` to the browser's page request looked like 7-18 s of startup, but it was the
+user walking from the R console to the browser to hit refresh. **Only the browser-side
+numbers, which anchor on the page request, meant anything.**
+
+Measured from the page request: 2.4 s warm, 4.1 s cold. Roughly 0.5 s of that is Shiny
+building and sending the HTML (theme compile included), 0.5-2.3 s is wiring the module
+servers, and ~1.1 s is computing the initial outputs. All of it lands after the page
+arrives, so a splash in the page HTML covers effectively the whole gap - the theme
+precompiling that was considered as an alternative would have bought ~0.5 s.
+
+Built as `edark_splash()` (`R/ui_helpers.R`) plus section 9 of `edark.css`, not with
+`waiter`, which is for busy-spinners over outputs. The instrumentation was removed.
+
+**Durable rule: §N1.16.**
+
 
 ### 2026-09-24 — roxygen errors on every `devtools::document()`
 

@@ -1,5 +1,5 @@
 /* ==========================================================================
-   EDARK v0.2 - the application stylesheet
+   EDARK v0.9 - the application stylesheet
 
    The one CSS file: no SCSS, no build step (PRD/BUILD_UI-redesign.md D5).
    Loaded by edark() through addResourcePath("edark", system.file("www", ...)).
@@ -16,6 +16,7 @@
      6  Containment         scrollable tables with sticky headers
      7  Absorbed inline CSS blocks that used to live in R
      8  Page contract       config pane, info pane, messages slot
+     9  Splash              the loading overlay shown until the app is ready
    ========================================================================== */
 
 
@@ -619,4 +620,209 @@
   flex: 1 1 0;
   min-width: 0;
   text-align: center;
+}
+
+/* ==========================================================================
+   9  Splash screen
+
+   Shown from the first byte of the page until the app is usable, which is the
+   whole of the measured startup gap (2.4 s warm, 4.1 s cold). Built by
+   edark_splash() in R/ui_helpers.R; the JS there drives .edark-splash-bar and
+   toggles is-done / is-active on the stops.
+
+   Courier New, not a web font: the splash is on screen at the exact moment a
+   locked-down hospital machine has no internet, so it can only use fonts that
+   are already on the box (same reason base_font avoids font_google()).
+   ========================================================================== */
+
+.edark-splash {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* White at the left, cerulean at the right. The light stops are pushed past
+     the middle so the centred title and the bar stay on a pale background and
+     can be set in dark ink. */
+  background: linear-gradient(100deg,
+              #ffffff 0%, #f6fbfd 28%, #dcedf6 54%, #66b0d0 80%, #00739e 100%);
+  font-family: "Courier New", Courier, "Nimbus Mono PS", monospace;
+  color: #14202a;
+  opacity: 1;
+  transition: opacity 0.35s ease;
+}
+
+.edark-splash.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  /* Hold visibility until the fade has finished, or it cuts out instantly. */
+  transition: opacity 0.35s ease, visibility 0s linear 0.35s;
+}
+
+.edark-splash-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* Sits slightly above centre: the corner metadata balances the lower half. */
+  margin-bottom: 3rem;
+}
+
+/* Tracking adds a trailing space after the last letter, which pulls a centred
+   line visually left. The padding puts half of it back. Same trick on the
+   subtitle. */
+.edark-splash-title {
+  font-size: clamp(2.5rem, 8vw, 5rem);
+  font-weight: 700;
+  letter-spacing: 0.35em;
+  padding-left: 0.35em;
+  line-height: 1;
+}
+
+.edark-splash-subtitle {
+  margin-top: 1.15rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.28em;
+  padding-left: 0.28em;
+  text-transform: uppercase;
+  color: #4a6474;
+}
+
+.edark-splash-progress {
+  width: min(400px, 72vw);
+  margin-top: 2.75rem;
+}
+
+.edark-splash-track {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background-color: rgba(20, 32, 42, 0.13);
+  overflow: hidden;
+}
+
+.edark-splash-bar {
+  width: 0;
+  height: 100%;
+  background-color: #0b6d91;
+  transition: width 0.25s ease;
+}
+
+/* The segment boundaries: a gap cut through whatever the bar has filled. */
+.edark-splash-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background-color: rgba(255, 255, 255, 0.85);
+}
+
+.edark-splash-stops {
+  display: flex;
+  margin-top: 0.65rem;
+  font-size: 0.64rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.edark-splash-stop {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+  color: rgba(20, 32, 42, 0.35);
+  transition: color 0.25s ease;
+}
+
+.edark-splash-stop.is-done {
+  color: rgba(20, 32, 42, 0.55);
+}
+
+.edark-splash-stop.is-active {
+  color: #0b6d91;
+  font-weight: 700;
+}
+
+/* The corners. Left sits on white, right sits on cerulean, so they take
+   opposite ink. */
+.edark-splash-version {
+  position: absolute;
+  left: 2.25rem;
+  bottom: 1.9rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+  color: rgba(20, 32, 42, 0.6);
+}
+
+.edark-splash-meta {
+  position: absolute;
+  right: 2.25rem;
+  bottom: 1.9rem;
+  text-align: right;
+  font-size: 0.76rem;
+  line-height: 1.7;
+  letter-spacing: 0.06em;
+  /* Bold, because this corner sits on the saturated end of the gradient. */
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+/* Dark mode. The toggle writes data-bs-theme on <html> from localStorage, so a
+   returning user gets this rather than a white flash. */
+[data-bs-theme="dark"] .edark-splash {
+  background: linear-gradient(100deg,
+              #11171c 0%, #141f27 30%, #16303d 56%, #0a5877 82%, #00648c 100%);
+  color: #e6eef3;
+}
+
+[data-bs-theme="dark"] .edark-splash-subtitle {
+  color: #8fa9b8;
+}
+
+[data-bs-theme="dark"] .edark-splash-track {
+  background-color: rgba(230, 238, 243, 0.16);
+}
+
+[data-bs-theme="dark"] .edark-splash-bar {
+  background-color: #4fb3d9;
+}
+
+[data-bs-theme="dark"] .edark-splash-tick {
+  background-color: rgba(17, 23, 28, 0.9);
+}
+
+[data-bs-theme="dark"] .edark-splash-stop {
+  color: rgba(230, 238, 243, 0.35);
+}
+
+[data-bs-theme="dark"] .edark-splash-stop.is-done {
+  color: rgba(230, 238, 243, 0.55);
+}
+
+[data-bs-theme="dark"] .edark-splash-stop.is-active {
+  color: #4fb3d9;
+}
+
+[data-bs-theme="dark"] .edark-splash-version {
+  color: rgba(230, 238, 243, 0.6);
+}
+
+/* Narrow windows: the corner blocks would collide with the centre. */
+@media (max-width: 560px) {
+  .edark-splash-version,
+  .edark-splash-meta {
+    left: 1.25rem;
+    right: 1.25rem;
+    bottom: 1.25rem;
+  }
+  .edark-splash-version {
+    right: auto;
+  }
+  .edark-splash-meta {
+    left: auto;
+  }
 }

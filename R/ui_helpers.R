@@ -604,6 +604,139 @@ edark_aesthetics_controls <- function(ns) {
 }
 
 
+# ── App identity ─────────────────────────────
+
+#' The version and last-updated date shown in the navbar and on the splash
+#'
+#' One definition each, so the navbar and `edark_splash()` can never disagree -
+#' they used to carry the version as two separate literals. `EDARK_VERSION`
+#' must match `Version:` in DESCRIPTION.
+#'
+#' `EDARK_LAST_UPDATE` is the date of the most recent commit and is maintained
+#' by hand: bump it in the same commit as the work it describes (see CLAUDE.md
+#' > Coding philosophy). It is deliberately not read from git, because an
+#' installed package is not a repository.
+#'
+#' @keywords internal
+#' @noRd
+EDARK_VERSION <- "0.9"
+
+#' @rdname EDARK_VERSION
+#' @keywords internal
+#' @noRd
+EDARK_LAST_UPDATE <- "2026-09-25"
+
+
+#' The loading splash, shown until the app is ready to use
+#'
+#' Sits in the `page_navbar()` header, so it is in the page HTML from the first
+#' byte and covers the whole startup gap - measured at 2.4 s warm and 4.1 s cold
+#' from page request to `shiny:idle` (§N1.16).
+#'
+#' The bar is divided into three equal segments, each completed by a real
+#' browser event rather than a timer: `shiny:connected`, the first
+#' `shiny:value`, then `shiny:idle`. Startup progress cannot come from the
+#' server - messages sent while the server function runs are queued until it
+#' returns, so they would all arrive after the work they describe. A slow creep
+#' inside each segment keeps the bar moving without ever completing a segment
+#' the browser has not reported.
+#'
+#' Not `waiter`: that is for busy-spinners over outputs. This needs a full
+#' bleed gradient, the app's own staged-bar idiom and precise hide timing.
+#'
+#' @return A `shiny::tagList` - the overlay and its controlling script.
+#' @keywords internal
+#' @noRd
+edark_splash <- function() {
+  shiny::tagList(
+    shiny::div(
+      id = "edark-splash", class = "edark-splash",
+
+      shiny::div(
+        class = "edark-splash-inner",
+        shiny::div(class = "edark-splash-title", "EDARK"),
+        shiny::div(class = "edark-splash-subtitle",
+                   "Exploratory Data Analysis GUI"),
+        shiny::div(
+          class = "edark-splash-progress",
+          shiny::div(
+            class = "edark-splash-track",
+            shiny::div(id = "edark-splash-bar", class = "edark-splash-bar"),
+            # Equal thirds, so the ticks are fixed rather than computed.
+            shiny::div(class = "edark-splash-tick", style = "left: 33.333%;"),
+            shiny::div(class = "edark-splash-tick", style = "left: 66.667%;")
+          ),
+          shiny::div(
+            class = "edark-splash-stops",
+            shiny::tags$span(class = "edark-splash-stop", "Connecting"),
+            shiny::tags$span(class = "edark-splash-stop", "Building interface"),
+            shiny::tags$span(class = "edark-splash-stop", "Preparing data")
+          )
+        )
+      ),
+
+      shiny::div(class = "edark-splash-version", paste0("v", EDARK_VERSION)),
+      shiny::div(
+        class = "edark-splash-meta",
+        shiny::div("creator: RK"),
+        shiny::div(paste0("last update: ", EDARK_LAST_UPDATE))
+      )
+    ),
+
+    shiny::tags$script(shiny::HTML(paste(
+      "(function() {",
+      "  var el = document.getElementById('edark-splash');",
+      "  if (!el) return;",
+      "  var bar   = document.getElementById('edark-splash-bar');",
+      "  var stops = el.querySelectorAll('.edark-splash-stop');",
+      "  var EDGES = [0, 1/3, 2/3, 1];",
+      "  var MIN_MS = 800, MAX_MS = 15000;",
+      "  var shownAt = Date.now(), stage = 0, creep = 0, finished = false;",
+      "",
+      "  function paint(f) { bar.style.width = (f * 100).toFixed(1) + '%'; }",
+      "",
+      "  function markStops() {",
+      "    for (var i = 0; i < stops.length; i++) {",
+      "      stops[i].classList.toggle('is-done',   i <  stage);",
+      "      stops[i].classList.toggle('is-active', i === stage);",
+      "    }",
+      "  }",
+      "",
+      "  var timer = setInterval(function() {",
+      "    if (finished) return;",
+      "    var from = EDGES[stage], to = EDGES[stage + 1];",
+      "    if (to === undefined) return;",
+      "    creep += (to - from) * 0.02;",
+      "    paint(Math.min(from + creep, from + (to - from) * 0.9));",
+      "  }, 120);",
+      "",
+      "  function advance() {",
+      "    if (finished || stage >= 3) return;",
+      "    stage += 1; creep = 0;",
+      "    paint(EDGES[stage]); markStops();",
+      "  }",
+      "",
+      "  function finish() {",
+      "    if (finished) return;",
+      "    finished = true;",
+      "    clearInterval(timer);",
+      "    stage = 3; markStops(); paint(1);",
+      "    var wait = Math.max(0, MIN_MS - (Date.now() - shownAt));",
+      "    setTimeout(function() { el.classList.add('is-hidden'); }, wait + 200);",
+      "  }",
+      "",
+      "  markStops();",
+      "  $(document).one('shiny:connected', advance);",
+      "  $(document).one('shiny:value',     advance);",
+      "  $(document).one('shiny:idle',      finish);",
+      "  setTimeout(finish, MAX_MS);",
+      "})();",
+      sep = "\n"
+    )))
+  )
+}
+
+
 # ── The page contract ─────────────────────────────────────────────────────────
 
 #' The two pane widths, written once

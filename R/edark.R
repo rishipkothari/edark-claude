@@ -23,44 +23,8 @@
 #' }
 edark <- function(dataset = liver_tx, max_factor_levels = 20) {
 
-  # ── Boot timing (TEMPORARY) ────────────────────────────────────────────────
-  # Console messages marking each phase of startup, to find where the
-  # first-launch delay goes before building a splash screen. See CLAUDE.md >
-  # TO-DOs > High priority. Remove this block, the .boot_log() calls, the
-  # boot_timing_js script in the UI header and the three boot hooks at the top
-  # of the server once that is done.
-  boot_t0   <- Sys.time()
-  .boot_log <- function(label) {
-    message(sprintf("[edark boot] %7.2fs  %s",
-                    as.numeric(difftime(Sys.time(), boot_t0, units = "secs")),
-                    label))
-  }
-  # Client side: times in the browser, from the moment the page was requested.
-  # html = request sent -> first byte of the page back (the server building the
-  # page, which includes compiling the bslib theme); the rest are cumulative.
-  # Sent once, on the first shiny:idle - the app's first quiet moment after the
-  # initial outputs have arrived.
-  boot_timing_js <- shiny::tags$script(shiny::HTML(
-    "(function() {",
-    "  var connected = null;",
-    "  $(document).one('shiny:connected', function() { connected = performance.now(); });",
-    "  $(document).one('shiny:idle', function() {",
-    "    var nav = performance.getEntriesByType('navigation')[0] || {};",
-    "    Shiny.setInputValue('edark_boot_client', {",
-    "      html_ms:      Math.round(nav.responseStart - nav.requestStart),",
-    "      dom_ready_ms: Math.round(nav.domContentLoadedEventEnd),",
-    "      connected_ms: Math.round(connected),",
-    "      idle_ms:      Math.round(performance.now())",
-    "    }, {priority: 'event'});",
-    "  });",
-    "})();"
-  ))
-  .boot_log(sprintf("edark() called: %s rows x %s columns",
-                    format(nrow(dataset), big.mark = ","), ncol(dataset)))
-
   # ── Validate ───────────────────────────────────────────────────────────────
   validate_input(dataset, max_factor_levels)
-  .boot_log("input validated")
 
   # ── Static assets ──────────────────────────────────────────────────────────
   # Serve inst/www at /edark so the stylesheet can be linked in the UI header
@@ -69,16 +33,15 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
 
   # ── Pre-process (runs once, before the reactive graph starts) ──────────────
   dataset_cast  <- cast_column_types(dataset, max_factor_levels)
-  .boot_log("column types cast")
   column_types  <- detect_column_types(dataset_cast)
-  .boot_log("column types detected")
 
   # ── UI ─────────────────────────────────────────────────────────────────────
-  ui_page <- bslib::page_navbar(
+  ui <- bslib::page_navbar(
     id    = "main_navbar",
     title = shiny::tags$span(
       shiny::tags$strong("EDARK"),
-      shiny::tags$span(" v0.2", class = "text-muted small ms-1")
+      shiny::tags$span(paste0(" v", EDARK_VERSION),
+                       class = "text-muted small ms-1")
     ),
     theme = bslib::bs_theme(
       version    = 5,
@@ -94,7 +57,7 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
     header = shiny::tagList(
       # Required for shinyjs::disabled() / toggleState() to take effect
       shinyjs::useShinyjs(),
-      boot_timing_js,
+      edark_splash(),
       # The one stylesheet (inst/www/edark.css, served at /edark)
       shiny::tags$head(
         shiny::tags$link(rel = "stylesheet", type = "text/css",
@@ -207,33 +170,10 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       bslib::input_dark_mode(id = "dark_mode")
     )
   )
-  .boot_log("UI object built")
-
-  # A function rather than the page itself only so the request can be logged
-  # (boot timing, TEMPORARY). Shiny builds the page HTML - and compiles the
-  # theme - after this returns.
-  ui <- function(req) {
-    .boot_log("page requested by the browser")
-    ui_page
-  }
 
 
   # ── Server ─────────────────────────────────────────────────────────────────
   server <- function(input, output, session) {
-
-    # Boot timing (TEMPORARY) - see the note at the top of edark().
-    .boot_log("session started (page built and sent, browser connected)")
-    session$onFlushed(function() {
-      .boot_log("first server flush done (initial outputs computed)")
-    }, once = TRUE)
-    shiny::observeEvent(input$edark_boot_client, {
-      b <- input$edark_boot_client
-      .boot_log(sprintf(
-        paste0("browser idle. Browser-side, from page request: ",
-               "html %sms, DOM ready %sms, Shiny connected %sms, first idle %sms"),
-        b$html_ms, b$dom_ready_ms, b$connected_ms, b$idle_ms
-      ))
-    }, once = TRUE)
 
     # Session-scoped shared state — the single source of truth for everything.
     shared_state <- shiny::reactiveValues(
@@ -485,9 +425,7 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
     explore_output_server("explore_output",   shared_state)
     report_server("report",                   shared_state)
     analysis_main_server("analysis_main",     shared_state)
-    .boot_log("server function done (all module servers wired)")
   }
 
-  .boot_log("app object returned - launching")
   shiny::shinyApp(ui = ui, server = server)
 }

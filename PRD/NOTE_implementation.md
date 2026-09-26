@@ -92,6 +92,12 @@ The one type display that is deliberately *not* a badge is the italic sub-label 
 - **Below a nav row:** `.nav-pills + .tab-content, .nav-underline + .tab-content` in `edark.css` gives one 0.75rem gap below every level-2 pill row and level-3b underline row (not inside a `.sidebar`, where level 3a has its own). Put a panel's content straight into `nav_panel()`. Do not wrap it in `div(class = "pt-2")`: those wrappers used to make some sub-tabs start 8px lower than their siblings, so the frame jumped when switching tabs.
 - **One frame per page:** `edark_page()` gives its inner (info) `layout_sidebar()` `border = FALSE, border_radius = FALSE`, and the outer one `padding = 0` when there is an info pane. Config | centre | info are then three columns of one bordered box, not a box inset inside another. The centre's padding comes from the inner layout. A page without an info pane keeps the outer padding, because nothing else supplies it.
 
+### N1.16 Startup progress cannot come from the server
+Messages sent with `session$sendCustomMessage()` while the server function is running are queued and flushed only after it returns, so a per-stage startup bar driven from R would report every stage at once, after the work. `edark_splash()` therefore anchors its three equal segments on browser events - `shiny:connected`, the first `shiny:value`, then `shiny:idle` - and creeps slowly inside each segment without ever completing one the browser has not reported. It hides on the first `shiny:idle`, with a 0.8 s floor so it cannot flash and a 15 s ceiling so a failed start cannot trap the user behind it.
+
+Measured startup, page request to `shiny:idle`: 2.4 s warm, 4.1 s cold (the extra is R lazily loading namespaces the first time module servers touch them). All of it is after the page arrives, which is why an in-page splash covers it. Do not time the gap from `edark()` being called - that includes however long the user takes to reach the browser.
+
+
 ---
 
 ## N2 — Statistical Methods Registry
