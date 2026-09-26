@@ -631,7 +631,12 @@ EDARK_LAST_UPDATE <- "2026-09-25"
 #'
 #' Sits in the `page_navbar()` header, so it is in the page HTML from the first
 #' byte and covers the whole startup gap - measured at 2.4 s warm and 4.1 s cold
-#' from page request to `shiny:idle` (§N1.16).
+#' from page request to `shiny:idle` (§N1.16). A centred card over a plain
+#' backdrop, so the app is never seen half-built behind it.
+#'
+#' It holds for at least 2 s even when the app is ready sooner, and the final
+#' fill is stretched across whatever hold is left so the bar completes as the
+#' card leaves.
 #'
 #' The bar is divided into three equal segments, each completed by a real
 #' browser event rather than a timer: `shiny:connected`, the first
@@ -652,34 +657,44 @@ edark_splash <- function() {
     shiny::div(
       id = "edark-splash", class = "edark-splash",
 
+      # A card, not the whole viewport: the overlay behind it is the plain body
+      # colour, so the app is never seen assembling itself.
       shiny::div(
-        class = "edark-splash-inner",
-        shiny::div(class = "edark-splash-title", "EDARK"),
-        shiny::div(class = "edark-splash-subtitle",
-                   "Exploratory Data Analysis GUI"),
+        class = "edark-splash-card",
+
         shiny::div(
-          class = "edark-splash-progress",
+          class = "edark-splash-inner",
+          shiny::div(class = "edark-splash-title", "EDARK"),
+          shiny::div(class = "edark-splash-subtitle",
+                     "Exploratory Data Analysis GUI"),
           shiny::div(
-            class = "edark-splash-track",
-            shiny::div(id = "edark-splash-bar", class = "edark-splash-bar"),
-            # Equal thirds, so the ticks are fixed rather than computed.
-            shiny::div(class = "edark-splash-tick", style = "left: 33.333%;"),
-            shiny::div(class = "edark-splash-tick", style = "left: 66.667%;")
-          ),
+            class = "edark-splash-progress",
+            shiny::div(
+              class = "edark-splash-track",
+              shiny::div(id = "edark-splash-bar", class = "edark-splash-bar"),
+              # Equal thirds, so the ticks are fixed rather than computed.
+              shiny::div(class = "edark-splash-tick", style = "left: 33.333%;"),
+              shiny::div(class = "edark-splash-tick", style = "left: 66.667%;")
+            ),
+            shiny::div(
+              class = "edark-splash-stops",
+              # One word each: the card is narrow, and two-word labels wrap.
+              shiny::tags$span(class = "edark-splash-stop", "Connecting"),
+              shiny::tags$span(class = "edark-splash-stop", "Building"),
+              shiny::tags$span(class = "edark-splash-stop", "Preparing")
+            )
+          )
+        ),
+
+        shiny::div(
+          class = "edark-splash-footer",
+          shiny::div(class = "edark-splash-version", paste0("v", EDARK_VERSION)),
           shiny::div(
-            class = "edark-splash-stops",
-            shiny::tags$span(class = "edark-splash-stop", "Connecting"),
-            shiny::tags$span(class = "edark-splash-stop", "Building interface"),
-            shiny::tags$span(class = "edark-splash-stop", "Preparing data")
+            class = "edark-splash-meta",
+            shiny::div("creator: RK"),
+            shiny::div(paste0("last update: ", EDARK_LAST_UPDATE))
           )
         )
-      ),
-
-      shiny::div(class = "edark-splash-version", paste0("v", EDARK_VERSION)),
-      shiny::div(
-        class = "edark-splash-meta",
-        shiny::div("creator: RK"),
-        shiny::div(paste0("last update: ", EDARK_LAST_UPDATE))
       )
     ),
 
@@ -690,7 +705,7 @@ edark_splash <- function() {
       "  var bar   = document.getElementById('edark-splash-bar');",
       "  var stops = el.querySelectorAll('.edark-splash-stop');",
       "  var EDGES = [0, 1/3, 2/3, 1];",
-      "  var MIN_MS = 800, MAX_MS = 15000;",
+      "  var MIN_MS = 2000, MAX_MS = 15000;",
       "  var shownAt = Date.now(), stage = 0, creep = 0, finished = false;",
       "",
       "  function paint(f) { bar.style.width = (f * 100).toFixed(1) + '%'; }",
@@ -720,9 +735,13 @@ edark_splash <- function() {
       "    if (finished) return;",
       "    finished = true;",
       "    clearInterval(timer);",
-      "    stage = 3; markStops(); paint(1);",
-      "    var wait = Math.max(0, MIN_MS - (Date.now() - shownAt));",
-      "    setTimeout(function() { el.classList.add('is-hidden'); }, wait + 200);",
+      "    stage = 3; markStops();",
+      "    // Ready early: stretch the last fill across the remaining hold so",
+      "    // the bar completes as the card leaves, rather than sitting full.",
+      "    var hold = Math.max(0, MIN_MS - (Date.now() - shownAt));",
+      "    bar.style.transitionDuration = Math.max(250, hold) + 'ms';",
+      "    paint(1);",
+      "    setTimeout(function() { el.classList.add('is-hidden'); }, hold + 200);",
       "  }",
       "",
       "  markStops();",

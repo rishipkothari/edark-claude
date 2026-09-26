@@ -625,8 +625,9 @@
 /* ==========================================================================
    9  Splash screen
 
-   Shown from the first byte of the page until the app is usable, which is the
-   whole of the measured startup gap (2.4 s warm, 4.1 s cold). Built by
+   A centred card over a plain backdrop, shown from the first byte of the page
+   until the app is usable. The backdrop is the ordinary body colour rather
+   than a scrim, so the app is never seen half-built behind it. Built by
    edark_splash() in R/ui_helpers.R; the JS there drives .edark-splash-bar and
    toggles is-done / is-active on the stops.
 
@@ -645,13 +646,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  /* White at the left, cerulean at the right. The light stops are pushed past
-     the middle so the centred title and the bar stay on a pale background and
-     can be set in dark ink. */
-  background: linear-gradient(100deg,
-              #ffffff 0%, #f6fbfd 28%, #dcedf6 54%, #66b0d0 80%, #00739e 100%);
+  background-color: var(--bs-body-bg);
   font-family: "Courier New", Courier, "Nimbus Mono PS", monospace;
-  color: #14202a;
   opacity: 1;
   transition: opacity 0.35s ease;
 }
@@ -664,42 +660,61 @@
   transition: opacity 0.35s ease, visibility 0s linear 0.35s;
 }
 
+/* Nominally a third of the viewport each way. The clamps stop it collapsing
+   on a small window or stretching on a wide one - the contents have a natural
+   size and the card should sit around it, not scale with the screen. */
+.edark-splash-card {
+  display: flex;
+  flex-direction: column;
+  width: clamp(400px, 34vw, 560px);
+  height: clamp(230px, 34vh, 330px);
+  padding: 1.6rem 1.75rem 1.3rem;
+  border-radius: 10px;
+  /* White at the left, cerulean at the right. The light stops are pushed past
+     the middle so the title and bar stay on a pale field and can be set in
+     dark ink, while the right edge is saturated enough to carry white. */
+  background: linear-gradient(100deg,
+              #ffffff 0%, #f6fbfd 28%, #dcedf6 54%, #66b0d0 80%, #00739e 100%);
+  box-shadow: 0 10px 36px rgba(12, 42, 60, 0.22);
+  color: #14202a;
+}
+
 .edark-splash-inner {
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
-  /* Sits slightly above centre: the corner metadata balances the lower half. */
-  margin-bottom: 3rem;
+  justify-content: center;
 }
 
 /* Tracking adds a trailing space after the last letter, which pulls a centred
-   line visually left. The padding puts half of it back. Same trick on the
-   subtitle. */
+   line visually left. The padding puts half of it back. Same on the subtitle. */
 .edark-splash-title {
-  font-size: clamp(2.5rem, 8vw, 5rem);
+  font-size: clamp(1.9rem, 2.6vw, 2.6rem);
   font-weight: 700;
-  letter-spacing: 0.35em;
-  padding-left: 0.35em;
+  letter-spacing: 0.3em;
+  padding-left: 0.3em;
   line-height: 1;
 }
 
 .edark-splash-subtitle {
-  margin-top: 1.15rem;
-  font-size: 0.8rem;
-  letter-spacing: 0.28em;
-  padding-left: 0.28em;
+  margin-top: 0.8rem;
+  font-size: 0.62rem;
+  letter-spacing: 0.2em;
+  padding-left: 0.2em;
   text-transform: uppercase;
   color: #4a6474;
 }
 
 .edark-splash-progress {
-  width: min(400px, 72vw);
-  margin-top: 2.75rem;
+  width: 100%;
+  max-width: 320px;
+  margin-top: 1.6rem;
 }
 
 .edark-splash-track {
   position: relative;
-  height: 6px;
+  height: 5px;
   border-radius: 3px;
   background-color: rgba(20, 32, 42, 0.13);
   overflow: hidden;
@@ -724,9 +739,9 @@
 
 .edark-splash-stops {
   display: flex;
-  margin-top: 0.65rem;
-  font-size: 0.64rem;
-  letter-spacing: 0.12em;
+  margin-top: 0.5rem;
+  font-size: 0.55rem;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
@@ -734,6 +749,10 @@
   flex: 1 1 0;
   min-width: 0;
   text-align: center;
+  /* A wrapped label would make the row two lines tall and shift the card. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: rgba(20, 32, 42, 0.35);
   transition: color 0.25s ease;
 }
@@ -747,25 +766,27 @@
   font-weight: 700;
 }
 
-/* The corners. Left sits on white, right sits on cerulean, so they take
-   opposite ink. */
+/* The card's own bottom row. Left sits on white, right sits on cerulean, so
+   they take opposite ink. */
+.edark-splash-footer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
 .edark-splash-version {
-  position: absolute;
-  left: 2.25rem;
-  bottom: 1.9rem;
-  font-size: 0.8rem;
+  font-size: 0.7rem;
   letter-spacing: 0.1em;
   color: rgba(20, 32, 42, 0.6);
 }
 
 .edark-splash-meta {
-  position: absolute;
-  right: 2.25rem;
-  bottom: 1.9rem;
   text-align: right;
-  font-size: 0.76rem;
-  line-height: 1.7;
-  letter-spacing: 0.06em;
+  font-size: 0.66rem;
+  line-height: 1.65;
+  letter-spacing: 0.04em;
   /* Bold, because this corner sits on the saturated end of the gradient. */
   font-weight: 700;
   color: rgba(255, 255, 255, 0.95);
@@ -773,9 +794,10 @@
 
 /* Dark mode. The toggle writes data-bs-theme on <html> from localStorage, so a
    returning user gets this rather than a white flash. */
-[data-bs-theme="dark"] .edark-splash {
+[data-bs-theme="dark"] .edark-splash-card {
   background: linear-gradient(100deg,
-              #11171c 0%, #141f27 30%, #16303d 56%, #0a5877 82%, #00648c 100%);
+              #11171c 0%, #141f27 28%, #16303d 54%, #0a5877 80%, #00648c 100%);
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.45);
   color: #e6eef3;
 }
 
@@ -811,18 +833,10 @@
   color: rgba(230, 238, 243, 0.6);
 }
 
-/* Narrow windows: the corner blocks would collide with the centre. */
-@media (max-width: 560px) {
-  .edark-splash-version,
-  .edark-splash-meta {
-    left: 1.25rem;
-    right: 1.25rem;
-    bottom: 1.25rem;
-  }
-  .edark-splash-version {
-    right: auto;
-  }
-  .edark-splash-meta {
-    left: auto;
+/* Below the card's minimum width, give it the window instead. */
+@media (max-width: 460px) {
+  .edark-splash-card {
+    width: calc(100vw - 2rem);
+    min-width: 0;
   }
 }
