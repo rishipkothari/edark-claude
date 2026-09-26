@@ -211,6 +211,7 @@ Phases 0–7 and 6b complete; Step 6 (Export, Phase 8) is a placeholder stub. Ph
 - Export (§P9): working dataset, prepare/analyze spec, model ouptuts/results (including diagnostics). Formats for results would be individual files vs single document/report (select output type word, pdf, HTML). Zip all files. Share a writer with Step 9 and sessions (§M7).
 
 ### Low magnitude
+- Splash card overflows on mid-width windows. After the 2x scale-up its min-width is 800px, but the fallback rule in `edark.css` section 9 only triggers below 460px, so roughly 460-840px of window width overflows horizontally. Raise that breakpoint to about 880px.
 - add color palettes that have more colors in them than 8 - shoot for maybe 20?
 - `shinytest2` module tests + `testthat` unit tests.
 - **Install Rtools 4.5 and get `devtools::check()` to 0/0/0.** `devtools::check()`
