@@ -84,9 +84,14 @@ bslib ships `.bslib-card .card-body { max-height: var(--bslib-card-body-max-heig
 ### N1.14 Badges come from `edark_badge()` only
 Every badge in the app is built by `edark_badge()` / `edark_type_badge()` in `R/ui_helpers.R`; sizing lives in `.edark-badge*` in `inst/www/edark.css`. Callers pass a *role* (`numeric`, `factor`, `role`, `count`, `study_*`, ...), never a Bootstrap variant and never an inline `font-size`. An unknown role falls back to `muted` rather than erroring, so a new column type degrades to a plain badge instead of breaking a table cell.
 
-Two sizes only: `sm` inside a table cell, `md` for a badge standing alone in a pane. A column type the Prepare pipeline has cast keeps its own colour and gains a ring (`edark_type_badge(type, changed = TRUE)`) - colour says what it is, the ring says it moved.
+Two sizes only: `sm` inside a table cell, `md` for a badge standing alone in a pane. A column type the Prepare pipeline has cast keeps its own colour and gains a leading arrow (`edark_type_badge(type, changed = TRUE)`, drawn by `.edark-badge-changed::before`) - colour says what it is, the arrow says it moved. It was an amber ring until 2026-09-25: a ring in the app's warning colour read as "something is wrong with this column", which is not what a deliberate cast means. No badge role names a text colour either; `text-bg-*` computes its own contrast.
 
 The one type display that is deliberately *not* a badge is the italic sub-label under each column header in Prepare › Data Preview (`.make_col_defs()`): a badge in every header of a wide data table reads as noise.
+
+### N1.14b Severity is one muted scale; amber never means anything else
+- The theme's `warning` is set once, `bs_theme(warning = "#b7791f")` in `edark()`. Bootswatch flatly's own is `#f39c12`, a bright orange that landed on badges, dialog buttons and full-width alerts alike. Dark mode lifts it by redefining `--bs-warning` **and** `--bs-warning-rgb` under `[data-bs-theme="dark"]` - `.text-warning` reads the rgb form, so setting only the first leaves that class on the light value.
+- **Alerts are restyled in `edark.css`, not per caller.** Flatly ships `.alert { color: #fff }` over a solid theme-colour fill, so one warning painted a band of orange across the page. Section 5 redraws every `.alert-*` as a tinted panel with a coloured rule down its start edge, from the `--edark-alert-*` tokens. These rules carry one class, the same as flatly's, so they win only because this stylesheet loads last - never move the alert block above an import.
+- **"The pipeline touched this" is not a severity.** Prepare › Data Preview tints transformed columns with `--edark-tint-bg` (a neutral primary) and prefixes the type sub-label with an arrow, the same mark the changed-type badge uses. It was amber at 15%, which is how the warning colour ended up meaning three different things (§BUILD_UI-redesign 2.7).
 
 ### N1.15 Spacing around nav rows and the page frame lives in CSS, not in wrappers
 - **Below a nav row:** `.nav-pills + .tab-content, .nav-underline + .tab-content` in `edark.css` gives one 0.75rem gap below every level-2 pill row and level-3b underline row (not inside a `.sidebar`, where level 3a has its own). Put a panel's content straight into `nav_panel()`. Do not wrap it in `div(class = "pt-2")`: those wrappers used to make some sub-tabs start 8px lower than their siblings, so the frame jumped when switching tabs.
@@ -126,6 +131,7 @@ Any `reactive({})` that only calls `apply_prepare_pipeline(shared_state)` will *
 ### N3.2 Where Apply runs
 - `module_prepare_confirm.R` — Apply Changes / Reset buttons.
 - `edark.R` — the sub-tab navigation guard (`.do_nav_apply()`): auto-applies on sub-tab switch, blocks on invalid transforms (`.find_invalid_transforms()`), and shows the custom-report modal.
+- The custom-report modal (`.custom_items_modal()`) offers three routes and each caller must wire all three: confirm, revert, and **discard the items** (`.clear_custom_report_items()`). Discard is what ends the dialog - without it the same modal fires on every Apply and every Prepare tab switch for the rest of the session, and Prepare has no other way to empty the queue.
 - Both call `.prune_conflicting_filter_specs()` first (drops filters on excluded columns or columns with a staged transform), then snapshot with `.snapshot_last_applied_specs()`.
 
 ### N3.3 Revert mechanics
@@ -136,6 +142,7 @@ Any `reactive({})` that only calls `apply_prepare_pipeline(shared_state)` will *
 - Pipeline helpers live in `module_column_transform.R` only: `.apply_column_transforms()`, `.make_range_labels()`, `.transform_spec_is_valid()`.
 - **Adding a transform type:** (1) new dropdown option in `transform_variables_ui`; (2) new config `renderUI` case; (3) new branch in `.apply_column_transforms()` + `.transform_spec_is_valid()`. No other files need changes.
 - Auto-factor and cut-point transforms produce **ordered** factors; Analyze converts them to unordered before fitting (§N6.6).
+- **A `numericInput`'s `min` / `max` bound its spinner, not what can be typed.** Anything at all reaches the server, so a box with a real range must clamp in its observer and write the corrected value back with `updateNumericInput()`. The winsorize pair does this through `.winsor_lower()` / `.winsor_upper()`: lower lives in [1, 99], upper in [lower + 1, 100], and raising lower pushes upper up. Two things make that safe - the write-back re-fires the observer exactly once with a value that needs no correction, so it settles rather than looping; and an `NA` (an empty box mid-edit) returns early instead of snapping a number in under the cursor. `.apply_column_transforms()` clamps as well, because a spec can arrive from `edark_report()` without passing through either box.
 - **A removed transform is still a change.** Anything comparing staged transforms against the last applied set must key off `union(names(specs), names(last_tx))`, never `names(specs)` alone — a transform deleted since the last Apply is absent from the staged list and would go untested. This is why `.build_prepare_warnings()` and `.prune_conflicting_filter_specs()` both use the union, and why `.apply_row_filters()` skips a filter whose `type` disagrees with the column as a backstop (`RESOLVED.md`, Prepare, 2026-09-24).
 
 ---

@@ -76,9 +76,11 @@ Transform specs persist through Apply: returning to the tab shows the currently 
 | **Auto-factor** (`auto`) | ordered factor — each unique value becomes a level | — | never |
 | **Cut points** (`cutpoints`) | ordered factor | breakpoints (comma-separated); optional level labels | no valid breakpoint inside the data range |
 | **Log transform** (`log`) | numeric | base: ln / log10 / log2 | any value ≤ 0 |
-| **Winsorize** (`winsorize`) | numeric | lower and upper percentile | lower percentile ≥ upper |
+| **Winsorize** (`winsorize`) | numeric | lower percentile (1-99) and upper percentile (lower + 1 to 100) | lower percentile ≥ upper, or either outside its range |
 | **Round** (`round`) | numeric | decimal places | never |
 | **Standardize** (`standardize`) | numeric (z-score: mean 0, SD 1) | — | SD = 0 |
+
+Both winsorize boxes clamp themselves: a value outside its range snaps back to the nearest allowed one, and raising the lower percentile pushes the upper one up to stay at least one percentile clear. The bounds live in one place, `.winsor_lower()` / `.winsor_upper()` in `module_column_transform.R`, so the pipeline clamps a spec that arrives from `edark_report()` the same way.
 
 ### P5.3 Cut-Point Labels
 Breakpoints outside the data range are dropped silently. Default labels describe the ranges — e.g. breakpoints `25, 40` → `"< 25"`, `"25 – < 40"`, `"≥ 40"`. User-supplied labels replace them.
@@ -127,7 +129,7 @@ Row filters run last so they act on the final (possibly transformed) values.
 
 ### P7.5 Reset and the Custom-Report Guard
 - **Reset to Original** clears all staged specs and restores the working dataset to the original.
-- If Explore custom report items exist, Apply, Reset and auto-apply first show **"Custom Report Will Use the Changed Data"**: the items are kept and re-drawn from the changed dataset when the report is generated (their thumbnails still show the old data; an item whose columns were removed renders a placeholder, §E12). The user can continue (**Apply Changes** / **Reset to Original**) or **go back and revert**, which restores every staged spec to the last applied state and resyncs every Prepare tab (§M6.5). One modal helper, `.custom_items_modal()` in `module_prepare_confirm.R`, serves all three paths.
+- If Explore custom report items exist, Apply, Reset and auto-apply first show **"Custom Report Will Use the Changed Data"**: the items are kept and re-drawn from the changed dataset when the report is generated (their thumbnails still show the old data; an item whose columns were removed renders a placeholder, §E12). The user has three ways out: continue (**Apply Changes** / **Reset to Original**); **go back and revert**, which restores every staged spec to the last applied state and resyncs every Prepare tab (§M6.5); or **discard items and continue**, which empties `custom_report_items` and then performs the action. Discarding is the only one that settles the question - otherwise the modal fires again on the next Apply and on every later Prepare tab switch, with no way to dismiss it from Prepare. One modal helper, `.custom_items_modal()` in `module_prepare_confirm.R`, serves all three paths.
 
 ---
 

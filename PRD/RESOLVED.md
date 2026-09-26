@@ -12,6 +12,41 @@ Consult this file when a bug smells familiar, before re-deriving a fix.
 
 ## Prepare
 
+### 2026-09-25 - the custom-report modal had no way out from Prepare
+
+With items queued in the custom report, "Custom Report Will Use the Changed Data" fired on
+Apply, on Reset and on every Prepare sub-tab switch. Both answers left the queue intact, so
+a user who no longer wanted that report met the same dialog for the rest of the session -
+and the only place to empty the queue was Report > Custom, three clicks away in another
+stage.
+
+The modal now offers a third route, "Discard Items & Continue": `.clear_custom_report_items()`
+empties `custom_report_items` and the action proceeds. All three callers pass a `clear_id`
+(Apply and Reset in `module_prepare_confirm.R`, the tab guard in `edark.R`). Verified in the
+browser with `chromote`: after discarding, a further staged change and a tab switch no longer
+raise the dialog.
+
+Report > Custom needed no change - it resolves its selected row by id against the list and
+falls back to no selection when the list is empty.
+
+**Durable rule: §N3.2.**
+
+### 2026-09-25 - winsorize percentile boxes accepted anything
+
+`numericInput(min =, max =)` bounds the spinner arrows only; a typed value goes to the
+server untouched. The two winsorize boxes therefore accepted 0, -4, 250 or a lower
+percentile above the upper one, and the spec was stored as typed. A lower bound at or above
+the upper one makes `quantile()` flatten the column to a constant, and Apply's validity
+check caught only `lo >= hi`, not the out-of-range cases.
+
+Bounds now live in `.winsor_lower()` / `.winsor_upper()` (`module_column_transform.R`) and
+are enforced in three places: the two observers (which clamp and write back with
+`updateNumericInput()`), `.apply_column_transforms()`, and `.transform_spec_is_valid()`.
+Lower is the box the user drives: it clamps to [1, 99] and pushes the upper box up to stay
+one percentile clear; upper clamps to [lower + 1, 100].
+
+**Durable rule: §N3.4.**
+
 ### 2026-09-24 — transform → row filter → transform did not warn on stage
 
 Root cause was one line shared by `.build_prepare_warnings()` and
@@ -88,6 +123,33 @@ _Nothing closed yet._
 ---
 
 ## Other
+
+### 2026-09-25 - the warning colour was an alarm, and amber meant three things
+
+Bootswatch flatly's `warning` is `#f39c12`. Flatly also fills `.alert` solid and sets its
+text white, so a single Prepare warning ran a band of bright orange across the top of the
+page; the same colour marked a cast type (an amber ring on the badge), tinted transformed
+columns in Data Preview at 15%, and coloured dialog confirm buttons and `datetime` badges.
+Loud, and overloaded: two of those uses are not warnings at all.
+
+Four changes, all at the token level rather than per caller:
+
+- `bs_theme(warning = "#b7791f")` in `edark()` - one muted ochre everywhere. Dark mode
+  redefines `--bs-warning` *and* `--bs-warning-rgb` in `edark.css`; `.text-warning` reads
+  the rgb form, so setting only the first left that class on the light value.
+- Alerts are redrawn in `edark.css` section 5 as tinted panels with a coloured start rule,
+  from new `--edark-alert-*` tokens. One class each, same as flatly's own rules, so they
+  win on source order alone.
+- The cast-type badge lost its amber ring for a leading arrow
+  (`.edark-badge-changed::before`), and the three badge roles that carried `text-dark`
+  (written for the old bright orange) now let `text-bg-*` compute its own contrast.
+- Data Preview's amber tint became `--edark-tint-bg`, a neutral primary, with the same
+  arrow on the type sub-label. It had no dark-mode value before, because it was a literal.
+
+Contrast checked in both themes with `chromote`: light `#6f5010` on `#fdf6e6`, dark
+`#e8d5a3` on `#3a2f13`.
+
+**Durable rules: §N1.14, §N1.14b.**
 
 ### 2026-09-25 - first-launch delay: splash screen
 

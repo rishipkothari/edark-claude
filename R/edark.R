@@ -47,6 +47,10 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       version    = 5,
       bootswatch = "flatly",
       primary    = "#2c7be5",
+      # flatly's own warning is #f39c12, a bright orange that read as an alarm
+      # wherever it landed - a badge, a dialog button, a full-width alert. One
+      # muted ochre replaces it everywhere; dark mode lifts it in edark.css.
+      warning    = "#b7791f",
       # The native OS font stack, not font_google(): a Google font needs
       # internet on first launch, which locked-down hospital machines do not
       # have (§BUILD_UI-redesign Stage 3).
@@ -289,8 +293,9 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
         n_items <- length(shiny::isolate(shared_state$custom_report_items))
         if (n_items > 0) {
           .custom_items_modal(n_items, "cancel_nav_apply_btn",
-                              "confirm_nav_apply_btn", "Apply Changes")
-          return()  # do NOT update last_prepare_tab — stays on old tab
+                              "confirm_nav_apply_btn", "Apply Changes",
+                              "clear_nav_apply_btn")
+          return()  # do NOT update last_prepare_tab - stays on old tab
         }
         .do_nav_apply()
       }
@@ -311,6 +316,15 @@ edark <- function(dataset = liver_tx, max_factor_levels = 20) {
       shiny::removeModal()
       .revert_to_last_applied(shared_state)
       bslib::nav_select("prepare_tabs", last_prepare_tab())
+    }, ignoreInit = TRUE)
+
+    # Discard the queued items, then apply and let the navigation stand. Chosen
+    # once, this stops the dialog firing on every later tab switch.
+    shiny::observeEvent(input$clear_nav_apply_btn, {
+      shiny::removeModal()
+      .clear_custom_report_items(shared_state)
+      .do_nav_apply()
+      last_prepare_tab(shiny::isolate(input$prepare_tabs))
     }, ignoreInit = TRUE)
 
     # Light / dark mode needs no server code: bslib::input_dark_mode() sets

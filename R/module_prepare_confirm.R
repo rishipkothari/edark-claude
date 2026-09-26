@@ -227,12 +227,15 @@ prepare_confirm_server <- function(id, shared_state) {
     }
 
     # Show a confirmation modal when custom report items exist.
-    # Both a "Proceed" and a "Cancel & Revert" button are provided so the user
-    # can roll back staged changes if they decide not to proceed.
-    .custom_items_guard <- function(action_label, confirm_btn_id, cancel_btn_id) {
+    # Three ways out: proceed, roll the staged changes back, or discard the
+    # queued items - the last one so a user who does not want the report no
+    # longer meets this dialog on every Apply and every tab switch.
+    .custom_items_guard <- function(action_label, confirm_btn_id, cancel_btn_id,
+                                    clear_btn_id) {
       n_items <- length(shiny::isolate(shared_state$custom_report_items))
       if (n_items == 0) return(FALSE)  # no guard needed
-      .custom_items_modal(n_items, ns(cancel_btn_id), ns(confirm_btn_id), action_label)
+      .custom_items_modal(n_items, ns(cancel_btn_id), ns(confirm_btn_id),
+                          action_label, ns(clear_btn_id))
       TRUE  # guard was triggered
     }
 
@@ -252,7 +255,8 @@ prepare_confirm_server <- function(id, shared_state) {
       }
 
       # Warn if custom report items exist
-      if (.custom_items_guard("Apply Changes", "confirm_apply_btn", "cancel_apply_btn")) return()
+      if (.custom_items_guard("Apply Changes", "confirm_apply_btn",
+                              "cancel_apply_btn", "clear_apply_btn")) return()
 
       do_apply()
     })
@@ -267,11 +271,18 @@ prepare_confirm_server <- function(id, shared_state) {
       .revert_to_last_applied(shared_state)
     }, ignoreInit = TRUE)
 
+    shiny::observeEvent(input$clear_apply_btn, {
+      shiny::removeModal()
+      .clear_custom_report_items(shared_state)
+      do_apply()
+    }, ignoreInit = TRUE)
+
 
     # ── Reset button ──────────────────────────────────────────────────────────
     shiny::observeEvent(input$reset_btn, {
       # Warn if custom report items exist
-      if (.custom_items_guard("Reset to Original", "confirm_reset_btn", "cancel_reset_btn")) return()
+      if (.custom_items_guard("Reset to Original", "confirm_reset_btn",
+                              "cancel_reset_btn", "clear_reset_btn")) return()
       do_reset()
     })
 
@@ -283,6 +294,12 @@ prepare_confirm_server <- function(id, shared_state) {
     shiny::observeEvent(input$cancel_reset_btn, {
       shiny::removeModal()
       .revert_to_last_applied(shared_state)
+    }, ignoreInit = TRUE)
+
+    shiny::observeEvent(input$clear_reset_btn, {
+      shiny::removeModal()
+      .clear_custom_report_items(shared_state)
+      do_reset()
     }, ignoreInit = TRUE)
   })
 }
@@ -442,9 +459,15 @@ apply_prepare_pipeline <- function(shared_state) {
     } else if (identical(spec$method, "log")) {
       if (any(!is.na(x) & x <= 0)) "contains non-positive values (log undefined)" else NULL
     } else if (identical(spec$method, "winsorize")) {
-      lo <- if (!is.null(spec$lower_pct)) spec$lower_pct else 1
-      hi <- if (!is.null(spec$upper_pct)) spec$upper_pct else 99
-      if (lo >= hi) "lower percentile must be less than upper" else NULL
+      # The two boxes clamp themselves (.winsor_lower / .winsor_upper), so this
+      # only catches a spec that reached the state some other way.
+      lo <- if (!is.null(spec$lower_pct)) spec$lower_pct else EDARK_WINSOR_MIN
+      hi <- if (!is.null(spec$upper_pct)) spec$upper_pct else EDARK_WINSOR_MAX - 1
+      if (!.transform_spec_is_valid(spec, x))
+        sprintf("percentiles must satisfy %g <= lower < upper <= %g (now %g and %g)",
+                EDARK_WINSOR_MIN, EDARK_WINSOR_MAX, lo, hi)
+      else
+        NULL
     } else {
       NULL
     }
@@ -560,26 +583,58 @@ apply_prepare_pipeline <- function(shared_state) {
 
 # Confirmation modal shown before Prepare changes are applied or reset while
 # the custom report has items. Items store only a plot spec and are re-drawn
-# from the working dataset when the custom report is generated, so they are
-# kept and will reflect the new data - nothing is cleared. Shared by the
-# Apply / Reset buttons here and the tab-switch auto-apply in edark.R, which
-# pass fully namespaced button ids.
-.custom_items_modal <- function(n_items, cancel_id, confirm_id, confirm_label) {
+# from the working dataset when the custom report is generated, so proceeding
+# keeps them and they reflect the new data.
+#
+# Three ways out, and a caller wires all three: confirm, revert, and discard
+# the items (clear_id). Discard is what ends the dialog for the session - with
+# only the first two, it fires again on the next Apply and on every later
+# Prepare tab switch. Shared by the Apply / Reset buttons here and the
+# tab-switch auto-apply in edark.R, which pass fully namespaced button ids.
+.custom_items_modal <- function(n_items, cancel_id, confirm_id, confirm_label,
+                                clear_id = NULL) {
   shiny::showModal(shiny::modalDialog(
     title = "Custom Report Will Use the Changed Data",
-    paste0(
-      "You have ", n_items, " item(s) in your custom report. They will be kept ",
-      "and re-drawn from the changed dataset when you generate the report. ",
-      "Their thumbnails still show the current data. Would you like to proceed?"
+    shiny::tagList(
+      shiny::p(paste0(
+        "You have ", n_items, " item(s) in your custom report. They will be kept ",
+        "and re-drawn from the changed dataset when you generate the report. ",
+        "Their thumbnails still show the current data. Would you like to proceed?"
+      )),
+      # Without this the dialog reappears on every Apply and on every tab
+      # switch for the rest of the session, with no way out of it from Prepare.
+      if (!is.null(clear_id))
+        shiny::p(class = "small text-muted mb-0",
+                 "Discarding the items answers this question for good: it will ",
+                 "not be asked again unless you queue new ones from Explore.")
     ),
     footer = shiny::tagList(
       edark_button(NULL, cancel_id, "Go Back & Revert Changes",
                    variant = "secondary", size = "dialog", outline = TRUE),
-      edark_button(NULL, confirm_id, confirm_label, variant = "warning",
+      if (!is.null(clear_id))
+        edark_button(NULL, clear_id, "Discard Items & Continue",
+                     icon = "trash", variant = "danger", size = "dialog",
+                     outline = TRUE),
+      edark_button(NULL, confirm_id, confirm_label, variant = "primary",
                    size = "dialog")
     ),
     easyClose = FALSE
   ))
+}
+
+
+# Drop every queued custom-report item, with a notification saying so.
+#
+# The Report module keeps its selected row in a local reactiveVal and resolves
+# it by id against this list, so an emptied list is enough - it falls back to
+# no selection on its own.
+.clear_custom_report_items <- function(shared_state) {
+  n <- length(shiny::isolate(shared_state$custom_report_items))
+  shared_state$custom_report_items <- list()
+  shiny::showNotification(
+    sprintf("Discarded %d custom report item%s.", n, if (n == 1L) "" else "s"),
+    type = "message", duration = 4
+  )
 }
 
 

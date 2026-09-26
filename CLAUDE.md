@@ -155,7 +155,6 @@ main-specific questions.
 
 #### Low magnitude
 
-
 ### Explore
 
 #### High magnitude

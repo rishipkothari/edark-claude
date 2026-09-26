@@ -207,21 +207,28 @@ transform_variables_server <- function(id, shared_state) {
             }
 
             if (identical(method, "winsorize")) {
+              lo_val <- .winsor_lower(spec$lower_pct)
+              hi_val <- .winsor_upper(spec$upper_pct, lo_val)
               return(shiny::fluidRow(
                 shiny::column(6,
                   shiny::numericInput(
                     ns(paste0("lo_", .col)),
                     label = "Lower percentile:",
-                    value = if (!is.null(spec$lower_pct)) spec$lower_pct else 1,
-                    min = 0, max = 100, step = 0.5
+                    value = lo_val,
+                    min = EDARK_WINSOR_MIN, max = EDARK_WINSOR_MAX - 1,
+                    step = 0.5
                   )
                 ),
                 shiny::column(6,
                   shiny::numericInput(
                     ns(paste0("hi_", .col)),
                     label = "Upper percentile:",
-                    value = if (!is.null(spec$upper_pct)) spec$upper_pct else 99,
-                    min = 0, max = 100, step = 0.5
+                    value = hi_val,
+                    # The floor tracks the lower box, so the spinner cannot step
+                    # into an empty interval; the observers below enforce it for
+                    # typed input, which ignores min/max (see NOTE_implementation).
+                    min = lo_val + 1, max = EDARK_WINSOR_MAX,
+                    step = 0.5
                   )
                 )
               ))
@@ -333,28 +340,64 @@ transform_variables_server <- function(id, shared_state) {
           }, ignoreNULL = TRUE, ignoreInit = TRUE)
 
 
-          # Lower percentile observer
+          # Lower percentile observer.
+          #
+          # A numericInput's min/max bound its spinner, not what can be typed,
+          # so anything reaches the server: 0, 250, -4, a percentile above the
+          # upper box. The lower box is the one the user drives, so it is
+          # clamped into range here and the upper box is pushed out of its way;
+          # a clamp writes the corrected number back to the browser, which
+          # re-fires this observer once with a value that needs no correction.
           shiny::observeEvent(input[[paste0("lo_", .col)]], {
-            val <- as.numeric(input[[paste0("lo_", .col)]])
-            if (is.na(val)) return()
+            raw <- suppressWarnings(as.numeric(input[[paste0("lo_", .col)]]))
+            # NA means the box is empty mid-edit - leave the spec alone rather
+            # than snapping a number in under the user's cursor.
+            if (length(raw) != 1L || is.na(raw)) return()
+            val <- .winsor_lower(raw)
+            if (!identical(val, raw)) {
+              shiny::updateNumericInput(session, paste0("lo_", .col), value = val)
+            }
+
             s <- shared_state$column_transform_specs
-            if (!is.null(s[[.col]]) && !identical(s[[.col]]$lower_pct, val)) {
-              s[[.col]]$lower_pct              <- val
-              shared_state$column_transform_specs  <- s
-              shared_state$has_pending_changes     <- TRUE
+            # A box removed from the DOM keeps its last value (N1.3), so a
+            # stale event can arrive after the method has moved on.
+            if (!identical(s[[.col]]$method, "winsorize")) return()
+
+            # Keep at least one percentile between the two bounds.
+            hi <- .winsor_upper(s[[.col]]$upper_pct, val)
+            shiny::updateNumericInput(session, paste0("hi_", .col),
+                                      min = val + 1)
+            if (!identical(hi, s[[.col]]$upper_pct)) {
+              shiny::updateNumericInput(session, paste0("hi_", .col), value = hi)
+            }
+
+            if (!identical(s[[.col]]$lower_pct, val) ||
+                !identical(s[[.col]]$upper_pct, hi)) {
+              s[[.col]]$lower_pct                 <- val
+              s[[.col]]$upper_pct                 <- hi
+              shared_state$column_transform_specs <- s
+              shared_state$has_pending_changes    <- TRUE
             }
           }, ignoreNULL = TRUE, ignoreInit = TRUE)
 
 
-          # Upper percentile observer
+          # Upper percentile observer - clamped to (lower, 100].
           shiny::observeEvent(input[[paste0("hi_", .col)]], {
-            val <- as.numeric(input[[paste0("hi_", .col)]])
-            if (is.na(val)) return()
+            raw <- suppressWarnings(as.numeric(input[[paste0("hi_", .col)]]))
+            if (length(raw) != 1L || is.na(raw)) return()
+
             s <- shared_state$column_transform_specs
-            if (!is.null(s[[.col]]) && !identical(s[[.col]]$upper_pct, val)) {
-              s[[.col]]$upper_pct              <- val
-              shared_state$column_transform_specs  <- s
-              shared_state$has_pending_changes     <- TRUE
+            if (!identical(s[[.col]]$method, "winsorize")) return()
+
+            lo  <- .winsor_lower(s[[.col]]$lower_pct)
+            val <- .winsor_upper(raw, lo)
+            if (!identical(val, raw)) {
+              shiny::updateNumericInput(session, paste0("hi_", .col), value = val)
+            }
+            if (!identical(s[[.col]]$upper_pct, val)) {
+              s[[.col]]$upper_pct                 <- val
+              shared_state$column_transform_specs <- s
+              shared_state$has_pending_changes    <- TRUE
             }
           }, ignoreNULL = TRUE, ignoreInit = TRUE)
 

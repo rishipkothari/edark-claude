@@ -2,7 +2,7 @@
 #'
 #' One table at a time, chosen by two toggles: which dataset (Original or
 #' Working) and which view (Data or Summary). Transformed columns are tinted
-#' amber in the Working data view.
+#' and their type label is prefixed with an arrow in the data views.
 #'
 #' Before UI Stage 5 these four tables were three levels of tabs deep - the
 #' navbar, Prepare's card tabs, a `navset_card_tab` and a `navset_tab` inside
@@ -187,17 +187,22 @@ data_preview_server <- function(id, shared_state) {
       shiny::tags$div(
         shiny::tags$div(value, style = "font-weight: 600;"),
         shiny::tags$div(
-          col_type,
+          # An arrow marks a transformed column, the same mark the changed-type
+          # badge uses (.edark-badge-changed in edark.css), so one glyph means
+          # "the pipeline touched this" in both places.
+          paste0(if (is_tinted) "\u2192 " else "", col_type),
           style = paste0(
             "font-size: 0.72em; color: ",
-            if (is_tinted) "#92400e" else "#6b7280",
+            if (is_tinted) "var(--edark-tint-fg)" else "var(--bs-secondary-color)",
             "; font-style: italic;"
           )
         )
       )
     }
 
-    cell_style <- if (is_tinted) list(background = "rgba(251, 191, 36, 0.15)") else NULL
+    # Tokens, not literals: the amber this used to be was the app's warning
+    # colour doing a second job, and it had no dark-mode value.
+    cell_style <- if (is_tinted) list(background = "var(--edark-tint-bg)") else NULL
 
     reactable::colDef(
       header = header_fn,

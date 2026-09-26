@@ -322,19 +322,23 @@ edark_empty_state <- function(title, body = NULL, icon = "circle-info") {
 #'
 #' Keys are roles, not colours, so a caller never names a Bootstrap variant.
 #'
+#' No entry names a text colour: `text-bg-*` computes one from the background,
+#' and the `text-dark` these three carried was written for flatly's bright
+#' orange warning, which `bs_theme(warning =)` in `edark()` has since muted.
+#'
 #' @keywords internal
 #' @noRd
 .EDARK_BADGE_VARIANT <- c(
   # Column types (detect_column_types() values)
   numeric   = "primary",
   factor    = "success",
-  datetime  = "warning text-dark",
+  datetime  = "warning",
   character = "secondary",
 
   # Study type (Analyze > Setup info pane)
   study_exposure_outcome     = "primary",
   study_risk_factor          = "success",
-  study_descriptive_exposure = "warning text-dark",
+  study_descriptive_exposure = "warning",
   study_descriptive          = "secondary",
 
   # Other roles
@@ -342,7 +346,7 @@ edark_empty_state <- function(title, body = NULL, icon = "circle-info") {
   count     = "primary",    # a live count beside a label
   neutral   = "secondary",
   muted     = "light text-dark",
-  changed   = "warning text-dark"
+  changed   = "warning"
 )
 
 
@@ -388,7 +392,9 @@ edark_badge <- function(text, role = "neutral", size = c("sm", "md"),
 #'
 #' @param type Character. A `detect_column_types()` value.
 #' @param changed Logical. TRUE marks a type the Prepare pipeline has cast away
-#'   from the original; it keeps the type's own colour and gains a ring.
+#'   from the original; it keeps the type's own colour and gains a leading
+#'   arrow (`.edark-badge-changed` in edark.css), so the cast reads as a
+#'   direction rather than as a warning.
 #'
 #' @return A `htmltools::tags$span`.
 #' @keywords internal

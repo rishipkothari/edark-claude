@@ -36,8 +36,29 @@
   --edark-warn:    var(--bs-warning);
   --edark-error:   var(--bs-danger);
   --edark-pending: var(--bs-secondary);
-  --edark-stale:   #b76e00;
+  --edark-stale:   #8a6516;
   --edark-locked:  var(--bs-secondary);
+
+  /* Alert surfaces. Bootswatch flatly fills every .alert with the solid theme
+     colour and white text, so one warning ran a band of bright orange across
+     the top of the page. Every alert in the app is drawn from these instead
+     (section 5), which keeps the severity readable without shouting. */
+  --edark-alert-ok-bg:      var(--bs-success-bg-subtle);
+  --edark-alert-ok-fg:      var(--bs-success-text-emphasis);
+  --edark-alert-info-bg:    var(--bs-info-bg-subtle);
+  --edark-alert-info-fg:    var(--bs-info-text-emphasis);
+  --edark-alert-warn-bg:    #fdf6e6;
+  --edark-alert-warn-fg:    #6f5010;
+  --edark-alert-error-bg:   var(--bs-danger-bg-subtle);
+  --edark-alert-error-fg:   var(--bs-danger-text-emphasis);
+  --edark-alert-muted-bg:   var(--bs-secondary-bg);
+  --edark-alert-muted-fg:   var(--bs-secondary-color);
+
+  /* A column the Prepare pipeline has transformed, in Data Preview. Amber said
+     "transformed" here and "warning" everywhere else; a neutral primary tint
+     says "this column was touched" without borrowing the severity scale. */
+  --edark-tint-bg: rgba(44, 123, 229, 0.08);
+  --edark-tint-fg: #1b5fb0;
 
   /* Column types - distinct from the status scale on purpose */
   --edark-type-numeric:   #2c7be5;
@@ -54,7 +75,21 @@
 }
 
 [data-bs-theme="dark"] {
-  --edark-stale:          #e0a800;
+  /* The theme's warning is compiled once, from bs_theme() in R/edark.R, so it
+     is tuned for light mode; on a dark surface that ochre goes muddy. Both
+     --bs-warning and its -rgb form are needed: .text-warning reads the rgb. */
+  --bs-warning:           #d0a441;
+  --bs-warning-rgb:       208, 164, 65;
+
+  --edark-stale:          #d0a441;
+
+  --edark-alert-warn-bg:  #3a2f13;
+  --edark-alert-warn-fg:  #e8d5a3;
+  --edark-alert-muted-bg: var(--bs-secondary-bg);
+  --edark-alert-muted-fg: var(--bs-secondary-color);
+
+  --edark-tint-bg:        rgba(110, 168, 254, 0.12);
+  --edark-tint-fg:        #9ec5fe;
   --edark-type-numeric:   #6ea8fe;
   --edark-type-factor:    #b39dfb;
   --edark-type-datetime:  #4dd4d4;
@@ -336,10 +371,15 @@
   padding: 0.35em 0.65em;
 }
 
-/* A type the Prepare pipeline cast away from the original: the type's own
-   colour still says what it is now, the ring says it moved. */
-.edark-badge-changed {
-  box-shadow: 0 0 0 2px var(--bs-warning);
+/* A type the Prepare pipeline cast away from the original. This was an amber
+   ring, which read as a warning and put the app's loudest colour in a table
+   cell; the badge now keeps the type's own colour and gains an arrow, so it
+   says "cast to factor" rather than "something is wrong with factor". The
+   meaning in words is on the badge's title attribute (edark_type_badge()). */
+.edark-badge-changed::before {
+  content: "\2192\00a0";
+  opacity: 0.8;
+  font-weight: 600;
 }
 
 .edark-section-label {
@@ -351,8 +391,56 @@
   opacity: 0.45;
 }
 
-.edark-message {
+/* Alerts.
+
+   Bootswatch flatly ships `.alert { color: #fff }` with a solid theme-colour
+   background, so a warning was a full-width block of #f39c12. Every alert -
+   the messages slot (edark_message()), and the handful of inline `alert
+   alert-*` blocks in Analyze - is redrawn here as a tinted panel with a
+   coloured rule down its start edge. Specificity: one class each, same as
+   flatly's own rules, so these must come after it in source order; they do,
+   because this stylesheet loads last. */
+.alert {
   border: 0;
+  border-inline-start: 3px solid currentColor;
+  background-color: var(--edark-alert-muted-bg);
+  color: var(--edark-alert-muted-fg);
+}
+
+.alert-success {
+  background-color: var(--edark-alert-ok-bg);
+  color: var(--edark-alert-ok-fg);
+}
+
+.alert-info {
+  background-color: var(--edark-alert-info-bg);
+  color: var(--edark-alert-info-fg);
+}
+
+.alert-warning {
+  background-color: var(--edark-alert-warn-bg);
+  color: var(--edark-alert-warn-fg);
+}
+
+.alert-danger {
+  background-color: var(--edark-alert-error-bg);
+  color: var(--edark-alert-error-fg);
+}
+
+.alert-secondary {
+  background-color: var(--edark-alert-muted-bg);
+  color: var(--edark-alert-muted-fg);
+}
+
+/* A link inside an alert follows the alert's own colour, not flatly's white. */
+.alert .alert-link,
+.alert a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.edark-message {
+  border-radius: var(--bs-border-radius);
 }
 
 .edark-info-row {

@@ -3,6 +3,36 @@
 # Called by apply_prepare_pipeline() in module_prepare_confirm.R.
 
 
+# ── Winsorize bounds ──────────────────────────────────────────────────────────
+#
+# The percentile pair is clamped in one place, because three callers need the
+# same rule: the two numericInputs in module_transform_variables.R (typed input
+# ignores a numericInput's min/max, so a box can send 0, -4 or 250),
+# .apply_column_transforms() below, and the validity checks used by Apply.
+#
+# Lower lives in [1, 99]; upper in [lower + 1, 100]. A degenerate pair would
+# hand quantile() a lower bound at or above the upper one, which silently
+# flattens the column to a constant.
+
+EDARK_WINSOR_MIN <- 1
+EDARK_WINSOR_MAX <- 100
+
+# Clamp a lower percentile into range; NULL / NA / non-numeric gives the default.
+.winsor_lower <- function(x) {
+  x <- suppressWarnings(as.numeric(x))
+  if (length(x) != 1L || is.na(x)) return(EDARK_WINSOR_MIN)
+  min(max(x, EDARK_WINSOR_MIN), EDARK_WINSOR_MAX - 1)
+}
+
+# Clamp an upper percentile into range, given the lower one it must clear.
+.winsor_upper <- function(x, lower = EDARK_WINSOR_MIN) {
+  lower <- .winsor_lower(lower)
+  x     <- suppressWarnings(as.numeric(x))
+  if (length(x) != 1L || is.na(x)) x <- EDARK_WINSOR_MAX - 1
+  min(max(x, lower + 1), EDARK_WINSOR_MAX)
+}
+
+
 # Apply all staged column-transform specs to a dataset.
 .apply_column_transforms <- function(dataset, transforms) {
   if (length(transforms) == 0) return(dataset)
@@ -55,8 +85,12 @@
       dataset[[col]] <- base_fn(x)
 
     } else if (identical(spec$method, "winsorize")) {
-      lo             <- quantile(x, (spec$lower_pct %||% 1)  / 100, na.rm = TRUE)
-      hi             <- quantile(x, (spec$upper_pct %||% 99) / 100, na.rm = TRUE)
+      # Clamp here too: a spec can arrive from edark_report() rather than from
+      # the two boxes, and nothing upstream of that API checks it.
+      lo_pct         <- .winsor_lower(spec$lower_pct)
+      hi_pct         <- .winsor_upper(spec$upper_pct, lo_pct)
+      lo             <- quantile(x, lo_pct / 100, na.rm = TRUE)
+      hi             <- quantile(x, hi_pct / 100, na.rm = TRUE)
       dataset[[col]] <- pmin(pmax(x, lo), hi)
 
     } else if (identical(spec$method, "round")) {
@@ -123,9 +157,10 @@
     },
 
     winsorize = {
-      lo <- spec$lower_pct %||% 1
-      hi <- spec$upper_pct %||% 99
-      lo >= 0 && hi <= 100 && lo < hi
+      lo <- spec$lower_pct %||% EDARK_WINSOR_MIN
+      hi <- spec$upper_pct %||% (EDARK_WINSOR_MAX - 1)
+      is.numeric(lo) && is.numeric(hi) && !is.na(lo) && !is.na(hi) &&
+        lo >= EDARK_WINSOR_MIN && hi <= EDARK_WINSOR_MAX && lo < hi
     },
 
     TRUE  # unknown method: pass through
