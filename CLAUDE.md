@@ -144,6 +144,13 @@ main-specific questions.
 ## TO-DOs
 
 ### High priority
+- Export functionality
+- session save-load with autosave or on click
+- propensity scoring models
+- change warning color
+- extra badge for transformed, not a character in front of the badge
+- winsorize data validation not on change, on lose focus
+- scale up the entire splash screen by double
 
 ### Prepare
 
